@@ -33,24 +33,36 @@ echo ""
 
 # 检查必要文件
 echo "📋 检查必要文件..."
-if [ ! -f "tradeboy-armhf" ]; then
-    echo -e "${RED}❌ 错误: 找不到 tradeboy-armhf 可执行文件${NC}"
-    echo "请先运行: make armhf-docker"
+HAS_TRADEBOY=0
+HAS_SDL2DEMO=0
+HAS_IMGUI_DEMO=0
+
+if [ -f "tradeboy-armhf" ]; then
+    HAS_TRADEBOY=1
+fi
+if [ -f "sdl2demo-armhf" ]; then
+    HAS_SDL2DEMO=1
+fi
+if [ -f "imgui-demo-armhf" ]; then
+    HAS_IMGUI_DEMO=1
+fi
+
+if [ "$HAS_TRADEBOY" -eq 0 ] && [ "$HAS_SDL2DEMO" -eq 0 ] && [ "$HAS_IMGUI_DEMO" -eq 0 ]; then
+    echo -e "${RED}❌ 错误: 当前目录没有可部署的 armhf 可执行文件${NC}"
+    echo "请先编译其中一个:"
+    echo "  - make sdl2demo-armhf-docker"
+    echo "  - make imgui-demo-armhf-docker"
     exit 1
 fi
 
-if [ ! -f "NotoSansCJK-Regular.ttc" ]; then
-    echo -e "${RED}❌ 错误: 找不到 NotoSansCJK-Regular.ttc 字体文件${NC}"
-    exit 1
+HAS_FONT=0
+if [ -f "NotoSansCJK-Regular.ttc" ]; then
+    HAS_FONT=1
 fi
 
 echo -e "${GREEN}✅ 文件检查完成${NC}"
 
-# 可选：SDL2 demo
-HAS_SDL2DEMO=0
-if [ -f "sdl2demo-armhf" ] && [ -f "sdl2demo-start.sh" ]; then
-    HAS_SDL2DEMO=1
-fi
+
 
 # 测试SSH连接
 echo "🔗 测试SSH连接..."
@@ -71,22 +83,12 @@ echo "📁 创建应用目录..."
 sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "mkdir -p /mnt/mmc/Roms/APPS" 2>/dev/null
 
 # 上传文件
-echo "📤 上传TradeBoy可执行文件..."
-if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no tradeboy-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
-    echo -e "${RED}❌ 上传可执行文件失败${NC}"
-    exit 1
-fi
-
-echo "📤 上传字体文件..."
-if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no NotoSansCJK-Regular.ttc "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
-    echo -e "${RED}❌ 上传字体文件失败${NC}"
-    exit 1
-fi
-
-echo "📤 上传启动脚本..."
-if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no tradeboy-start.sh "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
-    echo -e "${RED}❌ 上传启动脚本失败${NC}"
-    exit 1
+if [ "$HAS_TRADEBOY" -eq 1 ]; then
+    echo "📤 上传TradeBoy可执行文件..."
+    if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no tradeboy-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
+        echo -e "${RED}❌ 上传TradeBoy失败${NC}"
+        exit 1
+    fi
 fi
 
 if [ "$HAS_SDL2DEMO" -eq 1 ]; then
@@ -95,34 +97,52 @@ if [ "$HAS_SDL2DEMO" -eq 1 ]; then
         echo -e "${RED}❌ 上传SDL2 demo失败${NC}"
         exit 1
     fi
+fi
 
-    echo "📤 上传SDL2 demo启动脚本..."
-    if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no sdl2demo-start.sh "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
-        echo -e "${RED}❌ 上传SDL2 demo启动脚本失败${NC}"
+if [ "$HAS_IMGUI_DEMO" -eq 1 ]; then
+    echo "📤 上传ImGui demo..."
+    if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no imgui-demo-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
+        echo -e "${RED}❌ 上传ImGui demo失败${NC}"
+        exit 1
+    fi
+fi
+
+if [ "$HAS_FONT" -eq 1 ]; then
+    echo "📤 上传字体文件..."
+    if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no NotoSansCJK-Regular.ttc "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
+        echo -e "${RED}❌ 上传字体文件失败${NC}"
         exit 1
     fi
 fi
 
 # 设置文件权限
 echo "🔧 设置文件权限..."
-sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-armhf"
-sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 644 /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
-sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-start.sh"
-
+if [ "$HAS_TRADEBOY" -eq 1 ]; then
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-armhf"
+fi
 if [ "$HAS_SDL2DEMO" -eq 1 ]; then
     sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/sdl2demo-armhf"
-    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/sdl2demo-start.sh"
+fi
+if [ "$HAS_IMGUI_DEMO" -eq 1 ]; then
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/imgui-demo-armhf"
+fi
+if [ "$HAS_FONT" -eq 1 ]; then
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 644 /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
 fi
 
 # 验证安装结果
 echo "✅ 验证安装结果..."
-sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-armhf"
-sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
-sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-start.sh"
-
+if [ "$HAS_TRADEBOY" -eq 1 ]; then
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-armhf"
+fi
 if [ "$HAS_SDL2DEMO" -eq 1 ]; then
     sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/sdl2demo-armhf"
-    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/sdl2demo-start.sh"
+fi
+if [ "$HAS_IMGUI_DEMO" -eq 1 ]; then
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/imgui-demo-armhf"
+fi
+if [ "$HAS_FONT" -eq 1 ]; then
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
 fi
 
 # 获取设备信息
