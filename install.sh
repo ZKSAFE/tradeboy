@@ -8,7 +8,7 @@
 set -e
 
 # 默认配置
-DEFAULT_IP="192.168.3.97"
+DEFAULT_IP="192.168.1.7"
 DEFAULT_PASSWORD="root"
 DEFAULT_USER="root"
 
@@ -33,9 +33,9 @@ echo ""
 
 # 检查必要文件
 echo "📋 检查必要文件..."
-if [ ! -f "tradeboy-arm" ]; then
-    echo -e "${RED}❌ 错误: 找不到 tradeboy-arm 可执行文件${NC}"
-    echo "请先运行: ./docker-build-tradeboy.sh"
+if [ ! -f "tradeboy-armhf" ]; then
+    echo -e "${RED}❌ 错误: 找不到 tradeboy-armhf 可执行文件${NC}"
+    echo "请先运行: make armhf-docker"
     exit 1
 fi
 
@@ -45,6 +45,12 @@ if [ ! -f "NotoSansCJK-Regular.ttc" ]; then
 fi
 
 echo -e "${GREEN}✅ 文件检查完成${NC}"
+
+# 可选：SDL2 demo
+HAS_SDL2DEMO=0
+if [ -f "sdl2demo-armhf" ] && [ -f "sdl2demo-start.sh" ]; then
+    HAS_SDL2DEMO=1
+fi
 
 # 测试SSH连接
 echo "🔗 测试SSH连接..."
@@ -66,7 +72,7 @@ sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "mkdir -p /mn
 
 # 上传文件
 echo "📤 上传TradeBoy可执行文件..."
-if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no tradeboy-arm "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
+if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no tradeboy-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
     echo -e "${RED}❌ 上传可执行文件失败${NC}"
     exit 1
 fi
@@ -77,15 +83,47 @@ if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no NotoSansCJK-Regular.
     exit 1
 fi
 
+echo "📤 上传启动脚本..."
+if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no tradeboy-start.sh "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
+    echo -e "${RED}❌ 上传启动脚本失败${NC}"
+    exit 1
+fi
+
+if [ "$HAS_SDL2DEMO" -eq 1 ]; then
+    echo "📤 上传SDL2 demo..."
+    if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no sdl2demo-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
+        echo -e "${RED}❌ 上传SDL2 demo失败${NC}"
+        exit 1
+    fi
+
+    echo "📤 上传SDL2 demo启动脚本..."
+    if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no sdl2demo-start.sh "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
+        echo -e "${RED}❌ 上传SDL2 demo启动脚本失败${NC}"
+        exit 1
+    fi
+fi
+
 # 设置文件权限
 echo "🔧 设置文件权限..."
-sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-arm"
+sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-armhf"
 sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 644 /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
+sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-start.sh"
+
+if [ "$HAS_SDL2DEMO" -eq 1 ]; then
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/sdl2demo-armhf"
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/sdl2demo-start.sh"
+fi
 
 # 验证安装结果
 echo "✅ 验证安装结果..."
-sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-arm"
+sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-armhf"
 sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
+sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-start.sh"
+
+if [ "$HAS_SDL2DEMO" -eq 1 ]; then
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/sdl2demo-armhf"
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/sdl2demo-start.sh"
+fi
 
 # 获取设备信息
 echo ""
@@ -107,7 +145,7 @@ echo ""
 echo -e "${GREEN}�🎉 TradeBoy安装完成！${NC}"
 echo "=================="
 echo -e "运行命令:"
-echo -e "${YELLOW}ssh $USER@$IP 'cd /mnt/mmc/Roms/APPS && ./tradeboy-arm'${NC}"
+echo -e "${YELLOW}ssh $USER@$IP 'cd /mnt/mmc/Roms/APPS && ./tradeboy-armhf'${NC}"
 echo ""
 echo -e "${BLUE}功能说明:${NC}"
 echo -e "  🛒 ${GREEN}商品交易平台${NC}"
@@ -123,7 +161,7 @@ echo -n "是否立即运行TradeBoy? (y/n): "
 read -r response
 if [[ "$response" =~ ^[Yy]$ ]]; then
     echo "🚀 启动TradeBoy..."
-    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "cd /mnt/mmc/Roms/APPS && ./tradeboy-arm"
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "cd /mnt/mmc/Roms/APPS && ./tradeboy-armhf"
 fi
 
 echo ""
