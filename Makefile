@@ -22,7 +22,18 @@ INCLUDES = -I/usr/include/EGL -I/usr/include/GLES -I/usr/include/GLES2
 # 源文件
 DEMO_SOURCES = src/sdl2demo.c
 IMGUI_DEMO_SOURCES = src/imgui-demo.cpp
-TRADEBOY_SOURCES = src/tradeboy.cpp
+TRADEBOY_SOURCES = \
+	src/main.cpp \
+	src/app/App.cpp \
+	src/app/Input.cpp \
+	src/utils/File.cpp \
+	src/utils/Format.cpp \
+	src/uiComponents/Theme.cpp \
+	src/uiComponents/Fonts.cpp \
+	src/uiComponents/Button.cpp \
+	src/windows/NumInputWindow.cpp \
+	src/spot/KLineChart.cpp \
+	src/spot/SpotScreen.cpp
 
 # ImGui sources
 IMGUI_DIR = third_party/imgui
@@ -31,6 +42,7 @@ IMGUI_CORE_SOURCES = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_
 IMGUI_BACKEND_SOURCES = $(IMGUI_BACKENDS_DIR)/imgui_impl_sdl2.cpp $(IMGUI_BACKENDS_DIR)/imgui_impl_opengl3.cpp
 
 BUILD_DIR_ARMHF = build/armhf
+OUTPUT_DIR = output
 IMGUI_DEMO_OBJS = \
 	$(BUILD_DIR_ARMHF)/imgui-demo.o \
 	$(BUILD_DIR_ARMHF)/imgui.o \
@@ -41,7 +53,7 @@ IMGUI_DEMO_OBJS = \
 	$(BUILD_DIR_ARMHF)/imgui_impl_opengl3.o
 
 TRADEBOY_OBJS = \
-	$(BUILD_DIR_ARMHF)/tradeboy.o \
+	$(patsubst src/%.cpp,$(BUILD_DIR_ARMHF)/%.o,$(TRADEBOY_SOURCES)) \
 	$(BUILD_DIR_ARMHF)/imgui.o \
 	$(BUILD_DIR_ARMHF)/imgui_draw.o \
 	$(BUILD_DIR_ARMHF)/imgui_tables.o \
@@ -50,9 +62,9 @@ TRADEBOY_OBJS = \
 	$(BUILD_DIR_ARMHF)/imgui_impl_opengl3.o
 
 # 目标文件
-TARGET_DEMO_ARMHF = sdl2demo-armhf
-TARGET_IMGUI_DEMO_ARMHF = imgui-demo-armhf
-TARGET_TRADEBOY_ARMHF = tradeboy-armhf
+TARGET_DEMO_ARMHF = $(OUTPUT_DIR)/sdl2demo-armhf
+TARGET_IMGUI_DEMO_ARMHF = $(OUTPUT_DIR)/imgui-demo-armhf
+TARGET_TRADEBOY_ARMHF = $(OUTPUT_DIR)/tradeboy-armhf
 DOCKER_ARMHF_BUILDER_IMAGE = rg34xx-armhf-builder:latest
 CCACHE_VOLUME = -v "$(PWD)/.ccache:/ccache"
 
@@ -60,20 +72,24 @@ CCACHE_VOLUME = -v "$(PWD)/.ccache:/ccache"
 all: $(TARGET_DEMO_ARMHF)
 
 # SDL2 + OpenGL ES demo (ARMHF)
-$(TARGET_DEMO_ARMHF): $(DEMO_SOURCES)
+$(TARGET_DEMO_ARMHF): $(DEMO_SOURCES) | $(OUTPUT_DIR)
 	$(ARMHF_CC) $(CFLAGS) -I/usr/include/SDL2 -D_REENTRANT $(DEMO_SOURCES) -o $(TARGET_DEMO_ARMHF) -L/usr/lib/arm-linux-gnueabihf $(LIBS_ARMHF_GLES) -lSDL2
 
 # Dear ImGui demo (ARMHF)
 # Note: requires Dear ImGui sources in third_party/imgui and backends.
 
+$(OUTPUT_DIR):
+	mkdir -p $(OUTPUT_DIR)
+
 $(BUILD_DIR_ARMHF):
 	mkdir -p $(BUILD_DIR_ARMHF)
 
 $(BUILD_DIR_ARMHF)/imgui-demo.o: $(IMGUI_DEMO_SOURCES) | $(BUILD_DIR_ARMHF)
-	$(ARMHF_CXX) $(CXXFLAGS) -I/usr/include/SDL2 -D_REENTRANT -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $(IMGUI_DEMO_SOURCES) -o $@
+	$(ARMHF_CXX) $(CXXFLAGS) -I./src -I/usr/include/SDL2 -D_REENTRANT -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $(IMGUI_DEMO_SOURCES) -o $@
 
-$(BUILD_DIR_ARMHF)/tradeboy.o: $(TRADEBOY_SOURCES) | $(BUILD_DIR_ARMHF)
-	$(ARMHF_CXX) $(CXXFLAGS) -I/usr/include/SDL2 -D_REENTRANT -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $(TRADEBOY_SOURCES) -o $@
+$(BUILD_DIR_ARMHF)/%.o: src/%.cpp | $(BUILD_DIR_ARMHF)
+	@mkdir -p $(dir $@)
+	$(ARMHF_CXX) $(CXXFLAGS) -I./src -I/usr/include/SDL2 -D_REENTRANT -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $< -o $@
 
 $(BUILD_DIR_ARMHF)/imgui.o: $(IMGUI_DIR)/imgui.cpp | $(BUILD_DIR_ARMHF)
 	$(ARMHF_CXX) $(CXXFLAGS) -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -c $< -o $@
@@ -93,10 +109,10 @@ $(BUILD_DIR_ARMHF)/imgui_impl_sdl2.o: $(IMGUI_BACKENDS_DIR)/imgui_impl_sdl2.cpp 
 $(BUILD_DIR_ARMHF)/imgui_impl_opengl3.o: $(IMGUI_BACKENDS_DIR)/imgui_impl_opengl3.cpp | $(BUILD_DIR_ARMHF)
 	$(ARMHF_CXX) $(CXXFLAGS) -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $< -o $@
 
-$(TARGET_IMGUI_DEMO_ARMHF): $(IMGUI_DEMO_OBJS)
+$(TARGET_IMGUI_DEMO_ARMHF): $(IMGUI_DEMO_OBJS) | $(OUTPUT_DIR)
 	$(ARMHF_CXX) $(CXXFLAGS) -o $(TARGET_IMGUI_DEMO_ARMHF) $(IMGUI_DEMO_OBJS) -L/usr/lib/arm-linux-gnueabihf $(LIBS_ARMHF_GLES) -lSDL2
 
-$(TARGET_TRADEBOY_ARMHF): $(TRADEBOY_OBJS)
+$(TARGET_TRADEBOY_ARMHF): $(TRADEBOY_OBJS) | $(OUTPUT_DIR)
 	$(ARMHF_CXX) $(CXXFLAGS) -o $(TARGET_TRADEBOY_ARMHF) $(TRADEBOY_OBJS) -L/usr/lib/arm-linux-gnueabihf $(LIBS_ARMHF_GLES) -lSDL2
 
 # Docker ARM编译
@@ -114,6 +130,9 @@ imgui-demo-armhf-docker:
 
 tradeboy-armhf-docker:
 	docker run --rm -v "$(PWD):/workspace" $(CCACHE_VOLUME) $(DOCKER_ARMHF_BUILDER_IMAGE) sh -c "cd /workspace && make $(TARGET_TRADEBOY_ARMHF) ARMHF_CXX='ccache arm-linux-gnueabihf-g++'"
+
+output-assets: | $(OUTPUT_DIR)
+	@if [ -f "NotoSansCJK-Regular.ttc" ]; then cp -f "NotoSansCJK-Regular.ttc" "$(OUTPUT_DIR)/"; fi
 
 # 清理
 clean:
