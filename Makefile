@@ -20,8 +20,8 @@ LDFLAGS_ARMHF = -Wl,--no-as-needed -Wl,-rpath-link,./lib32
 INCLUDES = -I/usr/include/EGL -I/usr/include/GLES -I/usr/include/GLES2
 
 # 源文件
-DEMO_SOURCES = src/sdl2demo.c
-IMGUI_DEMO_SOURCES = src/imgui-demo.cpp
+DEMO_SOURCES = src/demos/sdl2demo.c
+IMGUI_DEMO_SOURCES = src/demos/imgui-demo.cpp
 TRADEBOY_SOURCES = \
 	src/main.cpp \
 	src/app/App.cpp \

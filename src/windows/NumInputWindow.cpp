@@ -10,6 +10,7 @@
 #include "../utils/Scale.h"
 #include "../utils/Format.h"
 #include "../uiComponents/Fonts.h"
+#include "../uiComponents/Theme.h"
 
 namespace tradeboy::windows {
 
@@ -169,8 +170,10 @@ void render(NumInputState& st) {
     st.parse_text();
     const bool over = st.over_max();
 
+    const auto& tc = tradeboy::ui::colors();
+
     ImGui::PushItemWidth(-1);
-    if (over) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.2f, 0.2f, 1.0f));
+    if (over) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.2f, 0.2f, 1.0f)); // Keep red error color specific
     ImGui::Text("%s", st.text.c_str());
     if (over) ImGui::PopStyleColor();
 
@@ -189,11 +192,17 @@ void render(NumInputState& st) {
             ImGui::PushID(r * 10 + c);
             const bool focused = (r == st.focus_r && c == st.focus_c);
 
+            // Convert U32 colors to Vec4 for ImGui styles
+            auto u32_to_v4 = [](ImU32 c) {
+                float s = 1.0f / 255.0f;
+                return ImVec4(((c >> 0) & 0xFF) * s, ((c >> 8) & 0xFF) * s, ((c >> 16) & 0xFF) * s, ((c >> 24) & 0xFF) * s);
+            };
+
             if (focused) {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.45f, 0.44f, 0.35f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_Button, u32_to_v4(tc.panel_pressed)); // Use lighter/hover color for focus
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 1));
             } else {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.35f, 0.33f, 0.25f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_Button, u32_to_v4(tc.panel2));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 0.9f));
             }
 

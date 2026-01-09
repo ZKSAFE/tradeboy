@@ -1,6 +1,9 @@
 #include "App.h"
 
+#include <algorithm>
 #include <sstream>
+
+#include <SDL.h>
 
 #include "imgui.h"
 
@@ -24,6 +27,43 @@ void App::init_demo_data() {
 
     wallet_usdc = 10000.0;
     hl_usdc = 0.0;
+
+    regenerate_kline();
+}
+
+void App::regenerate_kline() {
+    kline_data.clear();
+    // Default approx 60 candles for 720px width (adjust as needed)
+    int candle_count = 60;
+    kline_data.reserve(candle_count);
+
+    uint32_t seed = (uint32_t)(tf_idx * 1000 + spot_row_idx * 100 + SDL_GetTicks());
+    auto rnd = [&]() {
+        seed = seed * 1664525u + 1013904223u;
+        return (seed >> 8) & 0xFFFFu;
+    };
+
+    float cur = 68000.0f;
+    if (spot_rows.size() > (size_t)spot_row_idx) {
+        cur = (float)spot_rows[spot_row_idx].price;
+    }
+
+    for (int i = 0; i < candle_count; i++) {
+        float o = cur;
+        float volatility = cur * 0.005f; 
+        float hi = o + (float)(rnd() % 100) / 100.0f * volatility;
+        float lo = o - (float)(rnd() % 100) / 100.0f * volatility;
+        float c = lo + (float)(rnd() % 100) / 100.0f * (hi - lo);
+        
+        // Ensure High is highest and Low is lowest
+        if (c > hi) hi = c;
+        if (c < lo) lo = c;
+        if (o > hi) hi = o;
+        if (o < lo) lo = o;
+
+        cur = c;
+        kline_data.push_back({o, hi, lo, c});
+    }
 }
 
 void App::load_private_key() {
@@ -31,7 +71,10 @@ void App::load_private_key() {
     priv_key_hex = tradeboy::utils::normalize_hex_private_key(raw);
 }
 
-void App::next_timeframe() { tf_idx = (tf_idx + 1) % 3; }
+void App::next_timeframe() { 
+    tf_idx = (tf_idx + 1) % 3;
+    regenerate_kline();
+}
 
 void App::dec_frame_counter(int& v) {
     if (v > 0) v--;

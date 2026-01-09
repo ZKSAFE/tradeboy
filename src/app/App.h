@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "../windows/NumInputWindow.h"
+#include "../spot/KLineChart.h"
 
 namespace tradeboy::app {
 
@@ -43,6 +44,9 @@ struct App {
 
     double wallet_usdc = 0.0;
     double hl_usdc = 0.0;
+
+    std::vector<tradeboy::spot::OHLC> kline_data;
+    void regenerate_kline();
 
     void init_demo_data();
     void load_private_key();
