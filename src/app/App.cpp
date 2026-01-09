@@ -119,7 +119,7 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
     if (tab == Tab::Spot) {
         if (tradeboy::utils::pressed(in.x, edges.prev.x)) {
             next_timeframe();
-            x_press_frames = 2;
+            x_press_frames = 8;
         }
         if (tradeboy::utils::pressed(in.up, edges.prev.up)) {
             spot_row_idx = tradeboy::utils::clampi(spot_row_idx - 1, 0, (int)spot_rows.size() - 1);

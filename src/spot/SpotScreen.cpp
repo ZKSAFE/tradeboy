@@ -15,19 +15,20 @@
 namespace tradeboy::spot {
 
 void render_spot_screen(tradeboy::app::App& app) {
-    ImFont* f = tradeboy::ui::fonts().large;
-    if (f) ImGui::PushFont(f);
+    ImFont* f_body = tradeboy::ui::fonts().body;
+    ImFont* f_small = tradeboy::ui::fonts().small;
+    if (f_body) ImGui::PushFont(f_body);
 
     const ImVec2 win_pos = ImGui::GetWindowPos();
     const ImVec2 win_size = ImGui::GetWindowSize();
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
     const float m = 10.0f;
-    const float header_h = 56.0f;
-    const float bottom_h = 66.0f;
-    const float gap = 8.0f;
-    const float panel_gap = 12.0f;
-    const float left_w = 260.0f;
+    const float header_h = 64.0f;
+    const float bottom_h = 64.0f;
+    const float gap = 10.0f;
+    const float panel_gap = 10.0f;
+    const float left_w = 230.0f;
     const float radius = 14.0f;
     const float stroke_w = 2.0f;
 
@@ -61,27 +62,37 @@ void render_spot_screen(tradeboy::app::App& app) {
 
     const char* tf = (app.tf_idx == 0) ? "24H" : (app.tf_idx == 1) ? "4H" : "1H";
 
-    ImVec2 hdr_text_base(hdr.Min.x + 18.0f, hdr.Min.y + 14.0f);
+    ImVec2 hdr_line = ImGui::CalcTextSize("Ag");
+    float hdr_y = hdr.Min.y + (header_h - hdr_line.y) * 0.5f;
+    ImVec2 hdr_text_base(hdr.Min.x + 18.0f, hdr_y);
     dl->AddText(hdr_text_base, c.text, pair);
-    dl->AddText(ImVec2(hdr.Min.x + 180.0f, hdr_text_base.y), c.text, price);
-    dl->AddText(ImVec2(hdr.Min.x + 310.0f, hdr_text_base.y), change_col, change);
-
     ImVec2 tf_sz = ImGui::CalcTextSize(tf);
-    float x_r = 14.0f;
-    ImVec2 x_center(hdr.Max.x - 18.0f - x_r, (hdr.Min.y + hdr.Max.y) * 0.5f);
-    ImVec2 tf_pos(x_center.x - x_r - 10.0f - tf_sz.x, hdr_text_base.y);
+    float x_r = 18.0f;
+    ImVec2 x_center(hdr.Max.x - 20.0f - x_r, (hdr.Min.y + hdr.Max.y) * 0.5f + 2.0f);
+    ImVec2 tf_pos(x_center.x - x_r - 16.0f - tf_sz.x, hdr_text_base.y);
+
+    // Layout price/change from the right side, but keep clear of the TF label.
+    const float hdr_right_limit = tf_pos.x - 28.0f;
+    const float hdr_col_gap = 18.0f;
+    ImVec2 change_sz = ImGui::CalcTextSize(change);
+    ImVec2 price_sz = ImGui::CalcTextSize(price);
+    float change_x = hdr_right_limit - change_sz.x;
+    float price_x = change_x - hdr_col_gap - price_sz.x;
+    dl->AddText(ImVec2(price_x, hdr_text_base.y), c.text, price);
+    dl->AddText(ImVec2(change_x, hdr_text_base.y), change_col, change);
+
     dl->AddText(tf_pos, c.text, tf);
 
     const bool x_pressed = (app.x_press_frames > 0);
     tradeboy::ui::draw_circle_button(dl, x_center, x_r, x_pressed ? c.panel_pressed : c.panel2, c.text, "X", x_pressed);
 
-    const float row_h = 42.0f;
+    const float row_h = 50.0f;
     const float pad_lr = 22.0f;
     float y = lp.Min.y + 16.0f;
 
     auto row_text_y = [&](float row_y) {
         ImVec2 ts = ImGui::CalcTextSize("Ag");
-        return row_y + (row_h - ts.y) * 0.5f;
+        return row_y + (row_h - ts.y) * 0.5f - 3.0f;
     };
 
     for (int i = 0; i < (int)app.spot_rows.size(); i++) {
@@ -90,22 +101,20 @@ void render_spot_screen(tradeboy::app::App& app) {
         const auto& r = app.spot_rows[(size_t)i];
 
         if (selected) {
-            dl->AddRectFilled(ImVec2(lp.Min.x + 10.0f, y - 4.0f), ImVec2(lp.Max.x - 10.0f, y + row_h - 4.0f), c.panel2, 10.0f);
+            dl->AddRectFilled(ImVec2(lp.Min.x + 10.0f, y), ImVec2(lp.Max.x - 10.0f, y + row_h), c.panel2, 10.0f);
         }
 
         std::string p = tradeboy::utils::format_fixed_trunc_sig(r.price, 8, 8);
-        const char* pct = (i % 3 == 1) ? "-1.05%" : "+3.21%";
-        ImU32 pct_col = (pct[0] == '-') ? c.red : c.green;
+        const bool down = (i % 3 == 1);
+        ImU32 price_col = down ? c.red : c.green;
 
         const float ty = row_text_y(y);
 
         dl->AddText(ImVec2(lp.Min.x + pad_lr, ty), c.text, r.sym.c_str());
 
-        float price_cell_r = lp.Max.x - pad_lr - 78.0f;
+        float price_cell_r = lp.Max.x - pad_lr;
         ImVec2 p_sz = ImGui::CalcTextSize(p.c_str());
-        dl->AddText(ImVec2(price_cell_r - p_sz.x, ty), c.text, p.c_str());
-
-        dl->AddText(ImVec2(price_cell_r + 8.0f, ty), pct_col, pct);
+        dl->AddText(ImVec2(price_cell_r - p_sz.x, ty), price_col, p.c_str());
 
         y += row_h;
     }
@@ -123,19 +132,23 @@ void render_spot_screen(tradeboy::app::App& app) {
     ks.green = c.green;
     ks.red = c.red;
     ks.muted = c.muted;
+    if (f_small) ImGui::PushFont(f_small);
     render_kline(dl, chart, app.kline_data, 6, ks);
+    if (f_small) ImGui::PopFont();
 
     const char* hold = "0.0500 BTC";
     const char* val = "$3421.55";
     const char* pnl = "+$65.2";
 
-    ImVec2 bot_base(bot.Min.x + 16.0f, bot.Min.y + 22.0f);
+    ImVec2 bot_line = ImGui::CalcTextSize("Ag");
+    float bot_y = bot.Min.y + (bottom_h - bot_line.y) * 0.5f;
+    ImVec2 bot_base(bot.Min.x + 16.0f, bot_y);
     dl->AddText(bot_base, c.text, hold);
     dl->AddText(ImVec2(bot.Min.x + 210.0f, bot_base.y), c.text, val);
     dl->AddText(ImVec2(bot.Min.x + 360.0f, bot_base.y), c.green, pnl);
 
-    float btn_w = 100.0f;
-    float btn_h = 44.0f;
+    float btn_w = 110.0f;
+    float btn_h = 56.0f;
     float bx = bot.Max.x - 16.0f - btn_w * 2.0f;
     float by = (bot.Min.y + bot.Max.y) * 0.5f - btn_h * 0.5f;
 
@@ -157,7 +170,7 @@ void render_spot_screen(tradeboy::app::App& app) {
     } else {
         // normal: text-only, not bold
         ImVec2 ts = ImGui::CalcTextSize("Buy");
-        dl->AddText(ImVec2(bx + (btn_w - ts.x) * 0.5f, by + (btn_h - ts.y) * 0.5f), c.text, "Buy");
+        dl->AddText(ImVec2(bx + (btn_w - ts.x) * 0.5f, by + (btn_h - ts.y) * 0.5f - 2.0f), c.text, "Buy");
     }
 
     float sx = bx + btn_w;
@@ -173,14 +186,14 @@ void render_spot_screen(tradeboy::app::App& app) {
             true);
     } else {
         ImVec2 ts = ImGui::CalcTextSize("Sell");
-        dl->AddText(ImVec2(sx + (btn_w - ts.x) * 0.5f, by + (btn_h - ts.y) * 0.5f), c.text, "Sell");
+        dl->AddText(ImVec2(sx + (btn_w - ts.x) * 0.5f, by + (btn_h - ts.y) * 0.5f - 2.0f), c.text, "Sell");
     }
 
     tradeboy::app::App::dec_frame_counter(app.x_press_frames);
     tradeboy::app::App::dec_frame_counter(app.buy_press_frames);
     tradeboy::app::App::dec_frame_counter(app.sell_press_frames);
 
-    if (f) ImGui::PopFont();
+    if (f_body) ImGui::PopFont();
 }
 
 } // namespace tradeboy::spot

@@ -8,11 +8,25 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <cstdarg>
+#include <unistd.h>
+#include <sys/stat.h>
 
 #include "app/App.h"
 #include "app/Input.h"
 #include "uiComponents/Fonts.h"
 #include "uiComponents/Theme.h"
+
+// Simple file logger
+void log_to_file(const char* fmt, ...) {
+    FILE* f = fopen("log.txt", "a");
+    if (!f) return;
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(f, fmt, args);
+    va_end(args);
+    fclose(f);
+}
 
 static bool file_exists(const char* path) {
     if (!path) return false;
@@ -20,11 +34,33 @@ static bool file_exists(const char* path) {
     return f.good();
 }
 
+static bool dir_exists(const char* path) {
+    if (!path) return false;
+    struct stat st;
+    if (stat(path, &st) != 0) return false;
+    return S_ISDIR(st.st_mode);
+}
+
 int main(int argc, char** argv) {
+    // On device, the app may be launched with CWD=/, but our assets live under
+    // /mnt/mmc/Roms/APPS. If that directory exists, switch CWD so relative
+    // asset paths work (fonts, log file).
+    if (dir_exists("/mnt/mmc/Roms/APPS")) {
+        chdir("/mnt/mmc/Roms/APPS");
+    }
+
+    // Clear log file on startup
+    FILE* f = fopen("log.txt", "w");
+    if (f) {
+        fprintf(f, "--- TradeBoy Log Start ---\n");
+        fclose(f);
+    }
+
     (void)argc;
     (void)argv;
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_TIMER) != 0) {
+        log_to_file("SDL_Init failed: %s\n", SDL_GetError());
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return 1;
     }
@@ -37,6 +73,7 @@ int main(int argc, char** argv) {
         mode.h = 480;
         mode.refresh_rate = 60;
     }
+    log_to_file("Display Mode: %dx%d @ %dHz\n", mode.w, mode.h, mode.refresh_rate);
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
@@ -53,6 +90,7 @@ int main(int argc, char** argv) {
         SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_SHOWN);
 
     if (!window) {
+        log_to_file("SDL_CreateWindow failed: %s\n", SDL_GetError());
         fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
         SDL_Quit();
         return 1;
@@ -60,6 +98,7 @@ int main(int argc, char** argv) {
 
     SDL_GLContext glctx = SDL_GL_CreateContext(window);
     if (!glctx) {
+        log_to_file("SDL_GL_CreateContext failed: %s\n", SDL_GetError());
         fprintf(stderr, "SDL_GL_CreateContext failed: %s\n", SDL_GetError());
         SDL_DestroyWindow(window);
         SDL_Quit();
@@ -86,7 +125,20 @@ int main(int argc, char** argv) {
     if (file_exists("output/NotoSansCJK-Regular.ttc")) font_path = "output/NotoSansCJK-Regular.ttc";
     else if (file_exists("NotoSansCJK-Regular.ttc")) font_path = "NotoSansCJK-Regular.ttc";
 
-    tradeboy::ui::init_fonts(io, font_path);
+    if (font_path) {
+        log_to_file("[Main] Found font at: %s\n", font_path);
+        fprintf(stderr, "[Main] Found font at: %s\n", font_path);
+    } else {
+        log_to_file("[Main] Error: Font file not found!\n");
+        fprintf(stderr, "[Main] Error: Font file not found!\n");
+    }
+
+    if (!tradeboy::ui::init_fonts(io, font_path)) {
+        log_to_file("[Main] Warning: init_fonts failed, using default font.\n");
+        fprintf(stderr, "[Main] Warning: init_fonts failed, using default font.\n");
+    } else {
+        log_to_file("[Main] init_fonts success.\n");
+    }
 
     SDL_Joystick* joy0 = nullptr;
     if (SDL_NumJoysticks() > 0) {

@@ -34,7 +34,7 @@ const Colors& colors() {
     static const Colors c = {
         .panel = IM_COL32(78, 77, 66, 255),
         .panel2 = IM_COL32(92, 90, 78, 255),
-        .panel_pressed = IM_COL32(70, 68, 58, 255),
+        .panel_pressed = IM_COL32(56, 54, 46, 255),
         .stroke = IM_COL32(125, 123, 106, 255),
         .text = IM_COL32(245, 245, 240, 255),
         .muted = IM_COL32(200, 200, 185, 255),

@@ -7,6 +7,7 @@ namespace tradeboy::ui {
 struct Fonts {
     ImFont* body = nullptr;   // 44
     ImFont* large = nullptr;  // 66
+    ImFont* small = nullptr;
 };
 
 Fonts& fonts();

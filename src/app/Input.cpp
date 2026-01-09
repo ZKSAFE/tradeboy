@@ -36,6 +36,7 @@ InputState poll_input_state_from_events(const std::vector<SDL_Event>& events) {
             switch (e.jbutton.button) {
                 case 0: in.a = true; break;
                 case 1: in.b = true; break;
+                case 3: in.x = true; break;
                 case 4: in.l1 = true; break;
                 case 5: in.r1 = true; break;
                 case 8: in.m = true; break;

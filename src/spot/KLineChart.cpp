@@ -12,13 +12,16 @@ void render_kline(ImDrawList* dl, const tradeboy::ui::Rect& chart, const std::ve
     if (!dl) return;
     if (ohlc.empty()) return;
 
-    const float cw = chart.w();
+    // Reserve an internal right-axis area for price labels so they don't overflow the panel.
+    const float axis_w = 34.0f;
+    const float grid_max_x = std::max(chart.Min.x + 1.0f, chart.Max.x - axis_w);
+    const float cw = grid_max_x - chart.Min.x;
     const float ch = chart.h();
 
     // horizontal grid
     for (int j = 0; j < num_h; j++) {
         float yy = chart.Min.y + (ch * (float)j / (float)(num_h - 1));
-        dl->AddLine(ImVec2(chart.Min.x, yy), ImVec2(chart.Max.x, yy), style.grid, 1.0f);
+        dl->AddLine(ImVec2(chart.Min.x, yy), ImVec2(grid_max_x, yy), style.grid, 1.0f);
     }
 
     float cell_h = ch / (float)(num_h - 1);
@@ -79,7 +82,7 @@ void render_kline(ImDrawList* dl, const tradeboy::ui::Rect& chart, const std::ve
         float x = chart.Min.x + side_pad + step * (float)(idx + 1);
         float y = py(price_v);
         float pad = 4.0f;
-        float tx = tradeboy::utils::clampf(x - ts.x * 0.5f, chart.Min.x + pad, chart.Max.x - ts.x - pad);
+        float tx = tradeboy::utils::clampf(x - ts.x * 0.5f, chart.Min.x + pad, grid_max_x - ts.x - pad);
         float ty = is_high ? (y - ts.y - 4.0f) : (y + 4.0f);
         ty = tradeboy::utils::clampf(ty, chart.Min.y + pad, chart.Max.y - ts.y - pad);
         dl->AddText(ImVec2(tx, ty), style.muted, buf);
@@ -88,13 +91,22 @@ void render_kline(ImDrawList* dl, const tradeboy::ui::Rect& chart, const std::ve
     draw_hilo(idx_h, max_h, true);
     draw_hilo(idx_l, min_l, false);
 
-    for (int j = 0; j < num_h; j++) {
+    for (int j = 1; j < num_h - 1; j++) {
         float yy = chart.Min.y + (ch * (float)j / (float)(num_h - 1));
         float t = (chart.Max.y - yy) / ch;
         float pv = pmin + t * (pmax - pmin);
         char buf[32];
         snprintf(buf, sizeof(buf), "%.0f", pv);
-        dl->AddText(ImVec2(chart.Max.x + 8.0f, yy - 8.0f), style.muted, buf);
+        ImVec2 ts = ImGui::CalcTextSize(buf);
+        const float pad = 4.0f;
+        const float gap = 10.0f;
+        float axis_min_x = grid_max_x + gap;
+        float axis_max_x = chart.Max.x - pad;
+        float tx = axis_max_x - ts.x;
+        if (tx < axis_min_x) tx = axis_min_x;
+        float ty = yy - ts.y * 0.5f;
+        ty = tradeboy::utils::clampf(ty, chart.Min.y + pad, chart.Max.y - ts.y - pad);
+        dl->AddText(ImVec2(tx, ty), style.muted, buf);
     }
 }
 
