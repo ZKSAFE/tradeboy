@@ -22,6 +22,7 @@ INCLUDES = -I/usr/include/EGL -I/usr/include/GLES -I/usr/include/GLES2
 # 源文件
 DEMO_SOURCES = src/sdl2demo.c
 IMGUI_DEMO_SOURCES = src/imgui-demo.cpp
+TRADEBOY_SOURCES = src/tradeboy.cpp
 
 # ImGui sources
 IMGUI_DIR = third_party/imgui
@@ -39,9 +40,19 @@ IMGUI_DEMO_OBJS = \
 	$(BUILD_DIR_ARMHF)/imgui_impl_sdl2.o \
 	$(BUILD_DIR_ARMHF)/imgui_impl_opengl3.o
 
+TRADEBOY_OBJS = \
+	$(BUILD_DIR_ARMHF)/tradeboy.o \
+	$(BUILD_DIR_ARMHF)/imgui.o \
+	$(BUILD_DIR_ARMHF)/imgui_draw.o \
+	$(BUILD_DIR_ARMHF)/imgui_tables.o \
+	$(BUILD_DIR_ARMHF)/imgui_widgets.o \
+	$(BUILD_DIR_ARMHF)/imgui_impl_sdl2.o \
+	$(BUILD_DIR_ARMHF)/imgui_impl_opengl3.o
+
 # 目标文件
 TARGET_DEMO_ARMHF = sdl2demo-armhf
 TARGET_IMGUI_DEMO_ARMHF = imgui-demo-armhf
+TARGET_TRADEBOY_ARMHF = tradeboy-armhf
 DOCKER_ARMHF_BUILDER_IMAGE = rg34xx-armhf-builder:latest
 CCACHE_VOLUME = -v "$(PWD)/.ccache:/ccache"
 
@@ -60,6 +71,9 @@ $(BUILD_DIR_ARMHF):
 
 $(BUILD_DIR_ARMHF)/imgui-demo.o: $(IMGUI_DEMO_SOURCES) | $(BUILD_DIR_ARMHF)
 	$(ARMHF_CXX) $(CXXFLAGS) -I/usr/include/SDL2 -D_REENTRANT -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $(IMGUI_DEMO_SOURCES) -o $@
+
+$(BUILD_DIR_ARMHF)/tradeboy.o: $(TRADEBOY_SOURCES) | $(BUILD_DIR_ARMHF)
+	$(ARMHF_CXX) $(CXXFLAGS) -I/usr/include/SDL2 -D_REENTRANT -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $(TRADEBOY_SOURCES) -o $@
 
 $(BUILD_DIR_ARMHF)/imgui.o: $(IMGUI_DIR)/imgui.cpp | $(BUILD_DIR_ARMHF)
 	$(ARMHF_CXX) $(CXXFLAGS) -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -c $< -o $@
@@ -82,6 +96,9 @@ $(BUILD_DIR_ARMHF)/imgui_impl_opengl3.o: $(IMGUI_BACKENDS_DIR)/imgui_impl_opengl
 $(TARGET_IMGUI_DEMO_ARMHF): $(IMGUI_DEMO_OBJS)
 	$(ARMHF_CXX) $(CXXFLAGS) -o $(TARGET_IMGUI_DEMO_ARMHF) $(IMGUI_DEMO_OBJS) -L/usr/lib/arm-linux-gnueabihf $(LIBS_ARMHF_GLES) -lSDL2
 
+$(TARGET_TRADEBOY_ARMHF): $(TRADEBOY_OBJS)
+	$(ARMHF_CXX) $(CXXFLAGS) -o $(TARGET_TRADEBOY_ARMHF) $(TRADEBOY_OBJS) -L/usr/lib/arm-linux-gnueabihf $(LIBS_ARMHF_GLES) -lSDL2
+
 # Docker ARM编译
 arm-docker:
 	docker run --rm -v "$(PWD):/workspace" rg34xx-sdl2-builder:latest sh -c "cd /workspace && make clean && make $(TARGET_DEMO_ARMHF)"
@@ -95,9 +112,12 @@ sdl2demo-armhf-docker:
 imgui-demo-armhf-docker:
 	docker run --rm -v "$(PWD):/workspace" $(CCACHE_VOLUME) $(DOCKER_ARMHF_BUILDER_IMAGE) sh -c "cd /workspace && make $(TARGET_IMGUI_DEMO_ARMHF) ARMHF_CXX='ccache arm-linux-gnueabihf-g++'"
 
+tradeboy-armhf-docker:
+	docker run --rm -v "$(PWD):/workspace" $(CCACHE_VOLUME) $(DOCKER_ARMHF_BUILDER_IMAGE) sh -c "cd /workspace && make $(TARGET_TRADEBOY_ARMHF) ARMHF_CXX='ccache arm-linux-gnueabihf-g++'"
+
 # 清理
 clean:
-	rm -f $(TARGET_DEMO_ARMHF) $(TARGET_IMGUI_DEMO_ARMHF)
+	rm -f $(TARGET_DEMO_ARMHF) $(TARGET_IMGUI_DEMO_ARMHF) $(TARGET_TRADEBOY_ARMHF)
 	rm -rf $(BUILD_DIR_ARMHF)
 
 clean-obj:

@@ -8,7 +8,7 @@
 set -e
 
 # 默认配置
-DEFAULT_IP="192.168.1.7"
+DEFAULT_IP="192.168.3.97"
 DEFAULT_PASSWORD="root"
 DEFAULT_USER="root"
 
@@ -85,26 +85,32 @@ sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "mkdir -p /mn
 # 上传文件
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
     echo "📤 上传TradeBoy可执行文件..."
-    if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no tradeboy-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "rm -f /mnt/mmc/Roms/APPS/tradeboy-armhf /mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp" 2>/dev/null || true
+    if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no tradeboy-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp"; then
         echo -e "${RED}❌ 上传TradeBoy失败${NC}"
         exit 1
     fi
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp /mnt/mmc/Roms/APPS/tradeboy-armhf" 2>/dev/null
 fi
 
 if [ "$HAS_SDL2DEMO" -eq 1 ]; then
     echo "📤 上传SDL2 demo..."
-    if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no sdl2demo-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "rm -f /mnt/mmc/Roms/APPS/sdl2demo-armhf /mnt/mmc/Roms/APPS/.sdl2demo-armhf.tmp" 2>/dev/null || true
+    if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no sdl2demo-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/.sdl2demo-armhf.tmp"; then
         echo -e "${RED}❌ 上传SDL2 demo失败${NC}"
         exit 1
     fi
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.sdl2demo-armhf.tmp /mnt/mmc/Roms/APPS/sdl2demo-armhf" 2>/dev/null
 fi
 
 if [ "$HAS_IMGUI_DEMO" -eq 1 ]; then
     echo "📤 上传ImGui demo..."
-    if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no imgui-demo-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "rm -f /mnt/mmc/Roms/APPS/imgui-demo-armhf /mnt/mmc/Roms/APPS/.imgui-demo-armhf.tmp" 2>/dev/null || true
+    if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no imgui-demo-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/.imgui-demo-armhf.tmp"; then
         echo -e "${RED}❌ 上传ImGui demo失败${NC}"
         exit 1
     fi
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.imgui-demo-armhf.tmp /mnt/mmc/Roms/APPS/imgui-demo-armhf" 2>/dev/null
 fi
 
 if [ "$HAS_FONT" -eq 1 ]; then
