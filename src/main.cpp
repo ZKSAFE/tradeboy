@@ -146,12 +146,18 @@ int main(int argc, char** argv) {
     }
 
     tradeboy::app::App app;
+    log_to_file("[Main] App constructed\n");
     app.init_demo_data();
+    log_to_file("[Main] init_demo_data done\n");
     app.load_private_key();
+    log_to_file("[Main] load_private_key done\n");
+    app.startup();
+    log_to_file("[Main] app.startup done\n");
 
     tradeboy::app::EdgeState edges;
 
     bool running = true;
+    log_to_file("[Main] entering main loop\n");
     while (running) {
         std::vector<SDL_Event> events;
         SDL_Event e;
@@ -192,6 +198,8 @@ int main(int argc, char** argv) {
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         SDL_GL_SwapWindow(window);
     }
+
+    app.shutdown();
 
     if (joy0) SDL_JoystickClose(joy0);
 

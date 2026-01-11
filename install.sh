@@ -17,6 +17,22 @@ IP=${1:-$DEFAULT_IP}
 PASSWORD=${2:-$DEFAULT_PASSWORD}
 USER=${3:-$DEFAULT_USER}
 
+SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=10 -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1"
+
+retry() {
+    local n=0
+    local max=3
+    local delay=1
+    until "$@"; do
+        n=$((n+1))
+        if [ $n -ge $max ]; then
+            return 1
+        fi
+        sleep $delay
+        delay=$((delay*2))
+    done
+}
+
 # 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -58,7 +74,7 @@ echo -e "${GREEN}✅ 文件检查完成${NC}"
 
 # 测试SSH连接
 echo "🔗 测试SSH连接..."
-if ! sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$USER@$IP" "echo 'SSH连接成功'" 2>/dev/null; then
+if ! retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "echo 'SSH连接成功'" 2>/dev/null; then
     echo -e "${RED}❌ SSH连接失败${NC}"
     echo "请检查:"
     echo "  - IP地址是否正确: $IP"
@@ -72,22 +88,22 @@ echo -e "${GREEN}✅ SSH连接成功${NC}"
 
 # 创建应用目录
 echo "📁 创建应用目录..."
-sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "mkdir -p /mnt/mmc/Roms/APPS" 2>/dev/null
+retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mkdir -p /mnt/mmc/Roms/APPS" 2>/dev/null
 
 # 上传文件
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
     echo "📤 上传TradeBoy可执行文件..."
-    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "rm -f /mnt/mmc/Roms/APPS/tradeboy-armhf /mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp" 2>/dev/null || true
-    if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no output/tradeboy-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp"; then
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "rm -f /mnt/mmc/Roms/APPS/tradeboy-armhf /mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp" 2>/dev/null || true
+    if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS output/tradeboy-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp"; then
         echo -e "${RED}❌ 上传TradeBoy失败${NC}"
         exit 1
     fi
-    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp /mnt/mmc/Roms/APPS/tradeboy-armhf" 2>/dev/null
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp /mnt/mmc/Roms/APPS/tradeboy-armhf" 2>/dev/null
 fi
 
 if [ "$HAS_FONT" -eq 1 ]; then
     echo "📤 上传字体文件..."
-    if ! sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no output/NotoSansCJK-Regular.ttc "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
+    if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS output/NotoSansCJK-Regular.ttc "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
         echo -e "${RED}❌ 上传字体文件失败${NC}"
         exit 1
     fi
@@ -96,34 +112,34 @@ fi
 # 设置文件权限
 echo "🔧 设置文件权限..."
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
-    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-armhf"
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-armhf"
 fi
 if [ "$HAS_FONT" -eq 1 ]; then
-    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "chmod 644 /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 644 /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
 fi
 
 # 验证安装结果
 echo "✅ 验证安装结果..."
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
-    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-armhf"
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-armhf"
 fi
 if [ "$HAS_FONT" -eq 1 ]; then
-    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
 fi
 
 # 获取设备信息
 echo ""
 echo "📱 设备信息:"
-DEVICE_INFO=$(sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "uname -a" 2>/dev/null || echo "无法获取")
+DEVICE_INFO=$(sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "uname -a" 2>/dev/null || echo "无法获取")
 echo -e "${BLUE}$DEVICE_INFO${NC}"
 
 # 检查OpenGL ES支持
 echo ""
 echo "� 图形系统检查:"
-GLES_INFO=$(sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls /dev/dri/ 2>/dev/null || echo '未找到DRM设备'")
+GLES_INFO=$(sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls /dev/dri/ 2>/dev/null || echo '未找到DRM设备'")
 echo -e "${BLUE}$GLES_INFO${NC}"
 
-FB_INFO=$(sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "ls -la /dev/fb* 2>/dev/null || echo '未找到帧缓冲设备'")
+FB_INFO=$(sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -la /dev/fb* 2>/dev/null || echo '未找到帧缓冲设备'")
 echo -e "${BLUE}$FB_INFO${NC}"
 
 # 完成提示

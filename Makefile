@@ -26,6 +26,10 @@ TRADEBOY_SOURCES = \
 	src/main.cpp \
 	src/app/App.cpp \
 	src/app/Input.cpp \
+	src/market/Hyperliquid.cpp \
+	src/market/HyperliquidWgetDataSource.cpp \
+	src/market/MarketDataService.cpp \
+	src/model/TradeModel.cpp \
 	src/utils/File.cpp \
 	src/utils/Format.cpp \
 	src/uiComponents/Theme.cpp \
@@ -33,6 +37,7 @@ TRADEBOY_SOURCES = \
 	src/uiComponents/Button.cpp \
 	src/windows/NumInputWindow.cpp \
 	src/spot/KLineChart.cpp \
+	src/spot/SpotPresenter.cpp \
 	src/spot/SpotScreen.cpp
 
 # ImGui sources

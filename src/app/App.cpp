@@ -2,68 +2,81 @@
 
 #include <algorithm>
 #include <sstream>
+#include <chrono>
 
 #include <SDL.h>
 
 #include "imgui.h"
 
 #include "../spot/SpotScreen.h"
+#include "../spot/SpotPresenter.h"
+#include "../market/MarketDataService.h"
+#include "../market/HyperliquidWgetDataSource.h"
+#include "../model/TradeModel.h"
 #include "../utils/File.h"
 #include "../utils/Math.h"
+
+extern void log_to_file(const char* fmt, ...);
 
 namespace tradeboy::app {
 
 void App::init_demo_data() {
-    spot_rows = {
-        {"BTC", 87482.75, 0.0},
-        {"ETH", 2962.41, 1.233},
-        {"SOL", 124.15, 41.646},
-        {"BNB", 842.00, 0.0},
-        {"XRP", 1.86, 0.0},
-        {"TRX", 0.2843, 0.0},
-        {"DOGE", 0.12907, 0.0},
-        {"ADA", 0.3599, 0.0},
+    std::vector<tradeboy::model::SpotRow> rows = {
+        {"BTC", 87482.75, 87482.75, 0.0, 87482.75},
+        {"ETH", 2962.41, 2962.41, 0.0, 2962.41},
+        {"SOL", 124.15, 124.15, 0.0, 124.15},
+        {"BNB", 842.00, 842.00, 0.0, 842.00},
+        {"XRP", 1.86, 1.86, 0.0, 1.86},
+        {"TRX", 0.2843, 0.2843, 0.0, 0.2843},
+        {"DOGE", 0.12907, 0.12907, 0.0, 0.12907},
+        {"ADA", 0.3599, 0.3599, 0.0, 0.3599},
     };
+
+    uint32_t seed = (uint32_t)(SDL_GetTicks() ^ 0xA53C9E17u);
+    auto rnd01 = [&]() {
+        seed = seed * 1664525u + 1013904223u;
+        return (double)((seed >> 8) & 0xFFFFu) / 65535.0;
+    };
+    for (auto& r : rows) {
+        double bal = 0.0;
+        if (r.sym == "BTC") bal = 0.01 + rnd01() * 0.05;
+        else if (r.sym == "ETH") bal = 0.2 + rnd01() * 1.5;
+        else bal = rnd01() * 50.0;
+        r.balance = bal;
+
+        double entry_mul = 0.90 + rnd01() * 0.20;
+        r.entry_price = r.price * entry_mul;
+    }
 
     wallet_usdc = 10000.0;
     hl_usdc = 0.0;
 
-    regenerate_kline();
+    model.set_spot_rows(std::move(rows));
+    model.set_tf_idx(tf_idx);
+    model.set_spot_row_idx(spot_row_idx);
+    model.regenerate_kline_dummy((unsigned int)(SDL_GetTicks() ^ 0xC0FFEEu));
+}
+
+void App::startup() {
+    if (!market_src) {
+        market_src.reset(new tradeboy::market::HyperliquidWgetDataSource());
+    }
+    if (!market_service) {
+        market_service.reset(new tradeboy::market::MarketDataService(model, *market_src));
+    }
+    market_service->start();
+}
+
+void App::shutdown() {
+    if (market_service) {
+        market_service->stop();
+        market_service.reset();
+    }
+    market_src.reset();
 }
 
 void App::regenerate_kline() {
-    kline_data.clear();
-    // Default approx 60 candles for 720px width (adjust as needed)
-    int candle_count = 60;
-    kline_data.reserve(candle_count);
-
-    uint32_t seed = (uint32_t)(tf_idx * 1000 + spot_row_idx * 100 + SDL_GetTicks());
-    auto rnd = [&]() {
-        seed = seed * 1664525u + 1013904223u;
-        return (seed >> 8) & 0xFFFFu;
-    };
-
-    float cur = 68000.0f;
-    if (spot_rows.size() > (size_t)spot_row_idx) {
-        cur = (float)spot_rows[spot_row_idx].price;
-    }
-
-    for (int i = 0; i < candle_count; i++) {
-        float o = cur;
-        float volatility = cur * 0.005f; 
-        float hi = o + (float)(rnd() % 100) / 100.0f * volatility;
-        float lo = o - (float)(rnd() % 100) / 100.0f * volatility;
-        float c = lo + (float)(rnd() % 100) / 100.0f * (hi - lo);
-        
-        // Ensure High is highest and Low is lowest
-        if (c > hi) hi = c;
-        if (c < lo) lo = c;
-        if (o > hi) hi = o;
-        if (o < lo) lo = o;
-
-        cur = c;
-        kline_data.push_back({o, hi, lo, c});
-    }
+    model.regenerate_kline_dummy((unsigned int)(tf_idx * 1000 + spot_row_idx * 100 + SDL_GetTicks()));
 }
 
 void App::load_private_key() {
@@ -73,6 +86,7 @@ void App::load_private_key() {
 
 void App::next_timeframe() { 
     tf_idx = (tf_idx + 1) % 3;
+    model.set_tf_idx(tf_idx);
     regenerate_kline();
 }
 
@@ -81,8 +95,10 @@ void App::dec_frame_counter(int& v) {
 }
 
 void App::open_spot_trade(bool buy) {
-    if (spot_rows.empty()) return;
-    const auto& row = spot_rows[(size_t)spot_row_idx];
+    tradeboy::model::TradeModelSnapshot snap = model.snapshot();
+    if (snap.spot_rows.empty()) return;
+    if (spot_row_idx < 0 || spot_row_idx >= (int)snap.spot_rows.size()) return;
+    const auto& row = snap.spot_rows[(size_t)spot_row_idx];
     double maxv = 0.0;
     if (buy) {
         maxv = (row.price > 0.0) ? (hl_usdc / row.price) : 0.0;
@@ -122,10 +138,12 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
             x_press_frames = 8;
         }
         if (tradeboy::utils::pressed(in.up, edges.prev.up)) {
-            spot_row_idx = tradeboy::utils::clampi(spot_row_idx - 1, 0, (int)spot_rows.size() - 1);
+            spot_row_idx = spot_row_idx - 1;
+            model.set_spot_row_idx(spot_row_idx);
         }
         if (tradeboy::utils::pressed(in.down, edges.prev.down)) {
-            spot_row_idx = tradeboy::utils::clampi(spot_row_idx + 1, 0, (int)spot_rows.size() - 1);
+            spot_row_idx = spot_row_idx + 1;
+            model.set_spot_row_idx(spot_row_idx);
         }
 
         if (spot_action_focus) {
@@ -161,7 +179,20 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
 }
 
 void App::render() {
-    tradeboy::spot::render_spot_screen(*this);
+    tradeboy::spot::SpotUiState ui;
+    ui.spot_action_focus = spot_action_focus;
+    ui.spot_action_idx = spot_action_idx;
+    ui.x_press_frames = x_press_frames;
+    ui.buy_press_frames = buy_press_frames;
+    ui.sell_press_frames = sell_press_frames;
+
+    tradeboy::model::TradeModelSnapshot snap = model.snapshot();
+    tradeboy::spot::SpotViewModel vm = tradeboy::spot::build_spot_view_model(snap, ui);
+    tradeboy::spot::render_spot_screen(vm);
+
+    dec_frame_counter(x_press_frames);
+    dec_frame_counter(buy_press_frames);
+    dec_frame_counter(sell_press_frames);
     tradeboy::windows::render(num_input);
 
     if (exit_modal_open) {

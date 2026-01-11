@@ -2,10 +2,10 @@
 
 #include "imgui.h"
 
-namespace tradeboy::app { struct App; }
+#include "SpotViewModel.h"
 
 namespace tradeboy::spot {
 
-void render_spot_screen(tradeboy::app::App& app);
+void render_spot_screen(const SpotViewModel& vm);
 
 } // namespace tradeboy::spot

@@ -2,9 +2,13 @@
 
 #include <string>
 #include <vector>
+#include <mutex>
+#include <memory>
 
 #include "../windows/NumInputWindow.h"
-#include "../spot/KLineChart.h"
+#include "../market/IMarketDataSource.h"
+#include "../market/MarketDataService.h"
+#include "../model/TradeModel.h"
 
 namespace tradeboy::app {
 
@@ -13,12 +17,6 @@ enum class Tab {
     Long = 1,
     Short = 2,
     Assets = 3,
-};
-
-struct SpotRow {
-    std::string sym;
-    double price;
-    double balance;
 };
 
 struct App {
@@ -30,7 +28,6 @@ struct App {
     int buy_press_frames = 0;
     int sell_press_frames = 0;
 
-    std::vector<SpotRow> spot_rows;
     int spot_row_idx = 0;
     int spot_action_idx = 0; // 0=buy, 1=sell
     bool spot_action_focus = false;
@@ -45,8 +42,13 @@ struct App {
     double wallet_usdc = 0.0;
     double hl_usdc = 0.0;
 
-    std::vector<tradeboy::spot::OHLC> kline_data;
+    tradeboy::model::TradeModel model;
     void regenerate_kline();
+    std::unique_ptr<tradeboy::market::IMarketDataSource> market_src;
+    std::unique_ptr<tradeboy::market::MarketDataService> market_service;
+
+    void startup();
+    void shutdown();
 
     void init_demo_data();
     void load_private_key();
