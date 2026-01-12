@@ -28,6 +28,7 @@ TRADEBOY_SOURCES = \
 	src/app/Input.cpp \
 	src/market/Hyperliquid.cpp \
 	src/market/HyperliquidWgetDataSource.cpp \
+	src/market/HyperliquidWsDataSource.cpp \
 	src/market/MarketDataService.cpp \
 	src/model/TradeModel.cpp \
 	src/utils/File.cpp \

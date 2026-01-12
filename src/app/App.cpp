@@ -13,6 +13,7 @@
 #include "../spot/SpotUiEvents.h"
 #include "../market/MarketDataService.h"
 #include "../market/HyperliquidWgetDataSource.h"
+#include "../market/HyperliquidWsDataSource.h"
 #include "../model/TradeModel.h"
 #include "../utils/File.h"
 #include "../utils/Math.h"
@@ -60,7 +61,8 @@ void App::init_demo_data() {
 
 void App::startup() {
     if (!market_src) {
-        market_src.reset(new tradeboy::market::HyperliquidWgetDataSource());
+        log_to_file("[App] Market source: WS (forced)\n");
+        market_src.reset(new tradeboy::market::HyperliquidWsDataSource());
     }
     if (!market_service) {
         market_service.reset(new tradeboy::market::MarketDataService(model, *market_src));
@@ -69,6 +71,7 @@ void App::startup() {
 }
 
 void App::shutdown() {
+    log_to_file("[App] shutdown()\n");
     if (market_service) {
         market_service->stop();
         market_service.reset();

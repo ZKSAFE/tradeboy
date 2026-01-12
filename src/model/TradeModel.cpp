@@ -4,6 +4,8 @@
 
 #include "../market/Hyperliquid.h"
 
+extern void log_to_file(const char* fmt, ...);
+
 namespace tradeboy::model {
 
 TradeModelSnapshot TradeModel::snapshot() const {
@@ -39,13 +41,16 @@ void TradeModel::set_tf_idx(int idx) {
 
 void TradeModel::update_mid_prices_from_allmids_json(const std::string& all_mids_json) {
     std::lock_guard<std::mutex> lock(mu);
+    int updated = 0;
     for (auto& r : spot_rows_) {
         double p = 0.0;
         if (tradeboy::market::parse_mid_price(all_mids_json, r.sym, p)) {
             r.prev_price = r.price;
             r.price = p;
+            updated++;
         }
     }
+    log_to_file("[Model] allMids updated=%d json_len=%d\n", updated, (int)all_mids_json.size());
 }
 
 void TradeModel::set_kline_data(std::vector<tradeboy::spot::OHLC> v) {

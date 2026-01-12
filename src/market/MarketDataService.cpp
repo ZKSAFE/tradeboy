@@ -15,6 +15,7 @@ MarketDataService::MarketDataService(tradeboy::model::TradeModel& model, IMarket
     : model(model), src(src) {}
 
 MarketDataService::~MarketDataService() {
+    log_to_file("[Market] ~MarketDataService()\n");
     stop();
 }
 
@@ -33,6 +34,7 @@ void MarketDataService::start() {
 }
 
 void MarketDataService::stop() {
+    log_to_file("[Market] stop() called\n");
     stop_flag = true;
     if (th.joinable()) th.join();
 }
@@ -47,11 +49,17 @@ void MarketDataService::run() {
     long long last_mids_ms = 0;
     long long last_candle_ms = 0;
     int mids_backoff_ms = 0;
+    long long last_heartbeat_ms = 0;
 
     while (!stop_flag.load()) {
         long long now_ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
                               std::chrono::system_clock::now().time_since_epoch())
                               .count();
+
+        if (last_heartbeat_ms == 0 || (now_ms - last_heartbeat_ms) > 5000) {
+            log_to_file("[Market] heartbeat\n");
+            last_heartbeat_ms = now_ms;
+        }
 
         const int mids_interval_ms = (mids_backoff_ms > 0) ? mids_backoff_ms : 2500;
         if (now_ms - last_mids_ms > mids_interval_ms) {

@@ -1,6 +1,9 @@
 # Hyperliquid 行情接入说明（TradeBoy 当前实现）
 
-本文档说明 TradeBoy 当前如何从 **Hyperliquid API** 获取行情、运行所需环境/依赖、踩坑点、以及返回数据如何解析。用于未来 UI 重构或把数据源替换成 WebSocket。
+本文档说明 TradeBoy 当前如何从 **Hyperliquid API** 获取行情、运行所需环境/依赖、踩坑点、以及返回数据如何解析。包含两条链路：
+
+- **REST（wget）**：兼容性最好，用于 `candleSnapshot`（当前 WS-only 模式下已禁用）。
+- **WebSocket（openssl s_client + 自实现 WS framing）**：用于 `allMids` 实时价格（当前主线实现）。
 
 ## 1. 总体架构（当前代码）
 
@@ -197,7 +200,61 @@ TradeBoy 当前只用 `o/h/l/c` 这四个字段构建 `OHLC`。
 
 builder 里没 curl/openssl，所以才走 `wget`。
 
-## 7. Timeframe 与 candle 请求映射（当前实现）
+## 7. WebSocket（当前实现，allMids）
+
+### 7.1 入口与数据流
+
+- **数据源实现**：`src/market/HyperliquidWsDataSource.*`
+- **上层调用方**：`src/market/MarketDataService.*`
+- **模型更新**：`src/model/TradeModel.*` 里 `update_mid_prices_from_allmids_json()` 复用现有 `parse_mid_price()`
+
+数据流：
+
+- `HyperliquidWsDataSource` 在构造时启动后台线程，建立并维持 WS 长连接
+- 线程持续读取 `allMids` 推送，将 `mids` 对象抽取为 REST 兼容的 JSON：`{"BTC":"...","ETH":"..."...}` 并缓存
+- `MarketDataService` 仍按原有节奏调用 `fetch_all_mids_raw(out_json)`，但此时它读取的是缓存（非每次都重连）
+
+### 7.2 依赖与运行环境（WS 链路）
+
+设备端依赖：
+
+- `/usr/bin/openssl`（通过 `openssl s_client` 建立 TLS 隧道）
+- 网络可访问 `api.hyperliquid.xyz:443`
+
+主机侧（开发/部署）依赖：
+
+- `sshpass`（`install.sh` 通过 password auth + retry 部署到设备）
+- Docker Desktop（用于 ARMHF builder：`make tradeboy-armhf-docker`）
+
+说明：WS 链路不依赖 builder 内的 OpenSSL 库；TLS 由设备端 `openssl` 命令完成。
+
+### 7.3 调试与验证方式
+
+推荐用 `log.txt` 确认链路：
+
+- 握手成功：`[WS] handshake ok`
+- 缓存更新（降噪后间歇打印）：`[WS] allMids mids cached ...`
+- 模型更新：`[Model] allMids updated=...`
+
+### 7.4 踩坑记录（WS 链路）
+
+- **`popen("r+")` 不可用**：设备环境下双向 popen 不稳定/不可用，最终改为自实现 `popen2`（pipe+fork+dup2），同时读写子进程。
+- **握手成功但没有数据**：Hyperliquid 的订阅返回是推送模式，通常会先发确认/心跳，再开始推送；只读少量帧会错过真正 `allMids` payload。
+- **“假成功”导致 UI 不更新**：如果把订阅确认消息当作 `allMids` 返回（返回 true，但 JSON 不包含币种键值），解析会更新 0 行，表现为价格不变。解决：必须检测并抽取 `"mids"` 对象。
+- **握手读 headers 的长度上限**：读取 `\r\n\r\n` 时如果上限过小，可能误判失败；需要合理的 max bytes，并在失败时打印 prefix 便于定位。
+- **Ping/Pong**：长连接需要处理 server ping（opcode 0x9），否则可能被断开。实现为 Ping→Pong（opcode 0xA）回显 payload。
+- **阻塞读导致无法退出**：长连接读帧如果是阻塞 `fread`，析构 join 时可能卡死；解决：使用 `select()` + timeout 轮询读取，并检查 `stop_`。
+
+### 7.5 优化方式（Phase D：长连接 + 缓存）
+
+相较于“每次 fetch 都重新握手/订阅”，长连接优化点：
+
+- **握手/订阅只做一次**：减少日志噪声、降低 CPU/网络开销、减少网络抖动造成的失败。
+- **缓存最新 mids**：`fetch_all_mids_raw()` 直接返回缓存，避免频繁 spawn `openssl`。
+- **断线重连 + 指数 backoff**：连接读失败/close frame 时重连（1s -> 2s -> ... -> 30s）。
+- **缓存过期保护**：如果缓存超过一定时间未更新（例如 15s），`fetch_all_mids_raw()` 返回 false 触发上层 backoff（避免 UI 停更但看不出失败）。
+
+## 8. Timeframe 与 candle 请求映射（当前实现）
 
 `MarketDataService` 根据 `tf_idx` 映射：
 
@@ -205,17 +262,13 @@ builder 里没 curl/openssl，所以才走 `wget`。
 - `tf_idx==1`（4H）：`interval="15m"`，`start=now-4h`
 - `tf_idx==2`（1H）：`interval="5m"`，`start=now-1h`
 
-## 8. 未来改 WebSocket（建议方向，不是当前实现）
+## 9. WebSocket 订阅参考
 
-未来切到 WS 推荐：
+WS 订阅文档参考：Hyperliquid Docs 的 `wss://api.hyperliquid.xyz/ws`，可订阅 `allMids` / `candle`。
 
-- 新增 `HyperliquidWsDataSource : IMarketDataSource`
-- `MarketDataService` 继续只更新 `TradeModel`
-- 上层 UI/Persenter 不动
+当前 TradeBoy 已使用 WS 实现 `allMids`，但 `candleSnapshot` 仍保留 REST 解析/渲染链路（WS-only 模式下可禁用）。
 
-WS 订阅文档参考：Hyperliquid Docs 的 `wss://api.hyperliquid.xyz/ws` 订阅 `allMids` / `candle`。
-
-## 9. 相关文件索引
+## 10. 相关文件索引
 
 - `src/model/TradeModel.h/.cpp`：行情状态与线程安全快照
 - `src/market/Hyperliquid.h/.cpp`：wget 调用 + 轻量解析

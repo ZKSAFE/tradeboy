@@ -5,6 +5,11 @@
 
 namespace tradeboy::utils {
 
+bool file_exists(const std::string& path) {
+    std::ifstream in(path);
+    return (bool)in;
+}
+
 std::string read_text_file(const std::string& path) {
     std::ifstream in(path);
     if (!in) return std::string();
