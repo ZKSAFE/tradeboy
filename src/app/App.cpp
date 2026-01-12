@@ -10,6 +10,7 @@
 
 #include "../spot/SpotScreen.h"
 #include "../spot/SpotPresenter.h"
+#include "../spot/SpotUiEvents.h"
 #include "../market/MarketDataService.h"
 #include "../market/HyperliquidWgetDataSource.h"
 #include "../model/TradeModel.h"
@@ -108,6 +109,36 @@ void App::open_spot_trade(bool buy) {
     num_input.reset(row.sym, buy, maxv);
 }
 
+void App::apply_spot_ui_events(const std::vector<tradeboy::spot::SpotUiEvent>& ev) {
+    for (const auto& e : ev) {
+        switch (e.type) {
+            case tradeboy::spot::SpotUiEventType::NextTimeframe:
+                next_timeframe();
+                x_press_frames = 8;
+                break;
+            case tradeboy::spot::SpotUiEventType::RowDelta:
+                spot_row_idx += e.value;
+                model.set_spot_row_idx(spot_row_idx);
+                break;
+            case tradeboy::spot::SpotUiEventType::EnterActionFocus:
+                spot_action_focus = true;
+                spot_action_idx = e.value;
+                break;
+            case tradeboy::spot::SpotUiEventType::ExitActionFocus:
+                spot_action_focus = false;
+                break;
+            case tradeboy::spot::SpotUiEventType::SetActionIdx:
+                spot_action_idx = e.value;
+                break;
+            case tradeboy::spot::SpotUiEventType::TriggerAction:
+                if (e.flag) buy_press_frames = 2;
+                else sell_press_frames = 2;
+                open_spot_trade(e.flag);
+                break;
+        }
+    }
+}
+
 void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy::app::EdgeState& edges) {
     if (quit_requested) return;
 
@@ -133,48 +164,15 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
     }
 
     if (tab == Tab::Spot) {
-        if (tradeboy::utils::pressed(in.x, edges.prev.x)) {
-            next_timeframe();
-            x_press_frames = 8;
-        }
-        if (tradeboy::utils::pressed(in.up, edges.prev.up)) {
-            spot_row_idx = spot_row_idx - 1;
-            model.set_spot_row_idx(spot_row_idx);
-        }
-        if (tradeboy::utils::pressed(in.down, edges.prev.down)) {
-            spot_row_idx = spot_row_idx + 1;
-            model.set_spot_row_idx(spot_row_idx);
-        }
+        tradeboy::spot::SpotUiState ui;
+        ui.spot_action_focus = spot_action_focus;
+        ui.spot_action_idx = spot_action_idx;
+        ui.x_press_frames = x_press_frames;
+        ui.buy_press_frames = buy_press_frames;
+        ui.sell_press_frames = sell_press_frames;
 
-        if (spot_action_focus) {
-            if (tradeboy::utils::pressed(in.left, edges.prev.left)) {
-                if (spot_action_idx == 1) spot_action_idx = 0;
-            }
-            if (tradeboy::utils::pressed(in.right, edges.prev.right)) {
-                if (spot_action_idx == 0) spot_action_idx = 1;
-            }
-            if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
-                if (spot_action_idx == 0) buy_press_frames = 2;
-                else sell_press_frames = 2;
-                open_spot_trade(spot_action_idx == 0);
-            }
-            if (tradeboy::utils::pressed(in.b, edges.prev.b)) {
-                spot_action_focus = false;
-            }
-        } else {
-            if (tradeboy::utils::pressed(in.left, edges.prev.left)) {
-                spot_action_focus = true;
-                spot_action_idx = 0;
-            }
-            if (tradeboy::utils::pressed(in.right, edges.prev.right)) {
-                spot_action_focus = true;
-                spot_action_idx = 1;
-            }
-            if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
-                buy_press_frames = 2;
-                open_spot_trade(true);
-            }
-        }
+        std::vector<tradeboy::spot::SpotUiEvent> ev = tradeboy::spot::collect_spot_ui_events(in, edges, ui);
+        apply_spot_ui_events(ev);
     }
 }
 

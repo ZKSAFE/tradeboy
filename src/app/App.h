@@ -10,6 +10,8 @@
 #include "../market/MarketDataService.h"
 #include "../model/TradeModel.h"
 
+namespace tradeboy::spot { struct SpotUiEvent; }
+
 namespace tradeboy::app {
 
 enum class Tab {
@@ -57,6 +59,8 @@ struct App {
     static void dec_frame_counter(int& v);
 
     void open_spot_trade(bool buy);
+
+    void apply_spot_ui_events(const std::vector<tradeboy::spot::SpotUiEvent>& ev);
 
     void handle_input_edges(const tradeboy::app::InputState& in, const tradeboy::app::EdgeState& edges);
 
