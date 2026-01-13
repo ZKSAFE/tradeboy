@@ -55,11 +55,6 @@ if [ -f "output/tradeboy-armhf" ]; then
     HAS_TRADEBOY=1
 fi
 
-HAS_DEMO=0
-if [ -f "output/tradeboy-ui-demo-armhf" ]; then
-    HAS_DEMO=1
-fi
-
 if [ "$HAS_TRADEBOY" -eq 0 ]; then
     echo -e "${RED}❌ 错误: 当前目录没有 output/tradeboy-armhf${NC}"
     echo "请先编译:"
@@ -71,6 +66,16 @@ fi
 HAS_FONT=0
 if [ -f "output/NotoSansCJK-Regular.ttc" ]; then
     HAS_FONT=1
+fi
+
+HAS_COUR=0
+COUR_PATH=""
+if [ -f "cour-new.ttf" ]; then
+    HAS_COUR=1
+    COUR_PATH="cour-new.ttf"
+elif [ -f "output/cour-new.ttf" ]; then
+    HAS_COUR=1
+    COUR_PATH="output/cour-new.ttf"
 fi
 
 echo -e "${GREEN}✅ 文件检查完成${NC}"
@@ -106,20 +111,18 @@ if [ "$HAS_TRADEBOY" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp /mnt/mmc/Roms/APPS/tradeboy-armhf" 2>/dev/null
 fi
 
-if [ "$HAS_DEMO" -eq 1 ]; then
-    echo "📤 上传UI Demo (tradeboy-ui-demo-armhf)..."
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "rm -f /mnt/mmc/Roms/APPS/tradeboy-ui-demo-armhf /mnt/mmc/Roms/APPS/.tradeboy-ui-demo-armhf.tmp" 2>/dev/null || true
-    if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS output/tradeboy-ui-demo-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/.tradeboy-ui-demo-armhf.tmp"; then
-        echo -e "${RED}❌ 上传UI Demo失败${NC}"
-        exit 1
-    fi
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.tradeboy-ui-demo-armhf.tmp /mnt/mmc/Roms/APPS/tradeboy-ui-demo-armhf" 2>/dev/null
-fi
-
 if [ "$HAS_FONT" -eq 1 ]; then
     echo "📤 上传字体文件..."
     if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS output/NotoSansCJK-Regular.ttc "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
         echo -e "${RED}❌ 上传字体文件失败${NC}"
+        exit 1
+    fi
+fi
+
+if [ "$HAS_COUR" -eq 1 ]; then
+    echo "📤 上传 cour-new.ttf..."
+    if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS "$COUR_PATH" "$USER@$IP:/mnt/mmc/Roms/APPS/cour-new.ttf"; then
+        echo -e "${RED}❌ 上传 cour-new.ttf 失败${NC}"
         exit 1
     fi
 fi
@@ -129,11 +132,11 @@ echo "🔧 设置文件权限..."
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-armhf"
 fi
-if [ "$HAS_DEMO" -eq 1 ]; then
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-ui-demo-armhf"
-fi
 if [ "$HAS_FONT" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 644 /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
+fi
+if [ "$HAS_COUR" -eq 1 ]; then
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 644 /mnt/mmc/Roms/APPS/cour-new.ttf"
 fi
 
 # 验证安装结果
@@ -141,11 +144,11 @@ echo "✅ 验证安装结果..."
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-armhf"
 fi
-if [ "$HAS_DEMO" -eq 1 ]; then
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-ui-demo-armhf"
-fi
 if [ "$HAS_FONT" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
+fi
+if [ "$HAS_COUR" -eq 1 ]; then
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/cour-new.ttf"
 fi
 
 # 获取设备信息

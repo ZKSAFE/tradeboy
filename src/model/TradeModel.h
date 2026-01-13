@@ -4,8 +4,6 @@
 #include <string>
 #include <vector>
 
-#include "OHLC.h"
-
 namespace tradeboy::model {
 
 struct SpotRow {
@@ -21,11 +19,9 @@ struct SpotRow {
 };
 
 struct TradeModelSnapshot {
-    int tf_idx = 0;
     int spot_row_idx = 0;
 
     std::vector<SpotRow> spot_rows;
-    std::vector<tradeboy::model::OHLC> kline_data;
 };
 
 struct TradeModel {
@@ -35,20 +31,13 @@ struct TradeModel {
 
     void set_spot_rows(std::vector<SpotRow> rows);
     void set_spot_row_idx(int idx);
-    void set_tf_idx(int idx);
 
     void update_mid_prices_from_allmids_json(const std::string& all_mids_json);
-    void set_kline_data(std::vector<tradeboy::model::OHLC> v);
-
-    // Legacy fallback: generate dummy kline data.
-    void regenerate_kline_dummy(unsigned int seed_hint);
 
 private:
-    int tf_idx_ = 0;
     int spot_row_idx_ = 0;
 
     std::vector<SpotRow> spot_rows_;
-    std::vector<tradeboy::model::OHLC> kline_data_;
 };
 
 } // namespace tradeboy::model

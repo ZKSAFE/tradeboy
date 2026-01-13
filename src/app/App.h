@@ -24,9 +24,6 @@ enum class Tab {
 struct App {
     Tab tab = Tab::Spot;
 
-    int tf_idx = 0; // 0=24H, 1=4H, 2=1H
-
-    int x_press_frames = 0;
     int buy_press_frames = 0;
     int sell_press_frames = 0;
 
@@ -45,7 +42,6 @@ struct App {
     double hl_usdc = 0.0;
 
     tradeboy::model::TradeModel model;
-    void regenerate_kline();
     std::unique_ptr<tradeboy::market::IMarketDataSource> market_src;
     std::unique_ptr<tradeboy::market::MarketDataService> market_service;
 
@@ -54,8 +50,6 @@ struct App {
 
     void init_demo_data();
     void load_private_key();
-
-    void next_timeframe();
     static void dec_frame_counter(int& v);
 
     void open_spot_trade(bool buy);

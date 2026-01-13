@@ -14,7 +14,6 @@ struct HyperliquidWsDataSource : public IMarketDataSource {
     ~HyperliquidWsDataSource() override;
 
     bool fetch_all_mids_raw(std::string& out_json) override;
-    bool fetch_candle_snapshot_raw(const CandleReq& req, std::string& out_json) override;
 
 private:
     void run();

@@ -53,9 +53,7 @@ void App::init_demo_data() {
     hl_usdc = 0.0;
 
     model.set_spot_rows(std::move(rows));
-    model.set_tf_idx(tf_idx);
     model.set_spot_row_idx(spot_row_idx);
-    model.regenerate_kline_dummy((unsigned int)(SDL_GetTicks() ^ 0xC0FFEEu));
 }
 
 void App::startup() {
@@ -78,19 +76,17 @@ void App::shutdown() {
     market_src.reset();
 }
 
-void App::regenerate_kline() {
-    model.regenerate_kline_dummy((unsigned int)(tf_idx * 1000 + spot_row_idx * 100 + SDL_GetTicks()));
-}
-
 void App::load_private_key() {
-    std::string raw = tradeboy::utils::read_text_file("./data/private_key.txt");
+    const char* path = "./data/private_key.txt";
+    std::string raw = tradeboy::utils::read_text_file(path);
+    if (raw.empty()) {
+        log_to_file("[App] private key missing or empty: %s\n", path);
+        priv_key_hex.clear();
+        return;
+    }
+    log_to_file("[App] private key raw_len=%d\n", (int)raw.size());
     priv_key_hex = tradeboy::utils::normalize_hex_private_key(raw);
-}
-
-void App::next_timeframe() { 
-    tf_idx = (tf_idx + 1) % 3;
-    model.set_tf_idx(tf_idx);
-    regenerate_kline();
+    log_to_file("[App] private key normalized_len=%d\n", (int)priv_key_hex.size());
 }
 
 void App::dec_frame_counter(int& v) {
@@ -114,10 +110,6 @@ void App::open_spot_trade(bool buy) {
 void App::apply_spot_ui_events(const std::vector<tradeboy::spot::SpotUiEvent>& ev) {
     for (const auto& e : ev) {
         switch (e.type) {
-            case tradeboy::spot::SpotUiEventType::NextTimeframe:
-                next_timeframe();
-                x_press_frames = 8;
-                break;
             case tradeboy::spot::SpotUiEventType::RowDelta:
                 spot_row_idx += e.value;
                 model.set_spot_row_idx(spot_row_idx);
@@ -169,7 +161,6 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
         tradeboy::spot::SpotUiState ui;
         ui.spot_action_focus = spot_action_focus;
         ui.spot_action_idx = spot_action_idx;
-        ui.x_press_frames = x_press_frames;
         ui.buy_press_frames = buy_press_frames;
         ui.sell_press_frames = sell_press_frames;
 
@@ -182,7 +173,6 @@ void App::render() {
     tradeboy::spot::SpotUiState ui;
     ui.spot_action_focus = spot_action_focus;
     ui.spot_action_idx = spot_action_idx;
-    ui.x_press_frames = x_press_frames;
     ui.buy_press_frames = buy_press_frames;
     ui.sell_press_frames = sell_press_frames;
 
@@ -196,7 +186,6 @@ void App::render() {
             sell_press_frames > 0);
     }
 
-    dec_frame_counter(x_press_frames);
     dec_frame_counter(buy_press_frames);
     dec_frame_counter(sell_press_frames);
     tradeboy::windows::render(num_input);

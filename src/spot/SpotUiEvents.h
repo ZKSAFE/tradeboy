@@ -10,13 +10,11 @@ namespace tradeboy::spot {
 struct SpotUiState {
     bool spot_action_focus = false;
     int spot_action_idx = 0;
-    int x_press_frames = 0;
     int buy_press_frames = 0;
     int sell_press_frames = 0;
 };
 
 enum class SpotUiEventType {
-    NextTimeframe,
     RowDelta,
     EnterActionFocus,
     ExitActionFocus,
@@ -37,10 +35,6 @@ inline std::vector<SpotUiEvent> collect_spot_ui_events(const tradeboy::app::Inpu
                                                       const tradeboy::app::EdgeState& edges,
                                                       const SpotUiState& ui) {
     std::vector<SpotUiEvent> ev;
-
-    if (tradeboy::utils::pressed(in.x, edges.prev.x)) {
-        ev.push_back(SpotUiEvent(SpotUiEventType::NextTimeframe, 0, false));
-    }
 
     if (tradeboy::utils::pressed(in.up, edges.prev.up)) {
         ev.push_back(SpotUiEvent(SpotUiEventType::RowDelta, -1, false));

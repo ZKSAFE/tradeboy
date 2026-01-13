@@ -502,13 +502,6 @@ bool HyperliquidWsDataSource::fetch_all_mids_raw(std::string& out_json) {
     return true;
 }
 
-bool HyperliquidWsDataSource::fetch_candle_snapshot_raw(const CandleReq& req, std::string& out_json) {
-    (void)req;
-    out_json.clear();
-    log_to_file("[WS] candleSnapshot disabled (ws-only mode)\n");
-    return true;
-}
-
 void HyperliquidWsDataSource::run() {
     int reconnect_backoff_ms = 1000;
     unsigned int log_every = 0;

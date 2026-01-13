@@ -10,7 +10,6 @@ struct IMarketDataSource {
     virtual ~IMarketDataSource() = default;
 
     virtual bool fetch_all_mids_raw(std::string& out_json) = 0;
-    virtual bool fetch_candle_snapshot_raw(const CandleReq& req, std::string& out_json) = 0;
 };
 
 } // namespace tradeboy::market

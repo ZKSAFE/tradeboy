@@ -119,7 +119,33 @@ int main(int argc, char** argv) {
     ImGui_ImplSDL2_InitForOpenGL(window, glctx);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    // New Spot UI currently uses only ImGui default font (no external font dependency).
+    // Font: prefer bundled cour-new.ttf for readable UI on 720x480.
+    const char* font_path = nullptr;
+    if (file_exists("cour-new.ttf")) font_path = "cour-new.ttf";
+    else if (file_exists("output/cour-new.ttf")) font_path = "output/cour-new.ttf";
+    else if (file_exists("CourierPrime-Regular.ttf")) font_path = "CourierPrime-Regular.ttf";
+    else if (file_exists("output/NotoSansCJK-Regular.ttc")) font_path = "output/NotoSansCJK-Regular.ttc";
+    else if (file_exists("NotoSansCJK-Regular.ttc")) font_path = "NotoSansCJK-Regular.ttc";
+
+    if (font_path) {
+        log_to_file("[Main] Loading font: %s\n", font_path);
+        ImFontConfig cfg;
+        cfg.OversampleH = 1;
+        cfg.OversampleV = 1;
+        cfg.PixelSnapH = true;
+        ImFont* f = io.Fonts->AddFontFromFileTTF(font_path, 28.0f, &cfg);
+        if (f) {
+            io.FontDefault = f;
+            unsigned char* pixels = nullptr;
+            int w = 0, h = 0;
+            io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
+            log_to_file("[Main] Font atlas built: %dx%d\n", w, h);
+        } else {
+            log_to_file("[Main] Font load failed, using default\n");
+        }
+    } else {
+        log_to_file("[Main] No font file found, using default\n");
+    }
 
     SDL_Joystick* joy0 = nullptr;
     if (SDL_NumJoysticks() > 0) {
@@ -130,8 +156,10 @@ int main(int argc, char** argv) {
     log_to_file("[Main] App constructed\n");
     app.init_demo_data();
     log_to_file("[Main] init_demo_data done\n");
+    log_to_file("[Main] calling load_private_key\n");
     app.load_private_key();
     log_to_file("[Main] load_private_key done\n");
+    log_to_file("[Main] calling startup\n");
     app.startup();
     log_to_file("[Main] app.startup done\n");
 
@@ -139,6 +167,7 @@ int main(int argc, char** argv) {
 
     bool running = true;
     log_to_file("[Main] entering main loop\n");
+    int frame_counter = 0;
     while (running) {
         std::vector<SDL_Event> events;
         SDL_Event e;
@@ -155,6 +184,11 @@ int main(int argc, char** argv) {
         if (app.quit_requested) {
             running = false;
         }
+
+        if (frame_counter == 0) {
+            log_to_file("[Main] first frame\n");
+        }
+        frame_counter++;
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
