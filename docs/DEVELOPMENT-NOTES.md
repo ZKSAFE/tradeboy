@@ -8,6 +8,7 @@
 
 - `imgui-demo-armhf`：Dear ImGui demo（SDL2 + OpenGL ES），用于验证显示链路、输入事件、网络测试弹窗。
 - `sdl2demo-armhf`：最小 SDL2 + OpenGL ES demo（红/绿/蓝切换），用于验证是否能正常上屏。
+- `tradeboy-ui-demo-armhf`：TradeBoy UI standalone demo（SDL2 + OpenGL ES + ImGui），用于快速验证 UI 渲染与布局（不对接 API）。
 
 ## 运行环境（掌机端）
 
@@ -99,7 +100,14 @@ make install
 
 - `imgui-demo-armhf`
 - `sdl2demo-armhf`
+- `tradeboy-ui-demo-armhf`
 - `NotoSansCJK-Regular.ttc`（存在就传）
+
+### 5) 日常编译：TradeBoy UI demo
+
+```sh
+make tradeboy-ui-demo-armhf-docker
+```
 
 ## Docker 编译提速策略
 
@@ -235,6 +243,35 @@ make install
 
 - demo 链接阶段改用：`-lEGL -lGLESv2`
 - 运行时通过 `LD_LIBRARY_PATH=/usr/lib32:...` 让设备选择 Mali 实现
+
+### 坑 6：`tradeboy-ui-demo-armhf` 闪退（ImGui 初始化顺序错误）
+
+现象：
+
+- UI demo 启动后立即闪退
+- 或者日志中只看到 SDL 初始化信息，后续没有任何渲染输出
+
+原因：
+
+- 在 `ImGui::CreateContext()` 之前调用了 `ImGui::GetIO()`（属于未定义行为，容易直接崩溃）
+
+修复：
+
+- 启动顺序必须是：
+  - `SDL_Init`
+  - `SDL_GL_SetAttribute(...)`
+  - `SDL_CreateWindow(...)`
+  - `SDL_GL_CreateContext(...)`
+  - `SDL_GL_MakeCurrent(...)`
+  - `ImGui::CreateContext()`
+  - `ImGui::GetIO()` / 配置 flags / 加载字体
+  - `ImGui_ImplSDL2_InitForOpenGL(...)`
+  - `ImGui_ImplOpenGL3_Init("#version 100")`
+
+补充要点（与主程序 `src/main.cpp` 保持一致）：
+
+- 运行时 CWD：如果存在 `/mnt/mmc/Roms/APPS`，先 `chdir("/mnt/mmc/Roms/APPS")`，避免字体路径找不到
+- Window 创建：优先使用 `SDL_WINDOWPOS_UNDEFINED_DISPLAY(0)` + `SDL_WINDOW_FULLSCREEN_DESKTOP`（与 RG34XX 的 mali-fbdev 更兼容）
 
 ## 清理掌机端测试文件
 
