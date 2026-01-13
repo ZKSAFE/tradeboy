@@ -2,10 +2,8 @@
 
 #include "imgui.h"
 
-#include "SpotViewModel.h"
-
 namespace tradeboy::spot {
 
-void render_spot_screen(const SpotViewModel& vm);
+void render_spot_screen(int selected_row_idx, int action_idx, bool buy_pressed, bool sell_pressed);
 
 } // namespace tradeboy::spot

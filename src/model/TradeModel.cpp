@@ -53,7 +53,7 @@ void TradeModel::update_mid_prices_from_allmids_json(const std::string& all_mids
     log_to_file("[Model] allMids updated=%d json_len=%d\n", updated, (int)all_mids_json.size());
 }
 
-void TradeModel::set_kline_data(std::vector<tradeboy::spot::OHLC> v) {
+void TradeModel::set_kline_data(std::vector<tradeboy::model::OHLC> v) {
     std::lock_guard<std::mutex> lock(mu);
     kline_data_ = std::move(v);
 }

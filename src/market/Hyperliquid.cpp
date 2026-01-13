@@ -112,8 +112,8 @@ static bool parse_obj_field_string(const std::string& s, size_t& cursor, const c
     return true;
 }
 
-std::vector<tradeboy::spot::OHLC> parse_candle_snapshot(const std::string& candle_json) {
-    std::vector<tradeboy::spot::OHLC> out;
+std::vector<tradeboy::model::OHLC> parse_candle_snapshot(const std::string& candle_json) {
+    std::vector<tradeboy::model::OHLC> out;
     size_t cur = 0;
     while (true) {
         size_t obj = candle_json.find('{', cur);
@@ -129,7 +129,7 @@ std::vector<tradeboy::spot::OHLC> parse_candle_snapshot(const std::string& candl
         if (!parse_obj_field_string(candle_json, c, "l", l)) { cur = end + 1; continue; }
         if (!parse_obj_field_string(candle_json, c, "c", cl)) { cur = end + 1; continue; }
 
-        tradeboy::spot::OHLC v;
+        tradeboy::model::OHLC v;
         v.o = (float)std::strtod(o.c_str(), nullptr);
         v.h = (float)std::strtod(h.c_str(), nullptr);
         v.l = (float)std::strtod(l.c_str(), nullptr);

@@ -33,12 +33,7 @@ TRADEBOY_SOURCES = \
 	src/model/TradeModel.cpp \
 	src/utils/File.cpp \
 	src/utils/Format.cpp \
-	src/uiComponents/Theme.cpp \
-	src/uiComponents/Fonts.cpp \
-	src/uiComponents/Button.cpp \
 	src/windows/NumInputWindow.cpp \
-	src/spot/KLineChart.cpp \
-	src/spot/SpotPresenter.cpp \
 	src/spot/SpotScreen.cpp
 
 # ImGui sources

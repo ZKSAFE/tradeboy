@@ -14,8 +14,6 @@
 
 #include "app/App.h"
 #include "app/Input.h"
-#include "uiComponents/Fonts.h"
-#include "uiComponents/Theme.h"
 
 // Simple file logger
 void log_to_file(const char* fmt, ...) {
@@ -115,30 +113,13 @@ int main(int argc, char** argv) {
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-    tradeboy::ui::apply_retro_style();
+    ImGui::StyleColorsDark();
 
     const char* glsl_version = "#version 100";
     ImGui_ImplSDL2_InitForOpenGL(window, glctx);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    const char* font_path = nullptr;
-    if (file_exists("output/NotoSansCJK-Regular.ttc")) font_path = "output/NotoSansCJK-Regular.ttc";
-    else if (file_exists("NotoSansCJK-Regular.ttc")) font_path = "NotoSansCJK-Regular.ttc";
-
-    if (font_path) {
-        log_to_file("[Main] Found font at: %s\n", font_path);
-        fprintf(stderr, "[Main] Found font at: %s\n", font_path);
-    } else {
-        log_to_file("[Main] Error: Font file not found!\n");
-        fprintf(stderr, "[Main] Error: Font file not found!\n");
-    }
-
-    if (!tradeboy::ui::init_fonts(io, font_path)) {
-        log_to_file("[Main] Warning: init_fonts failed, using default font.\n");
-        fprintf(stderr, "[Main] Warning: init_fonts failed, using default font.\n");
-    } else {
-        log_to_file("[Main] init_fonts success.\n");
-    }
+    // New Spot UI currently uses only ImGui default font (no external font dependency).
 
     SDL_Joystick* joy0 = nullptr;
     if (SDL_NumJoysticks() > 0) {

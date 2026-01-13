@@ -97,7 +97,7 @@ void MarketDataService::run() {
             req.endTimeMs = now_ms;
 
             if (src.fetch_candle_snapshot_raw(req, candle_json)) {
-                std::vector<tradeboy::spot::OHLC> v = tradeboy::market::parse_candle_snapshot(candle_json);
+                std::vector<tradeboy::model::OHLC> v = tradeboy::market::parse_candle_snapshot(candle_json);
                 if (!v.empty()) {
                     model.set_kline_data(std::move(v));
                 }

@@ -9,7 +9,6 @@
 #include "imgui.h"
 
 #include "../spot/SpotScreen.h"
-#include "../spot/SpotPresenter.h"
 #include "../spot/SpotUiEvents.h"
 #include "../market/MarketDataService.h"
 #include "../market/HyperliquidWgetDataSource.h"
@@ -187,9 +186,15 @@ void App::render() {
     ui.buy_press_frames = buy_press_frames;
     ui.sell_press_frames = sell_press_frames;
 
-    tradeboy::model::TradeModelSnapshot snap = model.snapshot();
-    tradeboy::spot::SpotViewModel vm = tradeboy::spot::build_spot_view_model(snap, ui);
-    tradeboy::spot::render_spot_screen(vm);
+    // Spot page now uses the new UI demo layout. Data layer is intentionally
+    // not connected yet (render uses mock data only).
+    if (tab == Tab::Spot) {
+        tradeboy::spot::render_spot_screen(
+            spot_row_idx,
+            spot_action_idx,
+            buy_press_frames > 0,
+            sell_press_frames > 0);
+    }
 
     dec_frame_counter(x_press_frames);
     dec_frame_counter(buy_press_frames);

@@ -1,181 +1,216 @@
 #include "SpotScreen.h"
 
 #include <algorithm>
-#include <cmath>
-#include <cstdint>
+#include <cstdio>
+#include <string>
 #include <vector>
-
-#include "../uiComponents/Primitives.h"
-#include "../uiComponents/Button.h"
-#include "../uiComponents/Theme.h"
-#include "../uiComponents/Fonts.h"
-#include "../spot/KLineChart.h"
 
 namespace tradeboy::spot {
 
-void render_spot_screen(const SpotViewModel& vm) {
-    ImFont* f_body = tradeboy::ui::fonts().body;
-    ImFont* f_small = tradeboy::ui::fonts().small;
-    if (f_body) ImGui::PushFont(f_body);
+struct Coin {
+    std::string id;
+    std::string symbol;
+    std::string name;
+    double price;
+    double change24h;
+    double holdings;
+};
 
-    const ImVec2 win_pos = ImGui::GetWindowPos();
-    const ImVec2 win_size = ImGui::GetWindowSize();
+static std::vector<Coin> MOCK_COINS = {
+    {"1", "BTC", "Bitcoin", 64230.50, 2.4, 0.15},
+    {"2", "ETH", "Ethereum", 3450.12, -1.2, 2.5},
+    {"3", "SOL", "Solana", 145.60, 5.8, 100.0},
+    {"4", "DOGE", "Dogecoin", 0.12, 0.5, 5000.0},
+    {"5", "ADA", "Cardano", 0.45, -3.4, 0.0},
+    {"6", "XRP", "Ripple", 0.60, 1.1, 0.0},
+    {"7", "DOT", "Polkadot", 7.20, -0.8, 0.0},
+};
+
+namespace MatrixTheme {
+static const ImU32 BG = IM_COL32(0, 0, 0, 255);
+static const ImU32 TEXT = IM_COL32(0, 255, 65, 255);
+static const ImU32 DIM = IM_COL32(0, 143, 17, 255);
+static const ImU32 DARK = IM_COL32(0, 59, 0, 255);
+static const ImU32 ALERT = IM_COL32(255, 0, 85, 255);
+static const ImU32 BLACK = IM_COL32(0, 0, 0, 255);
+}
+
+static void DrawGlowText(ImDrawList* dl, const ImVec2& pos, const char* text, ImU32 color) {
+    if (!dl || !text) return;
+    ImU32 glowCol = (color & 0x00FFFFFF) | 0x40000000;
+    dl->AddText(ImVec2(pos.x + 1, pos.y + 1), glowCol, text);
+    dl->AddText(ImVec2(pos.x - 1, pos.y - 1), glowCol, text);
+    dl->AddText(pos, color, text);
+}
+
+void render_spot_screen(int selected_row_idx, int action_idx, bool buy_pressed, bool sell_pressed) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    ImVec2 size = ImGui::GetContentRegionAvail();
 
-    const float m = 10.0f;
-    const float header_h = 64.0f;
-    const float bottom_h = 64.0f;
-    const float gap = 10.0f;
-    const float panel_gap = 10.0f;
-    const float left_w = 230.0f;
-    const float radius = 14.0f;
-    const float stroke_w = 2.0f;
+    if (size.x <= 1.0f || size.y <= 1.0f) return;
+    if (!dl) return;
+    if (MOCK_COINS.empty()) return;
 
-    const auto& c = tradeboy::ui::colors();
+    selected_row_idx = std::max(0, std::min((int)MOCK_COINS.size() - 1, selected_row_idx));
+    action_idx = std::max(0, std::min(1, action_idx));
 
-    tradeboy::ui::Rect hdr(win_pos.x + m, win_pos.y + m, win_pos.x + win_size.x - m, win_pos.y + m + header_h);
-    tradeboy::ui::Rect bot(win_pos.x + m, win_pos.y + win_size.y - m - bottom_h, win_pos.x + win_size.x - m, win_pos.y + win_size.y - m);
+    // Background grid
+    const float gridStep = 40.0f;
+    ImU32 gridCol = IM_COL32(0, 255, 65, 20);
+    for (float x = 0; x < size.x; x += gridStep)
+        dl->AddLine(ImVec2(p.x + x, p.y), ImVec2(p.x + x, p.y + size.y), gridCol);
+    for (float y = 0; y < size.y; y += gridStep)
+        dl->AddLine(ImVec2(p.x, p.y + y), ImVec2(p.x + size.x, p.y + y), gridCol);
 
-    float mid_top = hdr.Max.y + gap;
-    float mid_bottom = bot.Min.y - gap;
+    const float padding = 16.0f;
+    const float headerH = 60.0f;
+    const float footerH = 70.0f;
+    const float tableHeaderH = 30.0f;
+    const float rowH = 44.0f;
 
-    tradeboy::ui::Rect lp(win_pos.x + m, mid_top, win_pos.x + m + left_w, mid_bottom);
-    tradeboy::ui::Rect rp(lp.Max.x + panel_gap, mid_top, win_pos.x + win_size.x - m, mid_bottom);
+    float y = p.y + padding;
+    float w = size.x - 2 * padding;
+    float left = p.x + padding;
+    float right = p.x + size.x - padding;
 
-    dl->AddRectFilled(hdr.Min, hdr.Max, c.panel, radius);
-    dl->AddRect(hdr.Min, hdr.Max, c.stroke, radius, 0, stroke_w);
+    // Header
+    {
+        ImGui::SetWindowFontScale(1.5f);
+        DrawGlowText(dl, ImVec2(left, y), "> SPOT_TRADE", MatrixTheme::TEXT);
+        ImGui::SetWindowFontScale(1.0f);
 
-    dl->AddRectFilled(lp.Min, lp.Max, c.panel, radius);
-    dl->AddRect(lp.Min, lp.Max, c.stroke, radius, 0, stroke_w);
+        const char* nav = "PERP | ASSET | PROFILE";
+        ImVec2 navSz = ImGui::CalcTextSize(nav);
+        dl->AddText(ImVec2(right - navSz.x - 70, y + 8), MatrixTheme::DIM, nav);
 
-    dl->AddRectFilled(rp.Min, rp.Max, c.panel, radius);
-    dl->AddRect(rp.Min, rp.Max, c.stroke, radius, 0, stroke_w);
+        dl->AddRectFilled(ImVec2(right - 50, y), ImVec2(right - 30, y + 20), MatrixTheme::DIM, 2.0f);
+        dl->AddText(ImVec2(right - 48, y + 2), MatrixTheme::BLACK, "L1");
+        dl->AddRectFilled(ImVec2(right - 25, y), ImVec2(right - 5, y + 20), MatrixTheme::DIM, 2.0f);
+        dl->AddText(ImVec2(right - 23, y + 2), MatrixTheme::BLACK, "R1");
 
-    dl->AddRectFilled(bot.Min, bot.Max, c.panel, radius);
-    dl->AddRect(bot.Min, bot.Max, c.stroke, radius, 0, stroke_w);
+        y += headerH;
+        dl->AddLine(ImVec2(left, y - 10), ImVec2(right, y - 10), MatrixTheme::DIM, 2.0f);
+    }
 
-    const char* tf = vm.header.tf.c_str();
+    // Table headers
+    {
+        float col1 = left;
+        float col2 = left + w * 0.35f;
+        float col3 = right - 130;
+        float col4 = right;
 
-    ImVec2 hdr_line = ImGui::CalcTextSize("Ag");
-    float hdr_y = hdr.Min.y + (header_h - hdr_line.y) * 0.5f;
-    ImVec2 hdr_text_base(hdr.Min.x + 18.0f, hdr_y);
-    dl->AddText(hdr_text_base, c.text, vm.header.pair.c_str());
-    ImVec2 tf_sz = ImGui::CalcTextSize(tf);
-    float x_r = 18.0f;
-    ImVec2 x_center(hdr.Max.x - 20.0f - x_r, (hdr.Min.y + hdr.Max.y) * 0.5f + 2.0f);
-    ImVec2 tf_pos(x_center.x - x_r - 16.0f - tf_sz.x, hdr_text_base.y);
+        dl->AddText(ImVec2(col1 + 30, y), MatrixTheme::DIM, "CODE");
 
-    // Layout price/change from the right side, but keep clear of the TF label.
-    const float hdr_right_limit = tf_pos.x - 28.0f;
-    const float hdr_col_gap = 18.0f;
-    ImVec2 change_sz = ImGui::CalcTextSize(vm.header.change.c_str());
-    ImVec2 price_sz = ImGui::CalcTextSize(vm.header.price.c_str());
-    float change_x = hdr_right_limit - change_sz.x;
-    float price_x = change_x - hdr_col_gap - price_sz.x;
-    dl->AddText(ImVec2(price_x, hdr_text_base.y), c.text, vm.header.price.c_str());
-    dl->AddText(ImVec2(change_x, hdr_text_base.y), vm.header.change_col, vm.header.change.c_str());
+        const char* h2 = "HOLDINGS";
+        ImVec2 sz2 = ImGui::CalcTextSize(h2);
+        dl->AddText(ImVec2(col2 - sz2.x * 0.5f, y), MatrixTheme::DIM, h2);
 
-    dl->AddText(tf_pos, c.text, tf);
+        const char* h3 = "PRICE";
+        ImVec2 sz3 = ImGui::CalcTextSize(h3);
+        dl->AddText(ImVec2(col3 - sz3.x, y), MatrixTheme::DIM, h3);
 
-    const bool x_pressed = vm.header.x_pressed;
-    tradeboy::ui::draw_circle_button(dl, x_center, x_r, x_pressed ? c.panel_pressed : c.panel2, c.text, "X", x_pressed);
+        const char* h4 = "24H";
+        ImVec2 sz4 = ImGui::CalcTextSize(h4);
+        dl->AddText(ImVec2(col4 - sz4.x, y), MatrixTheme::DIM, h4);
 
-    const float row_h = 50.0f;
-    const float pad_lr = 22.0f;
-    float y = lp.Min.y + 16.0f;
+        y += tableHeaderH;
+    }
 
-    auto row_text_y = [&](float row_y) {
-        ImVec2 ts = ImGui::CalcTextSize("Ag");
-        return row_y + (row_h - ts.y) * 0.5f - 3.0f;
-    };
+    // List
+    {
+        float listH = size.y - padding - footerH - y + p.y;
+        int startIdx = 0;
+        int maxRows = std::max(1, (int)(listH / rowH));
+        if (selected_row_idx >= maxRows) startIdx = selected_row_idx - maxRows + 1;
 
-    for (int i = 0; i < (int)vm.rows.size(); i++) {
-        if (y + row_h > lp.Max.y - 10.0f) break;
-        const bool selected = (i == vm.selected_row_idx);
-        const auto& r = vm.rows[(size_t)i];
+        for (int i = startIdx; i < (int)MOCK_COINS.size() && (i - startIdx) < maxRows; ++i) {
+            const auto& coin = MOCK_COINS[i];
+            bool isSelected = (i == selected_row_idx);
+            float rowY = y + (i - startIdx) * rowH;
 
-        if (selected) {
-            dl->AddRectFilled(ImVec2(lp.Min.x + 10.0f, y), ImVec2(lp.Max.x - 10.0f, y + row_h), c.panel2, 10.0f);
+            if (isSelected) {
+                dl->AddRectFilled(ImVec2(left, rowY), ImVec2(right, rowY + rowH - 4), MatrixTheme::TEXT, 4.0f);
+            } else {
+                dl->AddRectFilled(ImVec2(left, rowY), ImVec2(right, rowY + rowH - 4), IM_COL32(0, 59, 0, 40), 4.0f);
+            }
+
+            ImU32 textCol = isSelected ? MatrixTheme::BLACK : MatrixTheme::TEXT;
+            ImU32 numCol = isSelected ? MatrixTheme::BLACK : MatrixTheme::TEXT;
+            ImU32 changeCol = isSelected ? MatrixTheme::BLACK : (coin.change24h >= 0 ? MatrixTheme::TEXT : MatrixTheme::ALERT);
+
+            float col1 = left;
+            float col2 = left + w * 0.35f;
+            float col3 = right - 130;
+            float col4 = right;
+
+            if (isSelected) {
+                if ((ImGui::GetTime() * 2.0 - (int)(ImGui::GetTime() * 2.0)) < 0.7)
+                    dl->AddText(ImVec2(col1 + 5, rowY + 8), textCol, ">");
+            }
+
+            dl->AddText(ImVec2(col1 + 30, rowY + 8), textCol, coin.symbol.c_str());
+
+            if (coin.holdings > 0) {
+                char holdBuf[32];
+                std::snprintf(holdBuf, sizeof(holdBuf), "%.2f", coin.holdings);
+                ImVec2 sz = ImGui::CalcTextSize(holdBuf);
+                dl->AddText(ImVec2(col2 - sz.x * 0.5f, rowY + 8), textCol, holdBuf);
+            }
+
+            char priceBuf[32];
+            std::snprintf(priceBuf, sizeof(priceBuf), "%.2f", coin.price);
+            ImVec2 szP = ImGui::CalcTextSize(priceBuf);
+            dl->AddText(ImVec2(col3 - szP.x, rowY + 8), numCol, priceBuf);
+
+            char chgBuf[32];
+            std::snprintf(chgBuf, sizeof(chgBuf), "%+.1f%%", coin.change24h);
+            ImVec2 szC = ImGui::CalcTextSize(chgBuf);
+            dl->AddText(ImVec2(col4 - szC.x, rowY + 8), changeCol, chgBuf);
         }
-
-        const float ty = row_text_y(y);
-
-        dl->AddText(ImVec2(lp.Min.x + pad_lr, ty), c.text, r.sym.c_str());
-
-        float price_cell_r = lp.Max.x - pad_lr;
-        ImVec2 p_sz = ImGui::CalcTextSize(r.price.c_str());
-        dl->AddText(ImVec2(price_cell_r - p_sz.x, ty), r.price_col, r.price.c_str());
-
-        y += row_h;
     }
 
-    tradeboy::ui::Rect chart(rp.Min.x + 16.0f, rp.Min.y + 16.0f, rp.Max.x - 56.0f, rp.Max.y - 16.0f);
+    // Footer
+    {
+        float footerTop = p.y + size.y - footerH;
+        dl->AddLine(ImVec2(left, footerTop), ImVec2(right, footerTop), MatrixTheme::DIM, 4.0f);
 
-    // derive candle count from grid, same logic as before
-    float cell_h = chart.h() / 5.0f;
-    int num_v = (int)std::round(chart.w() / cell_h);
-    num_v = std::max(5, std::min(10, num_v));
-    // const int candle_count = std::max(16, (num_v - 2) * 3); // Unused now
+        const auto& selCoin = MOCK_COINS[selected_row_idx];
+        char summary[128];
+        double val = selCoin.holdings * selCoin.price;
+        if (selCoin.holdings > 0)
+            std::snprintf(summary, sizeof(summary), "Holding %.2f %s worth $%.2f", selCoin.holdings, selCoin.symbol.c_str(), val);
+        else
+            std::snprintf(summary, sizeof(summary), "No %s in wallet", selCoin.symbol.c_str());
+        dl->AddText(ImVec2(left, footerTop + 20), MatrixTheme::TEXT, summary);
 
-    KLineStyle ks;
-    ks.grid = c.grid;
-    ks.green = c.green;
-    ks.red = c.red;
-    ks.muted = c.muted;
-    if (f_small) ImGui::PushFont(f_small);
-    render_kline(dl, chart, vm.kline_data, 6, ks);
-    if (f_small) ImGui::PopFont();
+        float btnW = 100.0f;
+        float btnH = 40.0f;
+        float btnY = footerTop + 15;
+        float sellX = right - btnW;
+        float buyX = sellX - btnW - 20;
 
-    ImVec2 bot_line = ImGui::CalcTextSize("Ag");
-    float bot_y = bot.Min.y + (bottom_h - bot_line.y) * 0.5f;
-    ImVec2 bot_base(bot.Min.x + 16.0f, bot_y);
-    dl->AddText(bot_base, c.text, vm.bottom.hold.c_str());
-    dl->AddText(ImVec2(bot.Min.x + 210.0f, bot_base.y), c.text, vm.bottom.val.c_str());
-    dl->AddText(ImVec2(bot.Min.x + 360.0f, bot_base.y), vm.bottom.pnl_col, vm.bottom.pnl.c_str());
+        bool buyFocus = (action_idx == 0);
+        bool sellFocus = (action_idx == 1);
 
-    float btn_w = 110.0f;
-    float btn_h = 56.0f;
-    float bx = bot.Max.x - 16.0f - btn_w * 2.0f;
-    float by = (bot.Min.y + bot.Max.y) * 0.5f - btn_h * 0.5f;
+        ImU32 buyBg = buyFocus ? MatrixTheme::TEXT : MatrixTheme::BG;
+        ImU32 buyFg = buyFocus ? MatrixTheme::BLACK : MatrixTheme::DIM;
+        ImU32 buyBorder = buyFocus ? MatrixTheme::TEXT : MatrixTheme::DIM;
+        if (buy_pressed && buyFocus) buyBg = MatrixTheme::DIM;
+        dl->AddRectFilled(ImVec2(buyX, btnY), ImVec2(buyX + btnW, btnY + btnH), buyBg, 4.0f);
+        dl->AddRect(ImVec2(buyX, btnY), ImVec2(buyX + btnW, btnY + btnH), buyBorder, 4.0f, 0, 2.0f);
+        ImVec2 bSz = ImGui::CalcTextSize("BUY");
+        dl->AddText(ImVec2(buyX + (btnW - bSz.x) * 0.5f, btnY + (btnH - bSz.y) * 0.5f), buyFg, "BUY");
 
-    const bool buy_hover = vm.bottom.buy_hover;
-    const bool sell_hover = vm.bottom.sell_hover;
-    const bool buy_pressed = vm.bottom.buy_pressed;
-    const bool sell_pressed = vm.bottom.sell_pressed;
-
-    if (buy_hover) {
-        tradeboy::ui::draw_pill_button(
-            dl,
-            ImVec2(bx, by),
-            ImVec2(bx + btn_w, by + btn_h),
-            12.0f,
-            buy_pressed ? c.panel_pressed : c.panel2,
-            c.text,
-            "Buy",
-            true);
-    } else {
-        // normal: text-only, not bold
-        ImVec2 ts = ImGui::CalcTextSize("Buy");
-        dl->AddText(ImVec2(bx + (btn_w - ts.x) * 0.5f, by + (btn_h - ts.y) * 0.5f - 2.0f), c.text, "Buy");
+        ImU32 sellBg = sellFocus ? MatrixTheme::ALERT : MatrixTheme::BG;
+        ImU32 sellFg = sellFocus ? MatrixTheme::BLACK : MatrixTheme::DIM;
+        ImU32 sellBorder = sellFocus ? MatrixTheme::ALERT : MatrixTheme::DIM;
+        if (sell_pressed && sellFocus) sellBg = MatrixTheme::DIM;
+        dl->AddRectFilled(ImVec2(sellX, btnY), ImVec2(sellX + btnW, btnY + btnH), sellBg, 4.0f);
+        dl->AddRect(ImVec2(sellX, btnY), ImVec2(sellX + btnW, btnY + btnH), sellBorder, 4.0f, 0, 2.0f);
+        ImVec2 sSz = ImGui::CalcTextSize("SELL");
+        dl->AddText(ImVec2(sellX + (btnW - sSz.x) * 0.5f, btnY + (btnH - sSz.y) * 0.5f), sellFg, "SELL");
     }
-
-    float sx = bx + btn_w;
-    if (sell_hover) {
-        tradeboy::ui::draw_pill_button(
-            dl,
-            ImVec2(sx, by),
-            ImVec2(sx + btn_w, by + btn_h),
-            12.0f,
-            sell_pressed ? c.panel_pressed : c.panel2,
-            c.text,
-            "Sell",
-            true);
-    } else {
-        ImVec2 ts = ImGui::CalcTextSize("Sell");
-        dl->AddText(ImVec2(sx + (btn_w - ts.x) * 0.5f, by + (btn_h - ts.y) * 0.5f - 2.0f), c.text, "Sell");
-    }
-
-    if (f_body) ImGui::PopFont();
 }
 
 } // namespace tradeboy::spot
