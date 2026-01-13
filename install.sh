@@ -8,7 +8,7 @@
 set -e
 
 # 默认配置
-DEFAULT_IP="192.168.3.97"
+DEFAULT_IP="192.168.66.194"
 DEFAULT_PASSWORD="root"
 DEFAULT_USER="root"
 
@@ -53,6 +53,11 @@ HAS_TRADEBOY=0
 
 if [ -f "output/tradeboy-armhf" ]; then
     HAS_TRADEBOY=1
+fi
+
+HAS_DEMO=0
+if [ -f "output/tradeboy-ui-demo-armhf" ]; then
+    HAS_DEMO=1
 fi
 
 if [ "$HAS_TRADEBOY" -eq 0 ]; then
@@ -101,6 +106,16 @@ if [ "$HAS_TRADEBOY" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp /mnt/mmc/Roms/APPS/tradeboy-armhf" 2>/dev/null
 fi
 
+if [ "$HAS_DEMO" -eq 1 ]; then
+    echo "📤 上传UI Demo (tradeboy-ui-demo-armhf)..."
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "rm -f /mnt/mmc/Roms/APPS/tradeboy-ui-demo-armhf /mnt/mmc/Roms/APPS/.tradeboy-ui-demo-armhf.tmp" 2>/dev/null || true
+    if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS output/tradeboy-ui-demo-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/.tradeboy-ui-demo-armhf.tmp"; then
+        echo -e "${RED}❌ 上传UI Demo失败${NC}"
+        exit 1
+    fi
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.tradeboy-ui-demo-armhf.tmp /mnt/mmc/Roms/APPS/tradeboy-ui-demo-armhf" 2>/dev/null
+fi
+
 if [ "$HAS_FONT" -eq 1 ]; then
     echo "📤 上传字体文件..."
     if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS output/NotoSansCJK-Regular.ttc "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
@@ -114,6 +129,9 @@ echo "🔧 设置文件权限..."
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-armhf"
 fi
+if [ "$HAS_DEMO" -eq 1 ]; then
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-ui-demo-armhf"
+fi
 if [ "$HAS_FONT" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 644 /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
 fi
@@ -122,6 +140,9 @@ fi
 echo "✅ 验证安装结果..."
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-armhf"
+fi
+if [ "$HAS_DEMO" -eq 1 ]; then
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-ui-demo-armhf"
 fi
 if [ "$HAS_FONT" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"

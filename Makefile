@@ -70,6 +70,7 @@ TRADEBOY_OBJS = \
 # 目标文件
 TARGET_DEMO_ARMHF = $(OUTPUT_DIR)/sdl2demo-armhf
 TARGET_IMGUI_DEMO_ARMHF = $(OUTPUT_DIR)/imgui-demo-armhf
+TARGET_TRADEBOY_UI_DEMO_ARMHF = $(OUTPUT_DIR)/tradeboy-ui-demo-armhf
 TARGET_TRADEBOY_ARMHF = $(OUTPUT_DIR)/tradeboy-armhf
 DOCKER_ARMHF_BUILDER_IMAGE = rg34xx-armhf-builder:latest
 CCACHE_VOLUME = -v "$(PWD)/.ccache:/ccache"
@@ -121,6 +122,9 @@ $(TARGET_IMGUI_DEMO_ARMHF): $(IMGUI_DEMO_OBJS) | $(OUTPUT_DIR)
 $(TARGET_TRADEBOY_ARMHF): $(TRADEBOY_OBJS) | $(OUTPUT_DIR)
 	$(ARMHF_CXX) $(CXXFLAGS) -o $(TARGET_TRADEBOY_ARMHF) $(TRADEBOY_OBJS) -L/usr/lib/arm-linux-gnueabihf $(LIBS_ARMHF_GLES) -lSDL2
 
+$(TARGET_TRADEBOY_UI_DEMO_ARMHF): src/demos/tradeboy_ui_demo.cpp | $(OUTPUT_DIR)
+	$(ARMHF_CXX) $(CXXFLAGS) -I./src -I/usr/include/SDL2 -D_REENTRANT -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) src/demos/tradeboy_ui_demo.cpp $(IMGUI_CORE_SOURCES) $(IMGUI_BACKEND_SOURCES) -o $@ -L/usr/lib/arm-linux-gnueabihf $(LIBS_ARMHF_GLES) -lSDL2
+
 # Docker ARM编译
 arm-docker:
 	docker run --rm -v "$(PWD):/workspace" rg34xx-sdl2-builder:latest sh -c "cd /workspace && make clean && make $(TARGET_DEMO_ARMHF)"
@@ -137,12 +141,15 @@ imgui-demo-armhf-docker:
 tradeboy-armhf-docker:
 	docker run --rm -v "$(PWD):/workspace" $(CCACHE_VOLUME) $(DOCKER_ARMHF_BUILDER_IMAGE) sh -c "cd /workspace && make $(TARGET_TRADEBOY_ARMHF) ARMHF_CXX='ccache arm-linux-gnueabihf-g++'"
 
+tradeboy-ui-demo-armhf-docker:
+	docker run --rm -v "$(PWD):/workspace" $(CCACHE_VOLUME) $(DOCKER_ARMHF_BUILDER_IMAGE) sh -c "cd /workspace && make $(TARGET_TRADEBOY_UI_DEMO_ARMHF) ARMHF_CXX='ccache arm-linux-gnueabihf-g++'"
+
 output-assets: | $(OUTPUT_DIR)
 	@if [ -f "NotoSansCJK-Regular.ttc" ]; then cp -f "NotoSansCJK-Regular.ttc" "$(OUTPUT_DIR)/"; fi
 
 # 清理
 clean:
-	rm -f $(TARGET_DEMO_ARMHF) $(TARGET_IMGUI_DEMO_ARMHF) $(TARGET_TRADEBOY_ARMHF)
+	rm -f $(TARGET_DEMO_ARMHF) $(TARGET_IMGUI_DEMO_ARMHF) $(TARGET_TRADEBOY_UI_DEMO_ARMHF) $(TARGET_TRADEBOY_ARMHF)
 	rm -rf $(BUILD_DIR_ARMHF)
 
 clean-obj:
@@ -152,4 +159,4 @@ clean-obj:
 install:
 	./install.sh
 
-.PHONY: all clean clean-obj arm-docker armhf-builder-image sdl2demo-armhf-docker imgui-demo-armhf-docker install
+.PHONY: all clean clean-obj arm-docker armhf-builder-image sdl2demo-armhf-docker imgui-demo-armhf-docker tradeboy-armhf-docker tradeboy-ui-demo-armhf-docker install
