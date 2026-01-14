@@ -24,6 +24,7 @@ DEMO_SOURCES = src/demos/sdl2demo.c
 IMGUI_DEMO_SOURCES = src/demos/imgui-demo.cpp
 TRADEBOY_SOURCES = \
 	src/main.cpp \
+	src/filters/CrtFilter.cpp \
 	src/app/App.cpp \
 	src/app/Input.cpp \
 	src/market/Hyperliquid.cpp \
