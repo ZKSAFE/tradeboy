@@ -8,7 +8,7 @@
 set -e
 
 # 默认配置
-DEFAULT_IP="192.168.66.194"
+DEFAULT_IP="192.168.3.97"
 DEFAULT_PASSWORD="root"
 DEFAULT_USER="root"
 
@@ -78,6 +78,16 @@ elif [ -f "output/cour-new.ttf" ]; then
     COUR_PATH="output/cour-new.ttf"
 fi
 
+HAS_COUR_BOLD=0
+COUR_BOLD_PATH=""
+if [ -f "cour-new-BOLDITALIC.ttf" ]; then
+    HAS_COUR_BOLD=1
+    COUR_BOLD_PATH="cour-new-BOLDITALIC.ttf"
+elif [ -f "output/cour-new-BOLDITALIC.ttf" ]; then
+    HAS_COUR_BOLD=1
+    COUR_BOLD_PATH="output/cour-new-BOLDITALIC.ttf"
+fi
+
 echo -e "${GREEN}✅ 文件检查完成${NC}"
 
 
@@ -100,15 +110,27 @@ echo -e "${GREEN}✅ SSH连接成功${NC}"
 echo "📁 创建应用目录..."
 retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mkdir -p /mnt/mmc/Roms/APPS" 2>/dev/null
 
+# Kill existing process
+echo "🛑 停止现有进程..."
+retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "killall -9 tradeboy-armhf" 2>/dev/null || true
+
 # 上传文件
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
     echo "📤 上传TradeBoy可执行文件..."
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "rm -f /mnt/mmc/Roms/APPS/tradeboy-armhf /mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp" 2>/dev/null || true
-    if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS output/tradeboy-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp"; then
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "rm -f /mnt/mmc/Roms/APPS/tradeboy-armhf /mnt/mmc/Roms/APPS/tradeboy-armhf.bin /mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp /mnt/mmc/Roms/APPS/.tradeboy-armhf.bin.tmp" 2>/dev/null || true
+    if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS output/tradeboy-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/.tradeboy-armhf.bin.tmp"; then
         echo -e "${RED}❌ 上传TradeBoy失败${NC}"
         exit 1
     fi
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp /mnt/mmc/Roms/APPS/tradeboy-armhf" 2>/dev/null
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.tradeboy-armhf.bin.tmp /mnt/mmc/Roms/APPS/tradeboy-armhf.bin" 2>/dev/null
+
+    echo "🧩 写入启动包装脚本 (LD_LIBRARY_PATH)..."
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "cat > /mnt/mmc/Roms/APPS/tradeboy-armhf <<'EOF'
+#!/bin/sh
+export LD_LIBRARY_PATH=/usr/lib32:/usr/lib:/mnt/vendor/lib
+cd /mnt/mmc/Roms/APPS || exit 1
+exec ./tradeboy-armhf.bin
+EOF" 2>/dev/null
 fi
 
 if [ "$HAS_FONT" -eq 1 ]; then
@@ -127,10 +149,18 @@ if [ "$HAS_COUR" -eq 1 ]; then
     fi
 fi
 
+if [ "$HAS_COUR_BOLD" -eq 1 ]; then
+    echo "📤 上传 cour-new-BOLDITALIC.ttf..."
+    if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS "$COUR_BOLD_PATH" "$USER@$IP:/mnt/mmc/Roms/APPS/cour-new-BOLDITALIC.ttf"; then
+        echo -e "${RED}❌ 上传 cour-new-BOLDITALIC.ttf 失败${NC}"
+        exit 1
+    fi
+fi
+
 # 设置文件权限
 echo "🔧 设置文件权限..."
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-armhf"
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-armhf /mnt/mmc/Roms/APPS/tradeboy-armhf.bin"
 fi
 if [ "$HAS_FONT" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 644 /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
@@ -143,12 +173,16 @@ fi
 echo "✅ 验证安装结果..."
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-armhf"
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-armhf.bin"
 fi
 if [ "$HAS_FONT" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
 fi
 if [ "$HAS_COUR" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/cour-new.ttf"
+fi
+if [ "$HAS_COUR_BOLD" -eq 1 ]; then
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/cour-new-BOLDITALIC.ttf"
 fi
 
 # 获取设备信息
@@ -160,17 +194,17 @@ echo -e "${BLUE}$DEVICE_INFO${NC}"
 # 检查OpenGL ES支持
 echo ""
 echo "� 图形系统检查:"
-GLES_INFO=$(sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls /dev/dri/ 2>/dev/null || echo '未找到DRM设备'")
+GLES_INFO=$(sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls /dev/dri/ 2>/dev/null || echo '未找到DRM设备'" 2>/dev/null || echo "无法获取")
 echo -e "${BLUE}$GLES_INFO${NC}"
 
-FB_INFO=$(sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -la /dev/fb* 2>/dev/null || echo '未找到帧缓冲设备'")
+FB_INFO=$(sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -la /dev/fb* 2>/dev/null || echo '未找到帧缓冲设备'" 2>/dev/null || echo "无法获取")
 echo -e "${BLUE}$FB_INFO${NC}"
 
 # 完成提示
 echo ""
-echo -e "${GREEN}�🎉 TradeBoy安装完成！${NC}"
+echo -e "${GREEN}🎉 TradeBoy安装完成！${NC}"
 echo "=================="
 echo -e "运行命令:"
-echo -e "${YELLOW}ssh $USER@$IP 'cd /mnt/mmc/Roms/APPS && ./tradeboy-armhf'${NC}"
+echo -e "${YELLOW}ssh $USER@$IP 'export LD_LIBRARY_PATH=/usr/lib32:/usr/lib:/mnt/vendor/lib && cd /mnt/mmc/Roms/APPS && ./tradeboy-armhf'${NC}"
 echo ""
 echo -e "${GREEN}安装脚本执行完成！${NC}"

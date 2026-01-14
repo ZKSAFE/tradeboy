@@ -5,6 +5,8 @@
 #include <mutex>
 #include <memory>
 
+#include "imgui.h"
+
 #include "../windows/NumInputWindow.h"
 #include "../market/IMarketDataSource.h"
 #include "../market/MarketDataService.h"
@@ -26,10 +28,19 @@ struct App {
 
     int buy_press_frames = 0;
     int sell_press_frames = 0;
+    
+    // Trigger animation state
+    int buy_trigger_frames = 0;
+    int sell_trigger_frames = 0;
 
     int spot_row_idx = 0;
     int spot_action_idx = 0; // 0=buy, 1=sell
     bool spot_action_focus = false;
+
+    // UI feedback state
+    bool action_btn_held = false; // A button held
+    bool l1_btn_held = false;
+    bool r1_btn_held = false;
 
     tradeboy::windows::NumInputState num_input;
 
@@ -44,6 +55,8 @@ struct App {
     tradeboy::model::TradeModel model;
     std::unique_ptr<tradeboy::market::IMarketDataSource> market_src;
     std::unique_ptr<tradeboy::market::MarketDataService> market_service;
+    
+    ImFont* font_bold = nullptr;
 
     void startup();
     void shutdown();

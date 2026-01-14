@@ -114,7 +114,7 @@ $(TARGET_IMGUI_DEMO_ARMHF): $(IMGUI_DEMO_OBJS) | $(OUTPUT_DIR)
 	$(ARMHF_CXX) $(CXXFLAGS) -o $(TARGET_IMGUI_DEMO_ARMHF) $(IMGUI_DEMO_OBJS) -L/usr/lib/arm-linux-gnueabihf $(LIBS_ARMHF_GLES) -lSDL2
 
 $(TARGET_TRADEBOY_ARMHF): $(TRADEBOY_OBJS) | $(OUTPUT_DIR)
-	$(ARMHF_CXX) $(CXXFLAGS) -o $(TARGET_TRADEBOY_ARMHF) $(TRADEBOY_OBJS) -L/usr/lib/arm-linux-gnueabihf $(LIBS_ARMHF_GLES) -lSDL2
+	$(ARMHF_CXX) $(CXXFLAGS) -o $(TARGET_TRADEBOY_ARMHF) $(TRADEBOY_OBJS) -L/usr/lib/arm-linux-gnueabihf $(LIBS_ARMHF_GLES) -Wl,-rpath,/usr/lib32 -lSDL2
 
 # Docker ARM编译
 arm-docker:

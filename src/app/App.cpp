@@ -77,13 +77,24 @@ void App::shutdown() {
 }
 
 void App::load_private_key() {
+    log_to_file("[App] load_private_key start, this=%p\n", this);
     const char* path = "./data/private_key.txt";
+    
+    log_to_file("[App] reading file: %s\n", path);
     std::string raw = tradeboy::utils::read_text_file(path);
+    log_to_file("[App] read_text_file done, size=%d\n", (int)raw.size());
+
     if (raw.empty()) {
         log_to_file("[App] private key missing or empty: %s\n", path);
-        priv_key_hex.clear();
+        
+        log_to_file("[App] clearing priv_key_hex...\n");
+        priv_key_hex = ""; // Try assignment instead of clear()
+        log_to_file("[App] priv_key_hex cleared\n");
+        
+        log_to_file("[App] load_private_key early return\n");
         return;
     }
+    
     log_to_file("[App] private key raw_len=%d\n", (int)raw.size());
     priv_key_hex = tradeboy::utils::normalize_hex_private_key(raw);
     log_to_file("[App] private key normalized_len=%d\n", (int)priv_key_hex.size());
@@ -125,9 +136,11 @@ void App::apply_spot_ui_events(const std::vector<tradeboy::spot::SpotUiEvent>& e
                 spot_action_idx = e.value;
                 break;
             case tradeboy::spot::SpotUiEventType::TriggerAction:
-                if (e.flag) buy_press_frames = 2;
-                else sell_press_frames = 2;
-                open_spot_trade(e.flag);
+                if (e.flag) {
+                    buy_trigger_frames = 24;
+                } else {
+                    sell_trigger_frames = 24;
+                }
                 break;
         }
     }
@@ -156,6 +169,16 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
     if (tradeboy::windows::handle_input(num_input, in, edges)) {
         return;
     }
+    
+    // Block spot input if triggering action
+    if (buy_trigger_frames > 0 || sell_trigger_frames > 0) {
+        return;
+    }
+
+    // Update held states for UI feedback
+    action_btn_held = in.a;
+    l1_btn_held = in.l1;
+    r1_btn_held = in.r1;
 
     if (tab == Tab::Spot) {
         tradeboy::spot::SpotUiState ui;
@@ -170,6 +193,23 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
 }
 
 void App::render() {
+    // Process triggers
+    if (buy_trigger_frames > 0) {
+        buy_trigger_frames--;
+        if (buy_trigger_frames == 0) open_spot_trade(true);
+    }
+    if (sell_trigger_frames > 0) {
+        sell_trigger_frames--;
+        if (sell_trigger_frames == 0) open_spot_trade(false);
+    }
+
+    // Flash logic: faster blink while trigger is active.
+    // Total trigger duration is still 45 frames, but blink period is shorter.
+    const int blinkPeriod = 6;
+    const int blinkOnFrames = 3;
+    bool buy_flash = (buy_trigger_frames > 0) && ((buy_trigger_frames % blinkPeriod) < blinkOnFrames);
+    bool sell_flash = (sell_trigger_frames > 0) && ((sell_trigger_frames % blinkPeriod) < blinkOnFrames);
+
     tradeboy::spot::SpotUiState ui;
     ui.spot_action_focus = spot_action_focus;
     ui.spot_action_idx = spot_action_idx;
@@ -182,8 +222,12 @@ void App::render() {
         tradeboy::spot::render_spot_screen(
             spot_row_idx,
             spot_action_idx,
-            buy_press_frames > 0,
-            sell_press_frames > 0);
+            buy_flash,
+            sell_flash,
+            font_bold,
+            action_btn_held,
+            l1_btn_held,
+            r1_btn_held);
     }
 
     dec_frame_counter(buy_press_frames);

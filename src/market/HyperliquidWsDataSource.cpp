@@ -90,7 +90,28 @@ static void pclose2(Popen2& p) {
     p.out = nullptr;
     if (p.pid > 0) {
         int st = 0;
-        waitpid(p.pid, &st, 0);
+
+        // Avoid shutdown hangs if the child doesn't exit promptly.
+        // Try TERM first, then KILL after a short timeout.
+        kill(p.pid, SIGTERM);
+        const long long start_ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                                       std::chrono::system_clock::now().time_since_epoch())
+                                       .count();
+        while (true) {
+            pid_t rc = waitpid(p.pid, &st, WNOHANG);
+            if (rc == p.pid) break;
+            if (rc < 0) break;
+
+            const long long now_ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                                          std::chrono::system_clock::now().time_since_epoch())
+                                          .count();
+            if ((now_ms - start_ms) > 1500) {
+                kill(p.pid, SIGKILL);
+                waitpid(p.pid, &st, 0);
+                break;
+            }
+            usleep(50 * 1000);
+        }
     }
     p.pid = -1;
 }

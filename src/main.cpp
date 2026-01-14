@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
     // Clear log file on startup
     FILE* f = fopen("log.txt", "w");
     if (f) {
-        fprintf(f, "--- TradeBoy Log Start ---\n");
+        fprintf(f, "--- TradeBoy Log Start V6 ---\n");
         fclose(f);
     }
 
@@ -70,6 +70,21 @@ int main(int argc, char** argv) {
         mode.w = 720;
         mode.h = 480;
         mode.refresh_rate = 60;
+    }
+
+    // RG34XX: SDL may report a bogus "desktop" size (e.g. 1280x1024) which can
+    // make mali-fbdev fail with "Can't create EGL window surface". Clamp to the
+    // known framebuffer size.
+    if (mode.w != 720 || mode.h != 480) {
+        SDL_DisplayMode desktop;
+        if (SDL_GetDesktopDisplayMode(0, &desktop) == 0) {
+            mode = desktop;
+        }
+        if (mode.w != 720 || mode.h != 480) {
+            mode.w = 720;
+            mode.h = 480;
+            mode.refresh_rate = 60;
+        }
     }
     log_to_file("Display Mode: %dx%d @ %dHz\n", mode.w, mode.h, mode.refresh_rate);
 
@@ -147,12 +162,32 @@ int main(int argc, char** argv) {
         log_to_file("[Main] No font file found, using default\n");
     }
 
+    // Load Bold Font
+    const char* font_path_bold = nullptr;
+    if (file_exists("cour-new-BOLDITALIC.ttf")) font_path_bold = "cour-new-BOLDITALIC.ttf";
+    else if (file_exists("output/cour-new-BOLDITALIC.ttf")) font_path_bold = "output/cour-new-BOLDITALIC.ttf";
+    
+    ImFont* loaded_font_bold = nullptr;
+    if (font_path_bold) {
+         log_to_file("[Main] Loading bold font: %s\n", font_path_bold);
+         ImFontConfig cfg;
+         cfg.OversampleH = 1;
+         cfg.OversampleV = 1;
+         cfg.PixelSnapH = true;
+         // Merge? No, separate font.
+         loaded_font_bold = io.Fonts->AddFontFromFileTTF(font_path_bold, 28.0f, &cfg);
+    }
+
     SDL_Joystick* joy0 = nullptr;
     if (SDL_NumJoysticks() > 0) {
         joy0 = SDL_JoystickOpen(0);
     }
 
-    tradeboy::app::App app;
+    log_to_file("[Main] Allocating App on heap...\n");
+    auto* app_ptr = new tradeboy::app::App();
+    tradeboy::app::App& app = *app_ptr;
+
+    app.font_bold = loaded_font_bold;
     log_to_file("[Main] App constructed\n");
     app.init_demo_data();
     log_to_file("[Main] init_demo_data done\n");
@@ -214,17 +249,45 @@ int main(int argc, char** argv) {
         SDL_GL_SwapWindow(window);
     }
 
+    log_to_file("[Main] main loop exit -> begin shutdown\n");
+
+    log_to_file("[Main] calling app.shutdown()\n");
     app.shutdown();
+    log_to_file("[Main] app.shutdown() done\n");
 
-    if (joy0) SDL_JoystickClose(joy0);
+    log_to_file("[Main] deleting app_ptr\n");
+    delete app_ptr;
+    log_to_file("[Main] delete app_ptr done\n");
 
+    if (joy0) {
+        log_to_file("[Main] SDL_JoystickClose\n");
+        SDL_JoystickClose(joy0);
+        log_to_file("[Main] SDL_JoystickClose done\n");
+    }
+
+    log_to_file("[Main] ImGui_ImplOpenGL3_Shutdown\n");
     ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplSDL2_Shutdown();
-    ImGui::DestroyContext();
+    log_to_file("[Main] ImGui_ImplOpenGL3_Shutdown done\n");
 
+    log_to_file("[Main] ImGui_ImplSDL2_Shutdown\n");
+    ImGui_ImplSDL2_Shutdown();
+    log_to_file("[Main] ImGui_ImplSDL2_Shutdown done\n");
+
+    log_to_file("[Main] ImGui::DestroyContext\n");
+    ImGui::DestroyContext();
+    log_to_file("[Main] ImGui::DestroyContext done\n");
+
+    log_to_file("[Main] SDL_GL_DeleteContext\n");
     SDL_GL_DeleteContext(glctx);
+    log_to_file("[Main] SDL_GL_DeleteContext done\n");
+
+    log_to_file("[Main] SDL_DestroyWindow\n");
     SDL_DestroyWindow(window);
+    log_to_file("[Main] SDL_DestroyWindow done\n");
+
+    log_to_file("[Main] SDL_Quit\n");
     SDL_Quit();
+    log_to_file("[Main] SDL_Quit done\n");
 
     return 0;
 }

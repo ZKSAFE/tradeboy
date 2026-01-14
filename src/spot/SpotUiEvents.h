@@ -50,12 +50,13 @@ inline std::vector<SpotUiEvent> collect_spot_ui_events(const tradeboy::app::Inpu
         if (tradeboy::utils::pressed(in.right, edges.prev.right)) {
             if (ui.spot_action_idx == 0) ev.push_back(SpotUiEvent(SpotUiEventType::SetActionIdx, 1, false));
         }
-        if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
-            const bool buy = (ui.spot_action_idx == 0);
-            ev.push_back(SpotUiEvent(SpotUiEventType::TriggerAction, 0, buy));
-        }
         if (tradeboy::utils::pressed(in.b, edges.prev.b)) {
             ev.push_back(SpotUiEvent(SpotUiEventType::ExitActionFocus, 0, false));
+        }
+        // Trigger on Release (A released)
+        if (!in.a && edges.prev.a) {
+            const bool buy = (ui.spot_action_idx == 0);
+            ev.push_back(SpotUiEvent(SpotUiEventType::TriggerAction, 0, buy));
         }
     } else {
         if (tradeboy::utils::pressed(in.left, edges.prev.left)) {
@@ -64,7 +65,8 @@ inline std::vector<SpotUiEvent> collect_spot_ui_events(const tradeboy::app::Inpu
         if (tradeboy::utils::pressed(in.right, edges.prev.right)) {
             ev.push_back(SpotUiEvent(SpotUiEventType::EnterActionFocus, 1, false));
         }
-        if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
+        // Trigger on Release (A released)
+        if (!in.a && edges.prev.a) {
             ev.push_back(SpotUiEvent(SpotUiEventType::TriggerAction, 0, true));
         }
     }
