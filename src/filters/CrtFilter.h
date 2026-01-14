@@ -1,5 +1,6 @@
 #pragma once
 
+#include "imgui.h"
 #include <SDL_opengles2.h>
 
 namespace tradeboy {
@@ -17,6 +18,8 @@ public:
     void begin();
     void end(float time_seconds);
 
+    void set_overlay_rect_uv(const ImVec4& rect_uv, bool active);
+
     float scan_strength;
     float vignette_strength;
     float rgb_shift;
@@ -26,6 +29,9 @@ public:
     float phosphor_k_rg;
     float phosphor_g_gain;
     float phosphor_b_cut;
+
+    float overlay_blur_strength;
+    float overlay_darken;
 
 private:
     int width_;
@@ -49,6 +55,14 @@ private:
     GLint u_bulge_;
     GLint u_zoom_;
     GLint u_tint_;
+
+    GLint u_overlay_rect_;
+    GLint u_overlay_active_;
+    GLint u_overlay_blur_strength_;
+    GLint u_overlay_darken_;
+
+    ImVec4 overlay_rect_uv_;
+    bool overlay_active_;
 };
 
 } // namespace filters

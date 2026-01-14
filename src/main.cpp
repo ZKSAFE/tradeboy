@@ -96,13 +96,30 @@ int main(int argc, char** argv) {
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
 
-    SDL_Window* window = SDL_CreateWindow(
-        "tradeboy",
-        SDL_WINDOWPOS_UNDEFINED_DISPLAY(0),
-        SDL_WINDOWPOS_UNDEFINED_DISPLAY(0),
-        mode.w,
-        mode.h,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_SHOWN);
+    SDL_Window* window = nullptr;
+    {
+        struct Attempt {
+            const char* name;
+            Uint32 flags;
+        } attempts[] = {
+            {"fullscreen_desktop", SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_SHOWN},
+            {"fullscreen", SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_SHOWN},
+            {"windowed", SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN},
+        };
+
+        for (const auto& a : attempts) {
+            log_to_file("[SDL] CreateWindow attempt: %s flags=0x%x\n", a.name, (unsigned int)a.flags);
+            window = SDL_CreateWindow(
+                "tradeboy",
+                SDL_WINDOWPOS_UNDEFINED_DISPLAY(0),
+                SDL_WINDOWPOS_UNDEFINED_DISPLAY(0),
+                mode.w,
+                mode.h,
+                a.flags);
+            if (window) break;
+            log_to_file("[SDL] CreateWindow attempt failed (%s): %s\n", a.name, SDL_GetError());
+        }
+    }
 
     if (!window) {
         log_to_file("SDL_CreateWindow failed: %s\n", SDL_GetError());
@@ -251,6 +268,7 @@ int main(int argc, char** argv) {
         if (crt.is_ready()) {
             crt.begin();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            crt.set_overlay_rect_uv(app.overlay_rect_uv, app.overlay_rect_active);
             crt.end((float)ImGui::GetTime());
         } else {
             glViewport(0, 0, mode.w, mode.h);

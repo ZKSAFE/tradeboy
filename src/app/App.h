@@ -47,6 +47,17 @@ struct App {
     bool exit_modal_open = false;
     bool quit_requested = false;
 
+    int exit_dialog_selected_btn = 1;
+    int exit_dialog_open_frames = 0;
+    int exit_dialog_flash_frames = 0;
+    int exit_dialog_pending_action = -1; // 0=confirm, 1=cancel
+    bool exit_dialog_closing = false;
+    int exit_dialog_close_frames = 0;
+    bool exit_dialog_quit_after_close = false;
+
+    bool overlay_rect_active = false;
+    ImVec4 overlay_rect_uv = ImVec4(0, 0, 0, 0);
+
     std::string priv_key_hex;
 
     double wallet_usdc = 0.0;

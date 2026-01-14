@@ -17,6 +17,8 @@
 #include "../utils/File.h"
 #include "../utils/Math.h"
 
+#include "../ui/Dialog.h"
+
 extern void log_to_file(const char* fmt, ...);
 
 namespace tradeboy::app {
@@ -151,18 +153,38 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
 
     // Exit modal has highest priority.
     if (exit_modal_open) {
-        if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
-            quit_requested = true;
-            exit_modal_open = false;
+        if (exit_dialog_closing) {
+            return;
         }
-        if (tradeboy::utils::pressed(in.b, edges.prev.b)) {
-            exit_modal_open = false;
+
+        if (exit_dialog_flash_frames <= 0) {
+            if (tradeboy::utils::pressed(in.left, edges.prev.left) || tradeboy::utils::pressed(in.right, edges.prev.right)) {
+                exit_dialog_selected_btn = 1 - exit_dialog_selected_btn;
+            }
+            if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
+                exit_dialog_pending_action = exit_dialog_selected_btn;
+                exit_dialog_flash_frames = 24;
+            }
+            if (tradeboy::utils::pressed(in.b, edges.prev.b)) {
+                exit_dialog_closing = true;
+                exit_dialog_close_frames = 0;
+                exit_dialog_quit_after_close = false;
+                exit_dialog_flash_frames = 0;
+                exit_dialog_pending_action = -1;
+            }
         }
         return;
     }
 
     if (tradeboy::utils::pressed(in.m, edges.prev.m)) {
         exit_modal_open = true;
+        exit_dialog_selected_btn = 1;
+        exit_dialog_open_frames = 0;
+        exit_dialog_flash_frames = 0;
+        exit_dialog_pending_action = -1;
+        exit_dialog_closing = false;
+        exit_dialog_close_frames = 0;
+        exit_dialog_quit_after_close = false;
         return;
     }
 
@@ -234,14 +256,55 @@ void App::render() {
     dec_frame_counter(sell_press_frames);
     tradeboy::windows::render(num_input);
 
-    if (exit_modal_open) {
-        ImGui::OpenPopup("Exit");
+    // Process exit dialog flash -> trigger closing when finished.
+    if (exit_modal_open && !exit_dialog_closing && exit_dialog_flash_frames > 0) {
+        exit_dialog_flash_frames--;
+        if (exit_dialog_flash_frames == 0 && exit_dialog_pending_action >= 0) {
+            exit_dialog_closing = true;
+            exit_dialog_close_frames = 0;
+            exit_dialog_quit_after_close = (exit_dialog_pending_action == 0);
+            exit_dialog_pending_action = -1;
+        }
     }
-    if (ImGui::BeginPopupModal("Exit", &exit_modal_open, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextUnformatted("Exit TradeBoy?");
-        ImGui::Separator();
-        ImGui::TextUnformatted("A: Exit   B: Cancel");
-        ImGui::EndPopup();
+
+    // Close animation
+    if (exit_modal_open && exit_dialog_closing) {
+        const int close_dur = 18;
+        exit_dialog_close_frames++;
+        if (exit_dialog_close_frames >= close_dur) {
+            exit_modal_open = false;
+            exit_dialog_closing = false;
+            exit_dialog_close_frames = 0;
+            if (exit_dialog_quit_after_close) {
+                quit_requested = true;
+            }
+            exit_dialog_quit_after_close = false;
+        }
+    }
+
+    overlay_rect_active = false;
+    overlay_rect_uv = ImVec4(0, 0, 0, 0);
+
+    if (exit_modal_open) {
+        float open_t = 1.0f;
+        if (!exit_dialog_closing) {
+            if (exit_dialog_open_frames < 18) exit_dialog_open_frames++;
+            open_t = (float)exit_dialog_open_frames / 18.0f;
+        } else {
+            const int close_dur = 18;
+            open_t = 1.0f - (float)exit_dialog_close_frames / (float)close_dur;
+        }
+
+        tradeboy::ui::render_dialog("ExitDialog",
+                                    "> ",
+                                    "Exit TradeBoy?",
+                                    "EXIT",
+                                    "CANCEL",
+                                    &exit_dialog_selected_btn,
+                                    exit_dialog_flash_frames,
+                                    open_t,
+                                    font_bold,
+                                    nullptr);
     }
 }
 

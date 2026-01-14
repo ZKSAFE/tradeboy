@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "ui/MatrixTheme.h"
+
 namespace tradeboy::spot {
 
 struct Coin {
@@ -25,15 +27,6 @@ static std::vector<Coin> MOCK_COINS = {
     {"6", "XRP", "Ripple", 0.60, 1.1, 0.0},
     {"7", "DOT", "Polkadot", 7.20, -0.8, 0.0},
 };
-
-namespace MatrixTheme {
-static const ImU32 BG = IM_COL32(0, 0, 0, 255);
-static const ImU32 TEXT = IM_COL32(0, 255, 65, 255);
-static const ImU32 DIM = IM_COL32(0, 143, 17, 255);
-static const ImU32 DARK = IM_COL32(0, 59, 0, 255);
-static const ImU32 ALERT = IM_COL32(255, 0, 85, 255);
-static const ImU32 BLACK = IM_COL32(0, 0, 0, 255);
-}
 
 static void DrawGlowText(ImDrawList* dl, const ImVec2& pos, const char* text, ImU32 color, ImFont* font = nullptr, float fontSize = 0.0f) {
     if (!dl || !text) return;

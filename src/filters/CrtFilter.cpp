@@ -57,6 +57,8 @@ CrtFilter::CrtFilter()
     , phosphor_k_rg(0.40f)
     , phosphor_g_gain(1.14f)
     , phosphor_b_cut(0.22f)
+    , overlay_blur_strength(1.0f)
+    , overlay_darken(0.55f)
     , width_(0)
     , height_(0)
     , prog_(0)
@@ -74,7 +76,13 @@ CrtFilter::CrtFilter()
     , u_rgb_shift_(-1)
     , u_bulge_(-1)
     , u_zoom_(-1)
-    , u_tint_(-1) {}
+    , u_tint_(-1)
+    , u_overlay_rect_(-1)
+    , u_overlay_active_(-1)
+    , u_overlay_blur_strength_(-1)
+    , u_overlay_darken_(-1)
+    , overlay_rect_uv_(0, 0, 0, 0)
+    , overlay_active_(false) {}
 
 bool CrtFilter::init(int width, int height) {
     shutdown();
@@ -103,13 +111,18 @@ bool CrtFilter::init(int width, int height) {
         "uniform float uBulge;\n"
         "uniform float uZoom;\n"
         "uniform vec3 uTint;\n"
+        "uniform vec4 uOverlayRect;\n"
+        "uniform float uOverlayActive;\n"
+        "uniform float uOverlayBlurStrength;\n"
+        "uniform float uOverlayDarken;\n"
         "float hash12(vec2 p){\n"
         "  vec3 p3 = fract(vec3(p.xyx) * 0.1031);\n"
         "  p3 += dot(p3, p3.yzx + 33.33);\n"
         "  return fract((p3.x + p3.y) * p3.z);\n"
         "}\n"
         "void main(){\n"
-        "  vec2 uv = vUV;\n"
+        "  vec2 baseUV = vUV;\n"
+        "  vec2 uv = baseUV;\n"
         "  uv = (uv - 0.5) / uZoom + 0.5;\n"
         "  vec2 c = uv * 2.0 - 1.0;\n"
         "  float r2 = dot(c,c);\n"
@@ -120,7 +133,22 @@ bool CrtFilter::init(int width, int height) {
         "  }\n"
         "  vec2 px = vec2(1.0 / uResolution.x, 1.0 / uResolution.y);\n"
         "  vec2 shift = vec2(uRgbShift * px.x, 0.0);\n"
+        "  bool outsideOverlay = false;\n"
+        "  if (uOverlayActive > 0.5) {\n"
+        "    outsideOverlay = (baseUV.x < uOverlayRect.x || baseUV.x > uOverlayRect.z || baseUV.y < uOverlayRect.y || baseUV.y > uOverlayRect.w);\n"
+        "  }\n"
         "  vec4 colC = texture2D(uTex, uv);\n"
+        "  if (outsideOverlay) {\n"
+        "    float s = uOverlayBlurStrength;\n"
+        "    vec2 o = px * (1.5 * s);\n"
+        "    vec3 c0 = texture2D(uTex, uv).rgb;\n"
+        "    vec3 c1 = texture2D(uTex, uv + vec2(o.x, 0.0)).rgb;\n"
+        "    vec3 c2 = texture2D(uTex, uv - vec2(o.x, 0.0)).rgb;\n"
+        "    vec3 c3 = texture2D(uTex, uv + vec2(0.0, o.y)).rgb;\n"
+        "    vec3 c4 = texture2D(uTex, uv - vec2(0.0, o.y)).rgb;\n"
+        "    vec3 cb = (c0 * 0.40 + (c1 + c2 + c3 + c4) * 0.15);\n"
+        "    colC = vec4(cb, 1.0);\n"
+        "  }\n"
         "  float r = texture2D(uTex, uv + shift).r;\n"
         "  float g = colC.g;\n"
         "  float b = texture2D(uTex, uv - shift).b;\n"
@@ -146,6 +174,9 @@ bool CrtFilter::init(int width, int height) {
         "  col.g = g2;\n"
         "  col.b = mix(col.b, col.b * (1.0 - bCut), w);\n"
         "  col = clamp(col, 0.0, 1.0);\n"
+        "  if (outsideOverlay) {\n"
+        "    col *= (1.0 - uOverlayDarken);\n"
+        "  }\n"
         "  gl_FragColor = vec4(col, 1.0);\n"
         "}\n";
 
@@ -171,6 +202,10 @@ bool CrtFilter::init(int width, int height) {
     u_bulge_ = glGetUniformLocation(prog_, "uBulge");
     u_zoom_ = glGetUniformLocation(prog_, "uZoom");
     u_tint_ = glGetUniformLocation(prog_, "uTint");
+    u_overlay_rect_ = glGetUniformLocation(prog_, "uOverlayRect");
+    u_overlay_active_ = glGetUniformLocation(prog_, "uOverlayActive");
+    u_overlay_blur_strength_ = glGetUniformLocation(prog_, "uOverlayBlurStrength");
+    u_overlay_darken_ = glGetUniformLocation(prog_, "uOverlayDarken");
 
     glGenTextures(1, &tex_);
     glBindTexture(GL_TEXTURE_2D, tex_);
@@ -241,8 +276,18 @@ void CrtFilter::shutdown() {
     u_zoom_ = -1;
     u_tint_ = -1;
 
+    u_overlay_rect_ = -1;
+    u_overlay_active_ = -1;
+    u_overlay_blur_strength_ = -1;
+    u_overlay_darken_ = -1;
+
     width_ = 0;
     height_ = 0;
+}
+
+void CrtFilter::set_overlay_rect_uv(const ImVec4& rect_uv, bool active) {
+    overlay_rect_uv_ = rect_uv;
+    overlay_active_ = active;
 }
 
 bool CrtFilter::is_ready() const {
@@ -282,6 +327,12 @@ void CrtFilter::end(float time_seconds) {
     if (u_bulge_ >= 0) glUniform1f(u_bulge_, bulge);
     if (u_zoom_ >= 0) glUniform1f(u_zoom_, zoom);
     if (u_tint_ >= 0) glUniform3f(u_tint_, phosphor_k_rg, phosphor_g_gain, phosphor_b_cut);
+
+    if (u_overlay_rect_ >= 0)
+        glUniform4f(u_overlay_rect_, overlay_rect_uv_.x, overlay_rect_uv_.y, overlay_rect_uv_.z, overlay_rect_uv_.w);
+    if (u_overlay_active_ >= 0) glUniform1f(u_overlay_active_, overlay_active_ ? 1.0f : 0.0f);
+    if (u_overlay_blur_strength_ >= 0) glUniform1f(u_overlay_blur_strength_, overlay_blur_strength);
+    if (u_overlay_darken_ >= 0) glUniform1f(u_overlay_darken_, overlay_darken);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     glEnableVertexAttribArray(0);
