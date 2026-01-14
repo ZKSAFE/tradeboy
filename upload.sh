@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# TradeBoy安装脚本 v2.0
+# TradeBoy上传到掌机脚本 v2.0
 # 自动部署到RG34XX掌机 - 支持OpenGL ES
 # 作者: Cascade (AI Assistant)
-# 项目: TradeBoy - RG34XX交易平台
+# 项目: TradeBoy - RG34XX交易机
 
 set -e
 

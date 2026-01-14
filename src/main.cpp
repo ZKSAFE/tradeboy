@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <cstdarg>
+#include <cmath>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -37,6 +38,43 @@ static bool dir_exists(const char* path) {
     struct stat st;
     if (stat(path, &st) != 0) return false;
     return S_ISDIR(st.st_mode);
+}
+
+static GLuint compile_shader(GLenum type, const char* src) {
+    GLuint sh = glCreateShader(type);
+    glShaderSource(sh, 1, &src, nullptr);
+    glCompileShader(sh);
+    GLint ok = 0;
+    glGetShaderiv(sh, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+        GLchar logbuf[1024];
+        GLsizei n = 0;
+        glGetShaderInfoLog(sh, (GLsizei)sizeof(logbuf), &n, logbuf);
+        log_to_file("[CRT] shader compile failed: %s\n", logbuf);
+        glDeleteShader(sh);
+        return 0;
+    }
+    return sh;
+}
+
+static GLuint link_program(GLuint vs, GLuint fs) {
+    GLuint prog = glCreateProgram();
+    glAttachShader(prog, vs);
+    glAttachShader(prog, fs);
+    glBindAttribLocation(prog, 0, "aPos");
+    glBindAttribLocation(prog, 1, "aUV");
+    glLinkProgram(prog);
+    GLint ok = 0;
+    glGetProgramiv(prog, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        GLchar logbuf[1024];
+        GLsizei n = 0;
+        glGetProgramInfoLog(prog, (GLsizei)sizeof(logbuf), &n, logbuf);
+        log_to_file("[CRT] program link failed: %s\n", logbuf);
+        glDeleteProgram(prog);
+        return 0;
+    }
+    return prog;
 }
 
 int main(int argc, char** argv) {
@@ -133,6 +171,145 @@ int main(int argc, char** argv) {
     const char* glsl_version = "#version 100";
     ImGui_ImplSDL2_InitForOpenGL(window, glctx);
     ImGui_ImplOpenGL3_Init(glsl_version);
+
+    // CRT post-process (FBO + fullscreen quad)
+    const char* crt_vs_src =
+        "attribute vec2 aPos;\n"
+        "attribute vec2 aUV;\n"
+        "varying vec2 vUV;\n"
+        "void main(){\n"
+        "  vUV = aUV;\n"
+        "  gl_Position = vec4(aPos, 0.0, 1.0);\n"
+        "}\n";
+
+    const char* crt_fs_src =
+        "precision mediump float;\n"
+        "varying vec2 vUV;\n"
+        "uniform sampler2D uTex;\n"
+        "uniform vec2 uResolution;\n"
+        "uniform float uTime;\n"
+        "uniform float uScanStrength;\n"
+        "uniform float uVignetteStrength;\n"
+        "uniform float uRgbShift;\n"
+        "uniform float uBulge;\n"
+        "uniform float uZoom;\n"
+
+        "float hash12(vec2 p){\n"
+        "  vec3 p3 = fract(vec3(p.xyx) * 0.1031);\n"
+        "  p3 += dot(p3, p3.yzx + 33.33);\n"
+        "  return fract((p3.x + p3.y) * p3.z);\n"
+        "}\n"
+
+        "void main(){\n"
+        "  vec2 uv = vUV;\n"
+        "  uv = (uv - 0.5) / uZoom + 0.5;\n"
+        "  vec2 c = uv * 2.0 - 1.0;\n"
+        "  float r2 = dot(c,c);\n"
+        "  uv = (c * (1.0 + uBulge * r2)) * 0.5 + 0.5;\n"
+        "  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {\n"
+        "    gl_FragColor = vec4(0.0,0.0,0.0,1.0);\n"
+        "    return;\n"
+        "  }\n"
+
+        "  vec2 px = vec2(1.0 / uResolution.x, 1.0 / uResolution.y);\n"
+        "  vec2 shift = vec2(uRgbShift * px.x, 0.0);\n"
+        "  vec4 colC = texture2D(uTex, uv);\n"
+        "  float r = texture2D(uTex, uv + shift).r;\n"
+        "  float g = colC.g;\n"
+        "  float b = texture2D(uTex, uv - shift).b;\n"
+        "  vec3 col = vec3(r,g,b);\n"
+
+        "  float scan = 0.5 + 0.5 * sin((uv.y * uResolution.y) * 3.14159);\n"
+        "  col *= 1.0 - uScanStrength * scan;\n"
+
+        "  vec2 dv = uv - 0.5;\n"
+        "  float vig = 1.0 - uVignetteStrength * smoothstep(0.15, 0.70, dot(dv,dv));\n"
+        "  col *= vig;\n"
+
+        "  float n = (hash12(uv * uResolution + uTime * 60.0) - 0.5) * 0.02;\n"
+        "  col += n;\n"
+        "  gl_FragColor = vec4(col, 1.0);\n"
+        "}\n";
+
+    GLuint crt_vs = compile_shader(GL_VERTEX_SHADER, crt_vs_src);
+    GLuint crt_fs = compile_shader(GL_FRAGMENT_SHADER, crt_fs_src);
+    GLuint crt_prog = 0;
+    if (crt_vs && crt_fs) {
+        crt_prog = link_program(crt_vs, crt_fs);
+    }
+
+    GLint crt_uTex = -1;
+    GLint crt_uResolution = -1;
+    GLint crt_uTime = -1;
+    GLint crt_uScanStrength = -1;
+    GLint crt_uVignetteStrength = -1;
+    GLint crt_uRgbShift = -1;
+    GLint crt_uBulge = -1;
+    GLint crt_uZoom = -1;
+
+    if (crt_prog) {
+        crt_uTex = glGetUniformLocation(crt_prog, "uTex");
+        crt_uResolution = glGetUniformLocation(crt_prog, "uResolution");
+        crt_uTime = glGetUniformLocation(crt_prog, "uTime");
+        crt_uScanStrength = glGetUniformLocation(crt_prog, "uScanStrength");
+        crt_uVignetteStrength = glGetUniformLocation(crt_prog, "uVignetteStrength");
+        crt_uRgbShift = glGetUniformLocation(crt_prog, "uRgbShift");
+        crt_uBulge = glGetUniformLocation(crt_prog, "uBulge");
+        crt_uZoom = glGetUniformLocation(crt_prog, "uZoom");
+    }
+
+    GLuint crt_fbo = 0;
+    GLuint crt_tex = 0;
+    GLuint crt_depth = 0;
+    if (crt_prog) {
+        glGenTextures(1, &crt_tex);
+        glBindTexture(GL_TEXTURE_2D, crt_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, mode.w, mode.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        glGenRenderbuffers(1, &crt_depth);
+        glBindRenderbuffer(GL_RENDERBUFFER, crt_depth);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, mode.w, mode.h);
+        glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+        glGenFramebuffers(1, &crt_fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, crt_fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, crt_tex, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, crt_depth);
+        GLenum fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        if (fb_status != GL_FRAMEBUFFER_COMPLETE) {
+            log_to_file("[CRT] FBO incomplete: 0x%x\n", (unsigned int)fb_status);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glDeleteFramebuffers(1, &crt_fbo);
+            glDeleteRenderbuffers(1, &crt_depth);
+            glDeleteTextures(1, &crt_tex);
+            crt_fbo = 0;
+            crt_depth = 0;
+            crt_tex = 0;
+            glDeleteProgram(crt_prog);
+            crt_prog = 0;
+        } else {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
+    }
+
+    GLuint crt_vbo = 0;
+    if (crt_prog && crt_fbo) {
+        const float quad[] = {
+            -1.0f, -1.0f, 0.0f, 0.0f,
+             1.0f, -1.0f, 1.0f, 0.0f,
+            -1.0f,  1.0f, 0.0f, 1.0f,
+             1.0f,  1.0f, 1.0f, 1.0f,
+        };
+        glGenBuffers(1, &crt_vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, crt_vbo);
+        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(quad), quad, GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
 
     // Font: prefer bundled cour-new.ttf for readable UI on 720x480.
     const char* font_path = nullptr;
@@ -241,11 +418,52 @@ int main(int argc, char** argv) {
 
         ImGui::Render();
 
-        glViewport(0, 0, mode.w, mode.h);
-        glClearColor(0.10f, 0.11f, 0.09f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        if (crt_prog && crt_fbo && crt_tex && crt_vbo) {
+            glBindFramebuffer(GL_FRAMEBUFFER, crt_fbo);
+            glViewport(0, 0, mode.w, mode.h);
+            glClearColor(0.10f, 0.11f, 0.09f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, mode.w, mode.h);
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_CULL_FACE);
+            glDisable(GL_BLEND);
+
+            glUseProgram(crt_prog);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, crt_tex);
+            if (crt_uTex >= 0) glUniform1i(crt_uTex, 0);
+            if (crt_uResolution >= 0) glUniform2f(crt_uResolution, (float)mode.w, (float)mode.h);
+            if (crt_uTime >= 0) glUniform1f(crt_uTime, (float)ImGui::GetTime());
+            if (crt_uScanStrength >= 0) glUniform1f(crt_uScanStrength, 0.20f);
+            if (crt_uVignetteStrength >= 0) glUniform1f(crt_uVignetteStrength, 0.75f);
+            if (crt_uRgbShift >= 0) glUniform1f(crt_uRgbShift, 1.60f);
+            if (crt_uBulge >= 0) glUniform1f(crt_uBulge, 0.03f);
+            if (crt_uZoom >= 0) glUniform1f(crt_uZoom, 1.02f);
+
+            glBindBuffer(GL_ARRAY_BUFFER, crt_vbo);
+            glEnableVertexAttribArray(0);
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * (GLsizei)sizeof(float), (const void*)0);
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * (GLsizei)sizeof(float), (const void*)(2 * sizeof(float)));
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            glDisableVertexAttribArray(0);
+            glDisableVertexAttribArray(1);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            glUseProgram(0);
+        } else {
+            glViewport(0, 0, mode.w, mode.h);
+            glClearColor(0.10f, 0.11f, 0.09f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        }
+
         SDL_GL_SwapWindow(window);
     }
 
@@ -280,6 +498,14 @@ int main(int argc, char** argv) {
     log_to_file("[Main] SDL_GL_DeleteContext\n");
     SDL_GL_DeleteContext(glctx);
     log_to_file("[Main] SDL_GL_DeleteContext done\n");
+
+    if (crt_vbo) glDeleteBuffers(1, &crt_vbo);
+    if (crt_fbo) glDeleteFramebuffers(1, &crt_fbo);
+    if (crt_depth) glDeleteRenderbuffers(1, &crt_depth);
+    if (crt_tex) glDeleteTextures(1, &crt_tex);
+    if (crt_prog) glDeleteProgram(crt_prog);
+    if (crt_vs) glDeleteShader(crt_vs);
+    if (crt_fs) glDeleteShader(crt_fs);
 
     log_to_file("[Main] SDL_DestroyWindow\n");
     SDL_DestroyWindow(window);
