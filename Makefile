@@ -25,6 +25,7 @@ IMGUI_DEMO_SOURCES = src/demos/imgui-demo.cpp
 TRADEBOY_SOURCES = \
 	src/main.cpp \
 	src/filters/CrtFilter.cpp \
+	src/ui/MatrixBackground.cpp \
 	src/ui/Dialog.cpp \
 	src/app/App.cpp \
 	src/app/Input.cpp \
@@ -35,8 +36,8 @@ TRADEBOY_SOURCES = \
 	src/model/TradeModel.cpp \
 	src/utils/File.cpp \
 	src/utils/Format.cpp \
-	src/windows/NumInputWindow.cpp \
-	src/spot/SpotScreen.cpp
+	src/spot/SpotScreen.cpp \
+	src/spotOrder/SpotOrderScreen.cpp
 
 # ImGui sources
 IMGUI_DIR = third_party/imgui

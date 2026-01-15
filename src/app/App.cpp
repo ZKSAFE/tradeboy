@@ -10,12 +10,14 @@
 
 #include "../spot/SpotScreen.h"
 #include "../spot/SpotUiEvents.h"
+#include "../spotOrder/SpotOrderScreen.h"
 #include "../market/MarketDataService.h"
 #include "../market/HyperliquidWgetDataSource.h"
 #include "../market/HyperliquidWsDataSource.h"
 #include "../model/TradeModel.h"
 #include "../utils/File.h"
 #include "../utils/Math.h"
+#include "../ui/MatrixBackground.h"
 
 #include "../ui/Dialog.h"
 
@@ -106,7 +108,7 @@ void App::dec_frame_counter(int& v) {
     if (v > 0) v--;
 }
 
-void App::open_spot_trade(bool buy) {
+void App::open_spot_order(bool buy) {
     tradeboy::model::TradeModelSnapshot snap = model.snapshot();
     if (snap.spot_rows.empty()) return;
     if (spot_row_idx < 0 || spot_row_idx >= (int)snap.spot_rows.size()) return;
@@ -117,7 +119,9 @@ void App::open_spot_trade(bool buy) {
     } else {
         maxv = row.balance;
     }
-    num_input.reset(row.sym, buy, maxv);
+
+    tradeboy::spotOrder::Side side = buy ? tradeboy::spotOrder::Side::Buy : tradeboy::spotOrder::Side::Sell;
+    spot_order.open_with(row, side, maxv);
 }
 
 void App::apply_spot_ui_events(const std::vector<tradeboy::spot::SpotUiEvent>& ev) {
@@ -188,7 +192,7 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
         return;
     }
 
-    if (tradeboy::windows::handle_input(num_input, in, edges)) {
+    if (tradeboy::spotOrder::handle_input(spot_order, in, edges)) {
         return;
     }
     
@@ -218,11 +222,11 @@ void App::render() {
     // Process triggers
     if (buy_trigger_frames > 0) {
         buy_trigger_frames--;
-        if (buy_trigger_frames == 0) open_spot_trade(true);
+        if (buy_trigger_frames == 0) open_spot_order(true);
     }
     if (sell_trigger_frames > 0) {
         sell_trigger_frames--;
-        if (sell_trigger_frames == 0) open_spot_trade(false);
+        if (sell_trigger_frames == 0) open_spot_order(false);
     }
 
     // Flash logic: faster blink while trigger is active.
@@ -238,9 +242,18 @@ void App::render() {
     ui.buy_press_frames = buy_press_frames;
     ui.sell_press_frames = sell_press_frames;
 
+    // Shared background layer (grid)
+    {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        ImVec2 size = ImGui::GetContentRegionAvail();
+        tradeboy::ui::render_matrix_grid(dl, p, size);
+    }
+
     // Spot page now uses the new UI demo layout. Data layer is intentionally
     // not connected yet (render uses mock data only).
-    if (tab == Tab::Spot) {
+    // Hide Spot page while order page is open to avoid overlap.
+    if (tab == Tab::Spot && !spot_order.open) {
         tradeboy::spot::render_spot_screen(
             spot_row_idx,
             spot_action_idx,
@@ -254,7 +267,7 @@ void App::render() {
 
     dec_frame_counter(buy_press_frames);
     dec_frame_counter(sell_press_frames);
-    tradeboy::windows::render(num_input);
+    tradeboy::spotOrder::render(spot_order, font_bold);
 
     // Process exit dialog flash -> trigger closing when finished.
     if (exit_modal_open && !exit_dialog_closing && exit_dialog_flash_frames > 0) {

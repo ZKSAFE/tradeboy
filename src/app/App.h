@@ -7,7 +7,7 @@
 
 #include "imgui.h"
 
-#include "../windows/NumInputWindow.h"
+#include "../spotOrder/SpotOrderScreen.h"
 #include "../market/IMarketDataSource.h"
 #include "../market/MarketDataService.h"
 #include "../model/TradeModel.h"
@@ -42,7 +42,7 @@ struct App {
     bool l1_btn_held = false;
     bool r1_btn_held = false;
 
-    tradeboy::windows::NumInputState num_input;
+    tradeboy::spotOrder::SpotOrderState spot_order;
 
     bool exit_modal_open = false;
     bool quit_requested = false;
@@ -76,7 +76,7 @@ struct App {
     void load_private_key();
     static void dec_frame_counter(int& v);
 
-    void open_spot_trade(bool buy);
+    void open_spot_order(bool buy);
 
     void apply_spot_ui_events(const std::vector<tradeboy::spot::SpotUiEvent>& ev);
 

@@ -57,28 +57,6 @@ void render_spot_screen(int selected_row_idx, int action_idx, bool buy_pressed, 
     selected_row_idx = std::max(0, std::min((int)MOCK_COINS.size() - 1, selected_row_idx));
     action_idx = std::max(0, std::min(1, action_idx));
 
-    // Background grid
-    const float gridStep = 40.0f;
-    ImU32 gridCol = IM_COL32(0, 255, 65, 20);
-    
-    // Draw center lines first
-    float cx = p.x + size.x * 0.5f;
-    float cy = p.y + size.y * 0.5f;
-    
-    dl->AddLine(ImVec2(cx, p.y), ImVec2(cx, p.y + size.y), gridCol);
-    dl->AddLine(ImVec2(p.x, cy), ImVec2(p.x + size.x, cy), gridCol);
-
-    // Vertical lines from center out
-    for (float x = gridStep; x < size.x * 0.5f; x += gridStep) {
-        dl->AddLine(ImVec2(cx + x, p.y), ImVec2(cx + x, p.y + size.y), gridCol);
-        dl->AddLine(ImVec2(cx - x, p.y), ImVec2(cx - x, p.y + size.y), gridCol);
-    }
-    // Horizontal lines from center out
-    for (float y = gridStep; y < size.y * 0.5f; y += gridStep) {
-        dl->AddLine(ImVec2(p.x, cy + y), ImVec2(p.x + size.x, cy + y), gridCol);
-        dl->AddLine(ImVec2(p.x, cy - y), ImVec2(p.x + size.x, cy - y), gridCol);
-    }
-
     const float padding = 16.0f;
     const float headerH = 54.0f;
     const float footerH = 55.0f; // Increased to move footer up
