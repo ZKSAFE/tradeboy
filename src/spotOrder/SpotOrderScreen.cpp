@@ -27,6 +27,9 @@ void SpotOrderState::open_with(const tradeboy::model::SpotRow& row, Side in_side
 
     flash_timer = 0;
     flash_btn_idx = -1;
+
+    l1_flash_timer = 0;
+    r1_flash_timer = 0;
 }
 
 void SpotOrderState::close() {
@@ -92,6 +95,9 @@ static void adjust_percent_step(SpotOrderState& st, int delta) {
 bool handle_input(SpotOrderState& st, const tradeboy::app::InputState& in, const tradeboy::app::EdgeState& edges) {
     if (!st.open) return false;
 
+    if (st.l1_flash_timer > 0) st.l1_flash_timer--;
+    if (st.r1_flash_timer > 0) st.r1_flash_timer--;
+
     // Handle flash animation
     if (st.flash_timer > 0) {
         st.flash_timer--;
@@ -114,32 +120,47 @@ bool handle_input(SpotOrderState& st, const tradeboy::app::InputState& in, const
         return true;
     }
 
-    if (tradeboy::utils::pressed(in.l1, edges.prev.l1)) adjust_percent_step(st, -5);
-    if (tradeboy::utils::pressed(in.r1, edges.prev.r1)) adjust_percent_step(st, +5);
+    if (tradeboy::utils::pressed(in.l1, edges.prev.l1)) {
+        adjust_percent_step(st, -5);
+        st.l1_flash_timer = 6;
+    }
+    if (tradeboy::utils::pressed(in.r1, edges.prev.r1)) {
+        adjust_percent_step(st, +5);
+        st.r1_flash_timer = 6;
+    }
 
     if (tradeboy::utils::pressed(in.up, edges.prev.up)) {
-        if (st.footer_idx != -1) {
-            st.footer_idx = -1;
-        } else {
+        // Footer does not move up/down.
+        if (st.footer_idx == -1) {
             st.grid_r = tradeboy::utils::clampi(st.grid_r - 1, 0, 3);
         }
     }
     if (tradeboy::utils::pressed(in.down, edges.prev.down)) {
-        if (st.grid_r == 3) {
-            st.footer_idx = 0;
-        } else {
+        // Footer does not move up/down. DEL down should not enter footer.
+        if (st.footer_idx == -1) {
             st.grid_r = tradeboy::utils::clampi(st.grid_r + 1, 0, 3);
         }
     }
 
     if (tradeboy::utils::pressed(in.left, edges.prev.left)) {
-        if (st.footer_idx == 1) st.footer_idx = 0;
-        else if (st.footer_idx == -1) st.grid_c = tradeboy::utils::clampi(st.grid_c - 1, 0, 2);
+        if (st.footer_idx == 1) {
+            // X can only move left to CONFIRM
+            st.footer_idx = 0;
+        } else if (st.footer_idx == 0) {
+            // CONFIRM moves left into DEL
+            st.footer_idx = -1;
+            st.grid_r = 3;
+            st.grid_c = 2;
+        } else if (st.footer_idx == -1) {
+            st.grid_c = tradeboy::utils::clampi(st.grid_c - 1, 0, 2);
+        }
     }
     if (tradeboy::utils::pressed(in.right, edges.prev.right)) {
-        if (st.footer_idx == 0) st.footer_idx = 1;
-        else if (st.footer_idx == -1) {
-            // Special case: from DEL (3,2) to CONFIRM (footer_idx = 0)
+        if (st.footer_idx == 0) {
+            // CONFIRM moves right to X
+            st.footer_idx = 1;
+        } else if (st.footer_idx == -1) {
+            // Footer sits to the right of DEL.
             if (st.grid_r == 3 && st.grid_c == 2) {
                 st.footer_idx = 0;
             } else {
@@ -402,7 +423,8 @@ void render(SpotOrderState& st, ImFont* font_bold) {
 
     // Draw Available Value
     char alloc_val[64];
-    std::snprintf(alloc_val, sizeof(alloc_val), "%.2f USD", st.max_possible); // Assuming USD for now or quote
+    const char* alloc_ccy = (st.side == Side::Buy) ? "USDC" : st.sym.c_str();
+    std::snprintf(alloc_val, sizeof(alloc_val), "%.2f %s", st.max_possible, alloc_ccy);
     // Centered below title
     ImVec2 av_sz = font_bold ? font_bold->CalcTextSizeA(alloc_font, FLT_MAX, 0.0f, alloc_val) : ImGui::CalcTextSize(alloc_val);
     if (font_bold) {
@@ -453,11 +475,12 @@ void render(SpotOrderState& st, ImFont* font_bold) {
     float gy = guide_y + (guide_h - 18.0f) * 0.5f; // Center vertically
     
     // Helper to draw tag like SpotScreen
-    auto draw_spot_tag = [&](float x_pos, float y_pos, const char* tag, const char* label) {
+    auto draw_spot_tag = [&](float x_pos, float y_pos, const char* tag, const char* label, bool flash_on) {
         float tagW = 24.0f;
         float tagH = 18.0f;
-        
-        dl->AddRectFilled(ImVec2(x_pos, y_pos), ImVec2(x_pos + tagW, y_pos + tagH), dim, 0.0f);
+
+        ImU32 tagBg = flash_on ? text : dim;
+        dl->AddRectFilled(ImVec2(x_pos, y_pos), ImVec2(x_pos + tagW, y_pos + tagH), tagBg, 0.0f);
         
         ImVec2 tsz = ImGui::CalcTextSize(tag);
         float ttx = x_pos + (tagW - tsz.x) * 0.5f;
@@ -478,9 +501,9 @@ void render(SpotOrderState& st, ImFont* font_bold) {
     float total_lr_w = l1_w + gap_lr + r1_w;
     
     float start_x = right_x + (right_w - total_lr_w) * 0.5f;
-    
-    draw_spot_tag(start_x, gy, "L1", "-5%");
-    draw_spot_tag(start_x + l1_w + gap_lr, gy, "R1", "+5%");
+
+    draw_spot_tag(start_x, gy, "L1", "-5%", st.l1_flash_timer > 0);
+    draw_spot_tag(start_x + l1_w + gap_lr, gy, "R1", "+5%", st.r1_flash_timer > 0);
     ImGui::SetWindowFontScale(1.0f);
 
     // --- Footer actions ---

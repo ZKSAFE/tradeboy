@@ -18,7 +18,7 @@ struct Coin {
     double holdings;
 };
 
-static std::vector<Coin> MOCK_COINS = {
+static const Coin MOCK_COINS_ARR[] = {
     {"1", "BTC", "Bitcoin", 64230.50, 2.4, 0.15},
     {"2", "ETH", "Ethereum", 3450.12, -1.2, 2.5},
     {"3", "SOL", "Solana", 145.60, 5.8, 100.0},
@@ -28,27 +28,18 @@ static std::vector<Coin> MOCK_COINS = {
     {"7", "DOT", "Polkadot", 7.20, -0.8, 0.0},
 };
 
-static void DrawGlowText(ImDrawList* dl, const ImVec2& pos, const char* text, ImU32 color, ImFont* font = nullptr, float fontSize = 0.0f) {
-    if (!dl || !text) return;
-    ImU32 glowCol = (color & 0x00FFFFFF) | 0x40000000;
-    
-    if (font) {
-        if (fontSize <= 0.0f) fontSize = font->LegacySize;
-        dl->AddText(font, fontSize, ImVec2(pos.x + 1, pos.y + 1), glowCol, text);
-        dl->AddText(font, fontSize, ImVec2(pos.x - 1, pos.y - 1), glowCol, text);
-        dl->AddText(font, fontSize, pos, color, text);
-    } else {
-        // Use default font (handling current font scale if active)
-        dl->AddText(ImVec2(pos.x + 1, pos.y + 1), glowCol, text);
-        dl->AddText(ImVec2(pos.x - 1, pos.y - 1), glowCol, text);
-        dl->AddText(pos, color, text);
-    }
-}
+static std::vector<Coin> MOCK_COINS(
+    MOCK_COINS_ARR,
+    MOCK_COINS_ARR + (sizeof(MOCK_COINS_ARR) / sizeof(MOCK_COINS_ARR[0])));
 
 void render_spot_screen(int selected_row_idx, int action_idx, bool buy_pressed, bool sell_pressed, ImFont* font_bold, bool action_btn_held, bool l1_btn_held, bool r1_btn_held) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 p = ImGui::GetCursorScreenPos();
     ImVec2 size = ImGui::GetContentRegionAvail();
+
+    (void)action_btn_held;
+    (void)l1_btn_held;
+    (void)r1_btn_held;
 
     if (size.x <= 1.0f || size.y <= 1.0f) return;
     if (!dl) return;
@@ -68,44 +59,9 @@ void render_spot_screen(int selected_row_idx, int action_idx, bool buy_pressed, 
     float left = p.x + padding;
     float right = p.x + size.x - padding;
 
-    // Header
-    {
-        float headerDrawY = y - 10.0f;
-
-        // Use Bold font for Title, scaled
-        float titleSize = 42.0f; // 1.5 * 28
-        DrawGlowText(dl, ImVec2(left, headerDrawY), "#SPOT", MatrixTheme::TEXT, font_bold, titleSize);
-
-        const char* nav = "PERP | ACCOUNT";
-        ImVec2 navSz = ImGui::CalcTextSize(nav);
-        float navY = headerDrawY + 8;
-        dl->AddText(ImVec2(right - navSz.x - 70, navY), MatrixTheme::DIM, nav);
-
-        // L1/R1 hints
-        ImGui::SetWindowFontScale(0.6f); 
-        float tagW = 24.0f;
-        float tagH = 18.0f;
-        float tagY = navY + (navSz.y - tagH) * 0.5f;
-        
-        // R1
-        ImU32 r1Bg = r1_btn_held ? MatrixTheme::TEXT : MatrixTheme::DIM;
-        float r1X = right - tagW;
-        dl->AddRectFilled(ImVec2(r1X, tagY), ImVec2(r1X + tagW, tagY + tagH), r1Bg, 0.0f);
-        ImVec2 r1Sz = ImGui::CalcTextSize("R1");
-        dl->AddText(ImVec2(r1X + (tagW - r1Sz.x) * 0.5f, tagY + (tagH - r1Sz.y) * 0.5f), MatrixTheme::BLACK, "R1");
-
-        // L1
-        ImU32 l1Bg = l1_btn_held ? MatrixTheme::TEXT : MatrixTheme::DIM;
-        float l1X = r1X - tagW - 4; 
-        dl->AddRectFilled(ImVec2(l1X, tagY), ImVec2(l1X + tagW, tagY + tagH), l1Bg, 0.0f);
-        ImVec2 l1Sz = ImGui::CalcTextSize("L1");
-        dl->AddText(ImVec2(l1X + (tagW - l1Sz.x) * 0.5f, tagY + (tagH - l1Sz.y) * 0.5f), MatrixTheme::BLACK, "L1");
-
-        ImGui::SetWindowFontScale(1.0f);
-
-        y += headerH;
-        dl->AddLine(ImVec2(left, y - 16), ImVec2(right, y - 16), MatrixTheme::DIM, 2.0f);
-    }
+    // Header is rendered by MainUI. Keep spacing and divider.
+    y += headerH;
+    dl->AddLine(ImVec2(left, y - 16), ImVec2(right, y - 16), MatrixTheme::DIM, 2.0f);
 
     // Table headers
     {
@@ -234,22 +190,16 @@ void render_spot_screen(int selected_row_idx, int action_idx, bool buy_pressed, 
         
         float btnFontSize = 20.0f;
 
-        ImU32 brightBg = IM_COL32(200, 255, 200, 255);
-
         // BUY
         ImU32 buyBg = buyFocus ? MatrixTheme::TEXT : IM_COL32(0,0,0,0);
         ImU32 buyFg = buyFocus ? MatrixTheme::BLACK : MatrixTheme::DIM;
         ImU32 buyBorder = buyFocus ? MatrixTheme::TEXT : MatrixTheme::DIM;
-        
-        // Pressed/flash state: Brighten (not darken)
-        if (buyFocus && action_btn_held) {
-             buyBg = brightBg;
-             buyFg = MatrixTheme::BLACK;
-             buyBorder = brightBg;
-        } else if (buy_pressed && buyFocus) { // Flash feedback (if any)
-             buyBg = brightBg;
-             buyFg = MatrixTheme::BLACK;
-             buyBorder = brightBg;
+
+        // Flash effect matches Dialog cancel button: transparent fill + bright text while flashing.
+        if (buy_pressed && buyFocus) {
+            buyBg = IM_COL32(0,0,0,0);
+            buyFg = MatrixTheme::TEXT;
+            buyBorder = MatrixTheme::TEXT;
         }
         
         dl->AddRectFilled(ImVec2(buyX, btnY), ImVec2(buyX + btnW, btnY + btnH), buyBg, 0.0f);
@@ -272,15 +222,11 @@ void render_spot_screen(int selected_row_idx, int action_idx, bool buy_pressed, 
         ImU32 sellFg = sellFocus ? MatrixTheme::BLACK : MatrixTheme::DIM;
         ImU32 sellBorder = sellFocus ? MatrixTheme::TEXT : MatrixTheme::DIM;
 
-        // Pressed/flash state: Brighten (not darken)
-        if (sellFocus && action_btn_held) {
-             sellBg = brightBg;
-             sellFg = MatrixTheme::BLACK;
-             sellBorder = brightBg;
-        } else if (sell_pressed && sellFocus) {
-             sellBg = brightBg;
-             sellFg = MatrixTheme::BLACK;
-             sellBorder = brightBg;
+        // Flash effect matches Dialog cancel button.
+        if (sell_pressed && sellFocus) {
+            sellBg = IM_COL32(0,0,0,0);
+            sellFg = MatrixTheme::TEXT;
+            sellBorder = MatrixTheme::TEXT;
         }
         
         dl->AddRectFilled(ImVec2(sellX, btnY), ImVec2(sellX + btnW, btnY + btnH), sellBg, 0.0f);

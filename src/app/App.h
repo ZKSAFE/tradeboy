@@ -18,9 +18,8 @@ namespace tradeboy::app {
 
 enum class Tab {
     Spot = 0,
-    Long = 1,
-    Short = 2,
-    Assets = 3,
+    Perp = 1,
+    Account = 2,
 };
 
 struct App {
@@ -41,6 +40,9 @@ struct App {
     bool action_btn_held = false; // A button held
     bool l1_btn_held = false;
     bool r1_btn_held = false;
+
+    int l1_flash_frames = 0;
+    int r1_flash_frames = 0;
 
     tradeboy::spotOrder::SpotOrderState spot_order;
 

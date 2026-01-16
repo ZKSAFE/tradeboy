@@ -46,7 +46,8 @@ int main(int argc, char** argv) {
     // /mnt/mmc/Roms/APPS. If that directory exists, switch CWD so relative
     // asset paths work (fonts, log file).
     if (dir_exists("/mnt/mmc/Roms/APPS")) {
-        chdir("/mnt/mmc/Roms/APPS");
+        int rc = chdir("/mnt/mmc/Roms/APPS");
+        (void)rc;
     }
 
     // Clear log file on startup

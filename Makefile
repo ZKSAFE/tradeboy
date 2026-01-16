@@ -2,7 +2,7 @@
 CC = gcc
 CXX = g++
 CFLAGS = -Wall -O2 -D_GNU_SOURCE
-CXXFLAGS = $(CFLAGS) -std=c++11
+CXXFLAGS = $(CFLAGS) -std=c++11 -Wno-psabi
 
 # 交叉编译设置
 ARM_CC = aarch64-linux-gnu-gcc
