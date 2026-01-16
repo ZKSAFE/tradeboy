@@ -3,6 +3,4 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-"$SCRIPT_DIR/build.sh"
-
-"$SCRIPT_DIR/upload.sh"
+make -C "$SCRIPT_DIR" tradeboy-armhf-docker

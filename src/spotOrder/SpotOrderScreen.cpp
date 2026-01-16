@@ -24,6 +24,9 @@ void SpotOrderState::open_with(const tradeboy::model::SpotRow& row, Side in_side
     grid_r = 0;
     grid_c = 1;
     footer_idx = -1;
+
+    flash_timer = 0;
+    flash_btn_idx = -1;
 }
 
 void SpotOrderState::close() {
@@ -89,6 +92,23 @@ static void adjust_percent_step(SpotOrderState& st, int delta) {
 bool handle_input(SpotOrderState& st, const tradeboy::app::InputState& in, const tradeboy::app::EdgeState& edges) {
     if (!st.open) return false;
 
+    // Handle flash animation
+    if (st.flash_timer > 0) {
+        st.flash_timer--;
+        if (st.flash_timer == 0) {
+            // Action trigger
+            if (st.flash_btn_idx == 0) {
+                // CONFIRM action
+                st.close();
+            } else if (st.flash_btn_idx == 1) {
+                // X (Abort) action
+                st.close();
+            }
+            st.flash_btn_idx = -1;
+        }
+        return true; // Block input during flash
+    }
+
     if (tradeboy::utils::pressed(in.b, edges.prev.b)) {
         st.close();
         return true;
@@ -118,7 +138,14 @@ bool handle_input(SpotOrderState& st, const tradeboy::app::InputState& in, const
     }
     if (tradeboy::utils::pressed(in.right, edges.prev.right)) {
         if (st.footer_idx == 0) st.footer_idx = 1;
-        else if (st.footer_idx == -1) st.grid_c = tradeboy::utils::clampi(st.grid_c + 1, 0, 2);
+        else if (st.footer_idx == -1) {
+            // Special case: from DEL (3,2) to CONFIRM (footer_idx = 0)
+            if (st.grid_r == 3 && st.grid_c == 2) {
+                st.footer_idx = 0;
+            } else {
+                st.grid_c = tradeboy::utils::clampi(st.grid_c + 1, 0, 2);
+            }
+        }
     }
 
     if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
@@ -130,9 +157,11 @@ bool handle_input(SpotOrderState& st, const tradeboy::app::InputState& in, const
         };
 
         if (st.footer_idx == 0) {
-            st.close();
+            st.flash_btn_idx = 0;
+            st.flash_timer = 18; // Flash for 18 frames (3 * 6)
         } else if (st.footer_idx == 1) {
-            st.close();
+            st.flash_btn_idx = 1;
+            st.flash_timer = 18;
         } else {
             const char* key = keypad[st.grid_r][st.grid_c];
             if (key[0] == 'D') {
@@ -177,44 +206,68 @@ void render(SpotOrderState& st, ImFont* font_bold) {
     ImU32 panel_bg = IM_COL32(0, 0, 0, 153);          // black @ 60%
     ImU32 keypad_bg = IM_COL32(0, 0, 0, 204);         // black @ 80%
 
-    // --- Header (border-b-4 pb-2 mb-4) ---
+    // --- Header ---
+    float headerH = 54.0f;
     float x0 = p.x + pad;
     float x1 = p.x + size.x - pad;
     float y0 = p.y + pad;
+    
+    float headerDrawY = y0 - 10.0f;
 
     char title[64];
-    std::snprintf(title, sizeof(title), "%s_ORDER: %s", side_label(st.side), st.sym.c_str());
-    float title_size = 36.0f; // approx text-4xl
+    std::snprintf(title, sizeof(title), "%s_%s", side_label(st.side), st.sym.c_str());
+    float title_size = 42.0f; 
+    
+    ImU32 glowCol = (side_col & 0x00FFFFFF) | 0x40000000;
     if (font_bold) {
-        dl->AddText(font_bold, title_size, ImVec2(x0, y0), side_col, title);
+        dl->AddText(font_bold, title_size, ImVec2(x0 + 1, headerDrawY + 1), glowCol, title);
+        dl->AddText(font_bold, title_size, ImVec2(x0 - 1, headerDrawY - 1), glowCol, title);
+        dl->AddText(font_bold, title_size, ImVec2(x0, headerDrawY), side_col, title);
     } else {
-        dl->AddText(ImVec2(x0, y0), side_col, title);
+        dl->AddText(ImVec2(x0 + 1, headerDrawY + 1), glowCol, title);
+        dl->AddText(ImVec2(x0 - 1, headerDrawY - 1), glowCol, title);
+        dl->AddText(ImVec2(x0, headerDrawY), side_col, title);
     }
 
-    char price_line[96];
-    std::snprintf(price_line, sizeof(price_line), "CURR_PRICE: $%.2f", st.price);
-    dl->AddText(ImVec2(x0, y0 + 44), dim, price_line);
+    // Header Right: B BACK
+    ImGui::SetWindowFontScale(0.6f);
+    float backW = 24.0f;
+    float backH = 18.0f; 
+    const char* backLabel = "BACK";
+    
+    ImVec2 bSz = ImGui::CalcTextSize("B");
+    
+    ImGui::SetWindowFontScale(1.0f);
+    ImVec2 blSz = ImGui::CalcTextSize(backLabel);
+    
+    float backX = x1 - backW - 8.0f - blSz.x;
+    // Match SpotScreen header L1/R1 tag Y
+    float navY = headerDrawY + 8.0f;
+    float navSzY = ImGui::CalcTextSize("PERP | ACCOUNT").y;
+    float tagH = 18.0f;
+    float backY = navY + (navSzY - tagH) * 0.5f; 
 
-    // Right aligned funds
-    const float funds_w = 220.0f;
-    float fx = x1 - funds_w;
-    dl->AddText(ImVec2(fx, y0 + 4), dim, "AVAILABLE_FUNDS");
-    char avail[96];
-    std::snprintf(avail, sizeof(avail), "%.4f %s", st.max_possible, (st.side == Side::Buy) ? "USD" : st.sym.c_str());
-    if (font_bold) {
-        dl->AddText(font_bold, 22.0f, ImVec2(fx, y0 + 26), text, avail);
-    } else {
-        dl->AddText(ImVec2(fx, y0 + 26), text, avail);
-    }
+    dl->AddRectFilled(ImVec2(backX, backY), ImVec2(backX + backW, backY + backH), dim, 0.0f);
+    
+    ImGui::SetWindowFontScale(0.6f);
+    dl->AddText(ImVec2(backX + (backW - bSz.x)*0.5f, backY + (backH - bSz.y)*0.5f), black, "B");
+    ImGui::SetWindowFontScale(1.0f);
+    
+    dl->AddText(ImVec2(backX + backW + 6.0f, backY + (backH - blSz.y)*0.5f - 1.0f), dim, backLabel);
 
-    float header_div_y = y0 + 68.0f; // border line position
-    dl->AddLine(ImVec2(x0, header_div_y), ImVec2(x1, header_div_y), dim, 4.0f);
+    float current_y = y0 + headerH; 
+    dl->AddLine(ImVec2(x0, current_y - 16), ImVec2(x1, current_y - 16), dim, 2.0f);
 
-    // Main content starts after header + mb-4
-    float y_main = header_div_y + 16.0f;
+    float y_main = current_y + 8.0f;
 
-    // --- Main grid: 3 cols, gap-6 ---
-    float main_h = size.y - pad - y_main - 16.0f - 56.0f; // leave mt-4 + footer h-14
+    // --- Layout Calcs ---
+    float btnH = 40.0f;
+    float footer_bottom_pad = 0.0f; 
+    float footer_y = size.y - footer_bottom_pad - btnH; 
+    
+    float footer_gap = 10.0f; 
+    
+    float main_h = footer_y - footer_gap - y_main;
     if (main_h < 0) main_h = 0;
 
     float col_w = (size.x - 2 * pad - 2 * gap) / 3.0f;
@@ -231,36 +284,40 @@ void render(SpotOrderState& st, ImFont* font_bold) {
 
     dl->AddRectFilled(ImVec2(left_x, input_y), ImVec2(left_x + left_w, input_y + input_h), input_panel_bg);
     dl->AddRect(ImVec2(left_x, input_y), ImVec2(left_x + left_w, input_y + input_h), dim, 0.0f, 0, 2.0f);
-    dl->AddText(ImVec2(left_x + 8.0f, input_y + 4.0f), dim, "INPUT_BUFFER");
+    
+    char input_label[64];
+    std::snprintf(input_label, sizeof(input_label), "PRICE: $%.2f", st.price);
+    dl->AddText(ImVec2(left_x + 8.0f, input_y + 4.0f), dim, input_label);
 
-    // Big input (text-6xl) right aligned
     float input_font = 48.0f;
     ImVec2 in_sz = font_bold ? font_bold->CalcTextSizeA(input_font, FLT_MAX, 0.0f, st.input.c_str()) : ImGui::CalcTextSize(st.input.c_str());
-    float in_x = left_x + left_w - input_pad - in_sz.x;
-    float in_y = input_y + 26.0f;
+    
+    const char* cursor_char = "_";
+    ImVec2 cs = font_bold ? font_bold->CalcTextSizeA(input_font, FLT_MAX, 0.0f, cursor_char) : ImGui::CalcTextSize(cursor_char);
+    
+    float total_w = in_sz.x + cs.x + 2.0f;
+    float in_x = left_x + left_w - input_pad - total_w; 
+    float in_y = input_y + (input_h - in_sz.y) * 0.5f;
+
     if (font_bold) {
         dl->AddText(font_bold, input_font, ImVec2(in_x, in_y), text, st.input.c_str());
     } else {
         dl->AddText(ImVec2(in_x, in_y), text, st.input.c_str());
     }
 
-    // Blinking cursor underscore
     {
         const bool blink_on = (std::fmod(ImGui::GetTime(), 1.0) < 0.5);
         if (blink_on) {
-            const char* cursor = "_";
-            ImVec2 cs = font_bold ? font_bold->CalcTextSizeA(input_font, FLT_MAX, 0.0f, cursor) : ImGui::CalcTextSize(cursor);
             float cx = in_x + in_sz.x + 2.0f;
             float cy = in_y;
             if (font_bold) {
-                dl->AddText(font_bold, input_font, ImVec2(cx, cy), dim, cursor);
+                dl->AddText(font_bold, input_font, ImVec2(cx, cy), dim, cursor_char);
             } else {
-                dl->AddText(ImVec2(cx, cy), dim, cursor);
+                dl->AddText(ImVec2(cx, cy), dim, cursor_char);
             }
         }
     }
 
-    // ≈ USD line
     double cur = parse_amount(st.input);
     char approx_usd[96];
     std::snprintf(approx_usd, sizeof(approx_usd), "\xE2\x89\x88 $%.2f USD", cur * st.price);
@@ -269,7 +326,8 @@ void render(SpotOrderState& st, ImFont* font_bold) {
     // Left: keypad grid (grid-cols-3 gap-2)
     float keypad_gap = 8.0f;
     float keypad_y = input_y + input_h + 16.0f;
-    float keypad_h = y_main + main_h - keypad_y;
+    float keypad_bottom = footer_y + btnH;
+    float keypad_h = keypad_bottom - keypad_y; 
     if (keypad_h < 0) keypad_h = 0;
 
     float cell_w = (left_w - 2 * keypad_gap) / 3.0f;
@@ -292,10 +350,7 @@ void render(SpotOrderState& st, ImFont* font_bold) {
             ImU32 fg = focused ? black : text;
             ImU32 border = focused ? white : dim;
 
-            if (focused) {
-                ImU32 glow = IM_COL32(0, 255, 65, 80);
-                dl->AddRect(ImVec2(cx0 - 3, cy0 - 3), ImVec2(cx0 + cell_w + 3, cy0 + cell_h + 3), glow, 0.0f, 0, 2.0f);
-            }
+            // Removed outer glow/rect for focused key
 
             dl->AddRectFilled(ImVec2(cx0, cy0), ImVec2(cx0 + cell_w, cy0 + cell_h), bg);
             dl->AddRect(ImVec2(cx0, cy0), ImVec2(cx0 + cell_w, cy0 + cell_h), border, 0.0f, 0, 2.0f);
@@ -304,7 +359,7 @@ void render(SpotOrderState& st, ImFont* font_bold) {
             float key_font = 30.0f; // text-3xl
             ImVec2 ts = font_bold ? font_bold->CalcTextSizeA(key_font, FLT_MAX, 0.0f, t) : ImGui::CalcTextSize(t);
             float tx = cx0 + (cell_w - ts.x) * 0.5f;
-            float ty = cy0 + (cell_h - ts.y) * 0.5f + 6.0f; // pt-[6px]
+            float ty = cy0 + (cell_h - ts.y) * 0.5f + 4.0f; // Center vertically (offset down)
             if (font_bold) {
                 dl->AddText(font_bold, key_font, ImVec2(tx, ty), fg, t);
             } else {
@@ -313,26 +368,55 @@ void render(SpotOrderState& st, ImFont* font_bold) {
         }
     }
 
-    // Right: progress panel + guide (gap-4)
-    float right_gap = 16.0f;
-    float guide_h = 72.0f;
+    // Right: progress panel + guide + buttons
+    float right_gap = 12.0f;
+    float guide_h = 48.0f;
+    
+    // Buttons are at bottom: footer_y
+    // Guide is above buttons
+    float guide_y = footer_y - right_gap - guide_h;
+    
+    // Allocation panel is from y_main to guide_y - gap
     float progress_y = y_main;
-    float progress_h = main_h - right_gap - guide_h;
+    float progress_h = guide_y - right_gap - progress_y;
     if (progress_h < 0) progress_h = 0;
 
     // Progress panel
     dl->AddRectFilled(ImVec2(right_x, progress_y), ImVec2(right_x + right_w, progress_y + progress_h), panel_bg);
     dl->AddRect(ImVec2(right_x, progress_y), ImVec2(right_x + right_w, progress_y + progress_h), dim, 0.0f, 0, 2.0f);
 
-    const char* meter_title = "ALLOCATION_METER";
-    ImVec2 mt_sz = ImGui::CalcTextSize(meter_title);
-    dl->AddText(ImVec2(right_x + (right_w - mt_sz.x) * 0.5f, progress_y + 14.0f), dim, meter_title);
+    const char* meter_title = "AVAILABLE";
+    // Smaller font for allocation title
+    float alloc_font = 16.0f;
+    
+    // Draw Title
+    ImVec2 mt_sz = font_bold ? font_bold->CalcTextSizeA(alloc_font, FLT_MAX, 0.0f, meter_title) : ImGui::CalcTextSize(meter_title);
+    float mt_x = right_x + (right_w - mt_sz.x) * 0.5f;
+    float mt_y = progress_y + 14.0f;
+    
+    if (font_bold) {
+        dl->AddText(font_bold, alloc_font, ImVec2(mt_x, mt_y), dim, meter_title);
+    } else {
+        dl->AddText(ImVec2(mt_x, mt_y), dim, meter_title);
+    }
+
+    // Draw Available Value
+    char alloc_val[64];
+    std::snprintf(alloc_val, sizeof(alloc_val), "%.2f USD", st.max_possible); // Assuming USD for now or quote
+    // Centered below title
+    ImVec2 av_sz = font_bold ? font_bold->CalcTextSizeA(alloc_font, FLT_MAX, 0.0f, alloc_val) : ImGui::CalcTextSize(alloc_val);
+    if (font_bold) {
+        dl->AddText(font_bold, alloc_font, ImVec2(right_x + (right_w - av_sz.x) * 0.5f, mt_y + mt_sz.y + 4.0f), text, alloc_val);
+    } else {
+        dl->AddText(ImVec2(right_x + (right_w - av_sz.x) * 0.5f, mt_y + mt_sz.y + 4.0f), text, alloc_val);
+    }
 
     // Vertical bar (w-16)
     float bar_w = 64.0f;
     float bar_x = right_x + (right_w - bar_w) * 0.5f;
-    float bar_y = progress_y + 40.0f;
-    float bar_h = std::max(0.0f, progress_h - 40.0f - 44.0f);
+    float bar_y = mt_y + mt_sz.y + 4.0f + av_sz.y + 16.0f; // Space from text
+    float bar_h = std::max(0.0f, progress_h - (bar_y - progress_y) - 44.0f);
+    
     dl->AddRectFilled(ImVec2(bar_x, bar_y), ImVec2(bar_x + bar_w, bar_y + bar_h), MatrixTheme::BLACK);
     dl->AddRect(ImVec2(bar_x, bar_y), ImVec2(bar_x + bar_w, bar_y + bar_h), dim, 0.0f, 0, 2.0f);
 
@@ -361,106 +445,142 @@ void render(SpotOrderState& st, ImFont* font_bold) {
     }
 
     // Guide panel (p-2, text-[11px])
-    float guide_y = progress_y + progress_h + right_gap;
+    // guide_y already calculated
     dl->AddRectFilled(ImVec2(right_x, guide_y), ImVec2(right_x + right_w, guide_y + guide_h), input_panel_bg);
     dl->AddRect(ImVec2(right_x, guide_y), ImVec2(right_x + right_w, guide_y + guide_h), dim, 0.0f, 0, 2.0f);
 
-    float gy = guide_y + 10.0f;
-    auto draw_lr = [&](float y, const char* tag, const char* label) {
-        float tag_w = 24.0f;
-        float tag_h = 16.0f;
-        float tx = right_x + 10.0f;
-        dl->AddRectFilled(ImVec2(tx, y), ImVec2(tx + tag_w, y + tag_h), dim, 2.0f);
-
+    // L1/R1 Style - One Line
+    float gy = guide_y + (guide_h - 18.0f) * 0.5f; // Center vertically
+    
+    // Helper to draw tag like SpotScreen
+    auto draw_spot_tag = [&](float x_pos, float y_pos, const char* tag, const char* label) {
+        float tagW = 24.0f;
+        float tagH = 18.0f;
+        
+        dl->AddRectFilled(ImVec2(x_pos, y_pos), ImVec2(x_pos + tagW, y_pos + tagH), dim, 0.0f);
+        
         ImVec2 tsz = ImGui::CalcTextSize(tag);
-        float ttx = tx + (tag_w - tsz.x) * 0.5f;
-        float tty = y + (tag_h - tsz.y) * 0.5f;
+        float ttx = x_pos + (tagW - tsz.x) * 0.5f;
+        float tty = y_pos + (tagH - tsz.y) * 0.5f;
         dl->AddText(ImVec2(ttx, tty), black, tag);
-
-        dl->AddText(ImVec2(tx + tag_w + 10.0f, y + 0.0f), text, label);
+        
+        dl->AddText(ImVec2(x_pos + tagW + 6.0f, y_pos + 1.0f), text, label);
+        return x_pos + tagW + 6.0f + ImGui::CalcTextSize(label).x; 
     };
-    draw_lr(gy, "L1", "DECREASE 5%");
-    draw_lr(gy + 28.0f, "R1", "INCREASE 5%");
 
-    // --- Footer actions (mt-4, grid-cols-3 gap-6, h-14) ---
-    float footer_h = 56.0f;
-    float footer_y = p.y + size.y - pad - footer_h;
+    ImGui::SetWindowFontScale(0.6f);
+    // Calculate total width to center
+    // L1 -5%  R1 +5%
+    // Width ~ 24 + 6 + 20 + 10(gap) + 24 + 6 + 20
+    float l1_w = 24 + 6 + ImGui::CalcTextSize("-5%").x;
+    float r1_w = 24 + 6 + ImGui::CalcTextSize("+5%").x;
+    float gap_lr = 48.0f;
+    float total_lr_w = l1_w + gap_lr + r1_w;
+    
+    float start_x = right_x + (right_w - total_lr_w) * 0.5f;
+    
+    draw_spot_tag(start_x, gy, "L1", "-5%");
+    draw_spot_tag(start_x + l1_w + gap_lr, gy, "R1", "+5%");
+    ImGui::SetWindowFontScale(1.0f);
 
-    float confirm_w = left_w;
-    float abort_w = right_w;
+    // --- Footer actions ---
+    // Buttons right aligned: [  CONFIRM  ] [ X ]
+    // CONFIRM left aligns with Right Panel left edge (right_x)
+    float btnFontSize = 20.0f;
+    float btn_gap = 12.0f;
+    float abort_w = 40.0f; // Small X button
+    
+    // confirm_x starts at right_x.
+    // confirm_w reduced slightly, so gap between CONFIRM and X increases
+    float confirm_x = right_x;
+    float confirm_w = right_w - btn_gap - abort_w; // Revert width reduction
+    float abort_x = x1 - abort_w; // X right aligned to panel end
 
-    // Confirm (col-span-2)
+        // Confirm
     {
         bool focused = (st.footer_idx == 0);
-        ImU32 bg = focused ? text : MatrixTheme::BLACK;
-        ImU32 fg = focused ? black : text;
-        ImU32 border = focused ? text : dim;
+        bool flashing = (st.flash_btn_idx == 0 && st.flash_timer > 0);
 
-        if (focused) {
-            ImU32 glow = IM_COL32(0, 255, 65, 80);
-            dl->AddRect(ImVec2(left_x - 3, footer_y - 3), ImVec2(left_x + confirm_w + 3, footer_y + footer_h + 3), glow, 0.0f, 0, 2.0f);
+        const int blinkPeriod = 6;
+        const int blinkOn = 3;
+        bool flash_on = false;
+        if (flashing) {
+            flash_on = ((st.flash_timer % blinkPeriod) < blinkOn);
         }
-
-        dl->AddRectFilled(ImVec2(left_x, footer_y), ImVec2(left_x + confirm_w, footer_y + footer_h), bg);
-        dl->AddRect(ImVec2(left_x, footer_y), ImVec2(left_x + confirm_w, footer_y + footer_h), border, 0.0f, 0, 2.0f);
-
-        const char* label = "CONFIRM_EXEC";
-        float font_sz = 20.0f;
-        const bool blink_on = (std::fmod(ImGui::GetTime(), 1.0) < 0.5);
-        const char* prefix = (focused && blink_on) ? "> " : "";
-
-        char full_label[64];
-        std::snprintf(full_label, sizeof(full_label), "%s%s", prefix, label);
-
-        ImVec2 ts = font_bold ? font_bold->CalcTextSizeA(font_sz, FLT_MAX, 0.0f, full_label) : ImGui::CalcTextSize(full_label);
-        float tx = left_x + (confirm_w - ts.x) * 0.5f;
-        float ty = footer_y + (footer_h - ts.y) * 0.5f + 7.0f;
-        if (font_bold) {
-            dl->AddText(font_bold, font_sz, ImVec2(tx, ty), fg, full_label);
+        
+        ImU32 bg, fg, border;
+        
+        if (focused && !flashing) {
+            bg = text;
+            fg = black;
+            border = text;
+        } else if (flashing && !flash_on) {
+            bg = IM_COL32(0,0,0,0);
+            fg = text;
+            border = text;
         } else {
-            dl->AddText(ImVec2(tx, ty), fg, full_label);
+            bg = flashing ? text : IM_COL32(0,0,0,0);
+            fg = flashing ? black : (focused ? text : dim);
+            border = focused ? text : dim;
+        }
+        
+        dl->AddRectFilled(ImVec2(confirm_x, footer_y), ImVec2(confirm_x + confirm_w, footer_y + btnH), bg, 0.0f);
+        dl->AddRect(ImVec2(confirm_x, footer_y), ImVec2(confirm_x + confirm_w, footer_y + btnH), border, 0.0f, 0, 2.0f);
+
+        const char* label = "CONFIRM";
+        ImVec2 ts = font_bold ? font_bold->CalcTextSizeA(btnFontSize, FLT_MAX, 0.0f, label) : ImGui::CalcTextSize(label);
+        float tx = confirm_x + (confirm_w - ts.x) * 0.5f;
+        float ty = footer_y + (btnH - ts.y) * 0.5f;
+        if (font_bold) {
+            dl->AddText(font_bold, btnFontSize, ImVec2(tx, ty), fg, label);
+        } else {
+            dl->AddText(ImVec2(tx, ty), fg, label);
         }
     }
 
-    // Abort (col-span-1)
+    // Abort (X)
     {
         bool focused = (st.footer_idx == 1);
-        ImU32 bg = focused ? white : MatrixTheme::BLACK;
-        ImU32 fg = focused ? black : alert;
-        ImU32 border = focused ? white : alert;
-        if (!focused) {
-            bg = IM_COL32(0, 0, 0, 255);
-            fg = IM_COL32(255, 0, 85, 160);
-            border = IM_COL32(255, 0, 85, 160);
+        bool flashing = (st.flash_btn_idx == 1 && st.flash_timer > 0);
+
+        const int blinkPeriod = 6;
+        const int blinkOn = 3;
+        bool flash_on = false;
+        if (flashing) {
+            flash_on = ((st.flash_timer % blinkPeriod) < blinkOn);
         }
-
-        if (focused) {
-            ImU32 glow = IM_COL32(255, 0, 85, 80);
-            dl->AddRect(ImVec2(right_x - 3, footer_y - 3), ImVec2(right_x + abort_w + 3, footer_y + footer_h + 3), glow, 0.0f, 0, 2.0f);
-        }
-
-        dl->AddRectFilled(ImVec2(right_x, footer_y), ImVec2(right_x + abort_w, footer_y + footer_h), bg);
-        dl->AddRect(ImVec2(right_x, footer_y), ImVec2(right_x + abort_w, footer_y + footer_h), border, 0.0f, 0, 2.0f);
-
-        const char* label = "ABORT";
-        float font_sz = 20.0f;
-        const bool blink_on = (std::fmod(ImGui::GetTime(), 1.0) < 0.5);
-        const char* prefix = (focused && blink_on) ? "> " : "";
-
-        char full_label[32];
-        std::snprintf(full_label, sizeof(full_label), "%s%s", prefix, label);
-
-        ImVec2 ts = font_bold ? font_bold->CalcTextSizeA(font_sz, FLT_MAX, 0.0f, full_label) : ImGui::CalcTextSize(full_label);
-        float tx = right_x + (abort_w - ts.x) * 0.5f;
-        float ty = footer_y + (footer_h - ts.y) * 0.5f + 7.0f;
-        if (font_bold) {
-            dl->AddText(font_bold, font_sz, ImVec2(tx, ty), fg, full_label);
+        
+        ImU32 bg, fg, border;
+        
+        if (focused && !flashing) {
+            bg = alert;
+            fg = black;
+            border = alert;
+        } else if (flashing && !flash_on) {
+            bg = IM_COL32(0,0,0,0);
+            fg = alert;
+            border = alert;
         } else {
-            dl->AddText(ImVec2(tx, ty), fg, full_label);
+            bg = flashing ? alert : IM_COL32(0,0,0,0);
+            fg = flashing ? black : (focused ? alert : dim);
+            border = focused ? alert : dim;
+        }
+        
+        dl->AddRectFilled(ImVec2(abort_x, footer_y), ImVec2(abort_x + abort_w, footer_y + btnH), bg, 0.0f);
+        dl->AddRect(ImVec2(abort_x, footer_y), ImVec2(abort_x + abort_w, footer_y + btnH), border, 0.0f, 0, 2.0f);
+
+        const char* label = "X";
+        ImVec2 ts = font_bold ? font_bold->CalcTextSizeA(btnFontSize, FLT_MAX, 0.0f, label) : ImGui::CalcTextSize(label);
+        float tx = abort_x + (abort_w - ts.x) * 0.5f;
+        float ty = footer_y + (btnH - ts.y) * 0.5f;
+        if (font_bold) {
+            dl->AddText(font_bold, btnFontSize, ImVec2(tx, ty), fg, label);
+        } else {
+            dl->AddText(ImVec2(tx, ty), fg, label);
         }
     }
 
-    dl->AddText(ImVec2(x1 - 80.0f, footer_y - 18.0f), dim, "B: BACK");
+    // No B: BACK text
 
     ImGui::End();
 }
