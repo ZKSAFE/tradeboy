@@ -27,8 +27,11 @@ TRADEBOY_SOURCES = \
 	src/filters/CrtFilter.cpp \
 	src/ui/MatrixBackground.cpp \
 	src/ui/Dialog.cpp \
+	src/ui/MainUI.cpp \
 	src/app/App.cpp \
 	src/app/Input.cpp \
+	src/perp/PerpScreen.cpp \
+	src/account/AccountScreen.cpp \
 	src/market/Hyperliquid.cpp \
 	src/market/HyperliquidWgetDataSource.cpp \
 	src/market/HyperliquidWsDataSource.cpp \

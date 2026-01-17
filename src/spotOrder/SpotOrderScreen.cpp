@@ -6,6 +6,7 @@
 
 #include "../utils/Math.h"
 #include "../ui/MatrixTheme.h"
+#include "../utils/Flash.h"
 
 namespace tradeboy::spotOrder {
 
@@ -30,6 +31,8 @@ void SpotOrderState::open_with(const tradeboy::model::SpotRow& row, Side in_side
 
     l1_flash_timer = 0;
     r1_flash_timer = 0;
+
+    b_flash_timer = 0;
 }
 
 void SpotOrderState::close() {
@@ -97,6 +100,7 @@ bool handle_input(SpotOrderState& st, const tradeboy::app::InputState& in, const
 
     if (st.l1_flash_timer > 0) st.l1_flash_timer--;
     if (st.r1_flash_timer > 0) st.r1_flash_timer--;
+    if (st.b_flash_timer > 0) st.b_flash_timer--;
 
     // Handle flash animation
     if (st.flash_timer > 0) {
@@ -116,7 +120,8 @@ bool handle_input(SpotOrderState& st, const tradeboy::app::InputState& in, const
     }
 
     if (tradeboy::utils::pressed(in.b, edges.prev.b)) {
-        st.close();
+        del_char(st.input);
+        st.b_flash_timer = 6;
         return true;
     }
 
@@ -250,11 +255,11 @@ void render(SpotOrderState& st, ImFont* font_bold) {
         dl->AddText(ImVec2(x0, headerDrawY), side_col, title);
     }
 
-    // Header Right: B BACK
+    // Header Right: B DEL
     ImGui::SetWindowFontScale(0.6f);
     float backW = 24.0f;
     float backH = 18.0f; 
-    const char* backLabel = "BACK";
+    const char* backLabel = "DEL";
     
     ImVec2 bSz = ImGui::CalcTextSize("B");
     
@@ -268,7 +273,8 @@ void render(SpotOrderState& st, ImFont* font_bold) {
     float tagH = 18.0f;
     float backY = navY + (navSzY - tagH) * 0.5f; 
 
-    dl->AddRectFilled(ImVec2(backX, backY), ImVec2(backX + backW, backY + backH), dim, 0.0f);
+    ImU32 backBg = (st.b_flash_timer > 0) ? text : dim;
+    dl->AddRectFilled(ImVec2(backX, backY), ImVec2(backX + backW, backY + backH), backBg, 0.0f);
     
     ImGui::SetWindowFontScale(0.6f);
     dl->AddText(ImVec2(backX + (backW - bSz.x)*0.5f, backY + (backH - bSz.y)*0.5f), black, "B");
@@ -528,7 +534,7 @@ void render(SpotOrderState& st, ImFont* font_bold) {
         const int blinkOn = 3;
         bool flash_on = false;
         if (flashing) {
-            flash_on = ((st.flash_timer % blinkPeriod) < blinkOn);
+            flash_on = tradeboy::utils::blink_on(st.flash_timer, blinkPeriod, blinkOn);
         }
         
         ImU32 bg, fg, border;
@@ -570,7 +576,7 @@ void render(SpotOrderState& st, ImFont* font_bold) {
         const int blinkOn = 3;
         bool flash_on = false;
         if (flashing) {
-            flash_on = ((st.flash_timer % blinkPeriod) < blinkOn);
+            flash_on = tradeboy::utils::blink_on(st.flash_timer, blinkPeriod, blinkOn);
         }
         
         ImU32 bg, fg, border;

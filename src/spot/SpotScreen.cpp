@@ -6,6 +6,8 @@
 #include <vector>
 
 #include "ui/MatrixTheme.h"
+#include "utils/Flash.h"
+#include "utils/Typewriter.h"
 
 namespace tradeboy::spot {
 
@@ -107,7 +109,7 @@ void render_spot_screen(int selected_row_idx, int action_idx, bool buy_pressed, 
             // 2. Selected item background: Rectangular (0.0f rounding)
             if (isSelected) {
                 dl->AddRectFilled(ImVec2(left, rowY), ImVec2(right, rowY + rowContentH), MatrixTheme::TEXT, 0.0f);
-                bool cursorOn = ((int)(ImGui::GetTime() * 3.0) % 2) == 0;
+                bool cursorOn = tradeboy::utils::blink_on_time(ImGui::GetTime(), 3.0);
                 if (cursorOn) {
                     float cursorW = 10.0f;
                     float cursorPadY = 2.0f;
@@ -163,17 +165,9 @@ void render_spot_screen(int selected_row_idx, int action_idx, bool buy_pressed, 
         else
             std::snprintf(body, sizeof(body), "No %s", selCoin.symbol.c_str());
 
-        static std::string last_body;
-        static double summary_start_time = 0.0;
+        static tradeboy::utils::TypewriterState tw;
         std::string full_body = body;
-        if (full_body != last_body) {
-            last_body = full_body;
-            summary_start_time = ImGui::GetTime();
-        }
-        int shown = (int)((ImGui::GetTime() - summary_start_time) * 35.0);
-        if (shown < 0) shown = 0;
-        if (shown > (int)full_body.size()) shown = (int)full_body.size();
-        std::string shown_text = full_body.substr(0, (size_t)shown);
+        std::string shown_text = tradeboy::utils::typewriter_shown(tw, full_body, ImGui::GetTime(), 35.0);
 
         // Prompt is always visible; only body is typed.
         dl->AddText(ImVec2(left, footerTop + 20), MatrixTheme::TEXT, "> ");

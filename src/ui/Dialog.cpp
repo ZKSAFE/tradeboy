@@ -1,8 +1,11 @@
 #include "ui/Dialog.h"
 
 #include <cstdio>
+#include <unordered_map>
 
 #include "ui/MatrixTheme.h"
+#include "utils/Flash.h"
+#include "utils/Typewriter.h"
 
 namespace tradeboy {
 namespace ui {
@@ -90,16 +93,27 @@ DialogResult render_dialog(const char* id,
     float contentTop = p.y + 10.0f;
     float footerY = p.y + sz.y - 54.0f;
 
-    static std::string last_body;
-    static double start_time = 0.0;
-    if (body != last_body) {
-        last_body = body;
-        start_time = ImGui::GetTime();
+    struct DialogTwEntry {
+        tradeboy::utils::TypewriterState tw;
+        float last_open_t = 0.0f;
+        bool has_last = false;
+    };
+    static std::unordered_map<std::string, DialogTwEntry> tw_map;
+
+    const char* key_c = id ? id : "Dialog";
+    DialogTwEntry& ent = tw_map[std::string(key_c)];
+    if (!ent.has_last) {
+        ent.has_last = true;
+        ent.last_open_t = open_anim_t;
     }
-    int shown = (int)((ImGui::GetTime() - start_time) * 35.0);
-    if (shown < 0) shown = 0;
-    if (shown > (int)body.size()) shown = (int)body.size();
-    std::string shown_text = body.substr(0, (size_t)shown);
+    // When a new open starts, open_anim_t resets back toward 0. Restart typewriter.
+    if (open_anim_t < ent.last_open_t) {
+        ent.tw.last_text.clear();
+        ent.tw.start_time = 0.0;
+    }
+    ent.last_open_t = open_anim_t;
+
+    std::string shown_text = tradeboy::utils::typewriter_shown(ent.tw, body, ImGui::GetTime(), 35.0);
 
     dl->AddText(ImVec2(p.x + 20.0f, contentTop + 10.0f), MatrixTheme::TEXT, prompt);
 
@@ -156,9 +170,7 @@ DialogResult render_dialog(const char* id,
 
     bool flash_on = false;
     if (flash_frames > 0) {
-        const int blinkPeriod = 6;
-        const int blinkOn = 3;
-        flash_on = ((flash_frames % blinkPeriod) < blinkOn);
+        flash_on = tradeboy::utils::blink_on(flash_frames, 6, 3);
     }
 
     auto draw_btn = [&](float x, const char* txt, bool selected) {

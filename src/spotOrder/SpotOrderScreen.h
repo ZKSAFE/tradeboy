@@ -35,6 +35,8 @@ struct SpotOrderState {
     int l1_flash_timer = 0;
     int r1_flash_timer = 0;
 
+    int b_flash_timer = 0;
+
     void open_with(const tradeboy::model::SpotRow& row, Side in_side, double in_max_possible);
     void close();
 };
