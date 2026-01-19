@@ -81,8 +81,17 @@ CrtFilter::CrtFilter()
     , u_overlay_active_(-1)
     , u_overlay_blur_strength_(-1)
     , u_overlay_darken_(-1)
+    , u_poweroff_t_(-1)
+    , u_poweroff_active_(-1)
+    , u_boot_t_(-1)
+    , u_boot_active_(-1)
     , overlay_rect_uv_(0, 0, 0, 0)
-    , overlay_active_(false) {}
+    , overlay_active_(false)
+    , poweroff_t_(0.0f)
+    , poweroff_active_(false)
+    , boot_t_(0.0f)
+    , boot_active_(false) {}
+
 
 bool CrtFilter::init(int width, int height) {
     shutdown();
@@ -115,14 +124,37 @@ bool CrtFilter::init(int width, int height) {
         "uniform float uOverlayActive;\n"
         "uniform float uOverlayBlurStrength;\n"
         "uniform float uOverlayDarken;\n"
+        "uniform float uPoweroffT;\n"
+        "uniform float uPoweroffActive;\n"
+        "uniform float uBootT;\n"
+        "uniform float uBootActive;\n"
         "float hash12(vec2 p){\n"
         "  vec3 p3 = fract(vec3(p.xyx) * 0.1031);\n"
         "  p3 += dot(p3, p3.yzx + 33.33);\n"
         "  return fract((p3.x + p3.y) * p3.z);\n"
         "}\n"
+        "float easeInOut(float t){\n"
+        "  t = clamp(t, 0.0, 1.0);\n"
+        "  return t * t * (3.0 - 2.0 * t);\n"
+        "}\n"
+        "float sat(float x){ return clamp(x, 0.0, 1.0); }\n"
+        "vec2 quantUV(vec2 uv, float cells){\n"
+        "  vec2 g = vec2(cells, cells * (uResolution.y / uResolution.x));\n"
+        "  return (floor(uv * g) + 0.5) / g;\n"
+        "}\n"
         "void main(){\n"
         "  vec2 baseUV = vUV;\n"
         "  vec2 uv = baseUV;\n"
+        "  bool poweroffOn = (uPoweroffActive > 0.5);\n"
+        "  bool bootOn = (!poweroffOn && uBootActive > 0.5);\n"
+        "  if (poweroffOn) {\n"
+        "    float t = clamp(uPoweroffT, 0.0, 1.0);\n"
+        "    float tLine = easeInOut(min(1.0, t / 0.65));\n"
+        "    float tDot  = easeInOut((t - 0.65) / 0.35);\n"
+        "    float sy = mix(1.0, 0.006, tLine);\n"
+        "    float sx = mix(1.0, 0.006, tDot);\n"
+        "    uv = (uv - 0.5) * vec2(sx, sy) + 0.5;\n"
+        "  }\n"
         "  uv = (uv - 0.5) / uZoom + 0.5;\n"
         "  vec2 c = uv * 2.0 - 1.0;\n"
         "  float r2 = dot(c,c);\n"
@@ -177,6 +209,56 @@ bool CrtFilter::init(int width, int height) {
         "  if (outsideOverlay) {\n"
         "    col *= (1.0 - uOverlayDarken);\n"
         "  }\n"
+        "  if (poweroffOn) {\n"
+        "    float t = clamp(uPoweroffT, 0.0, 1.0);\n"
+        "    float tLine = easeInOut(min(1.0, t / 0.65));\n"
+        "    float tDot  = easeInOut((t - 0.65) / 0.35);\n"
+        "    float sy = mix(1.0, 0.006, tLine);\n"
+        "    float sx = mix(1.0, 0.006, tDot);\n"
+        "    float ay = abs(baseUV.y - 0.5);\n"
+        "    float ax = abs(baseUV.x - 0.5);\n"
+        "    float fy = 0.020 + 0.030 * (1.0 - tLine);\n"
+        "    float fx = 0.020 + 0.030 * (1.0 - tDot);\n"
+        "    float my = 1.0 - smoothstep(sy * 0.5, sy * 0.5 + fy, ay);\n"
+        "    float mx = 1.0 - smoothstep(sx * 0.5, sx * 0.5 + fx, ax);\n"
+        "    float m = my * mix(1.0, mx, tDot);\n"
+        "    float glow = (1.0 - t) * 0.45;\n"
+        "    col *= m;\n"
+        "    col += glow * m;\n"
+        "  }\n"
+
+        "  if (bootOn) {\n"
+        "    float t = clamp(uBootT, 0.0, 1.0);\n"
+        "    float wSnow = 1.0 - smoothstep(0.26, 0.38, t);\n"
+        "    float wMosaic = smoothstep(0.22, 0.40, t) * (1.0 - smoothstep(0.86, 0.98, t));\n"
+        "    float wNormal = smoothstep(0.86, 1.00, t);\n"
+
+        "    float n0 = hash12(baseUV * uResolution + uTime * 120.0);\n"
+        "    float n1 = hash12(baseUV * uResolution * 0.7 + uTime * 240.0);\n"
+        "    float snow = sat(n0 * 0.65 + n1 * 0.35);\n"
+        "    snow = pow(snow, 1.6);\n"
+
+        "    float jitterW = 1.0 - smoothstep(0.40, 0.85, t);\n"
+        "    float jitter = (hash12(vec2(uTime * 60.0, baseUV.y * 931.0)) - 0.5) * jitterW;\n"
+        "    vec2 uvJ = clamp(baseUV + vec2(jitter * 0.025, 0.0), 0.0, 1.0);\n"
+
+        "    float tm = smoothstep(0.40, 0.90, t);\n"
+        "    float cells = mix(22.0, 110.0, tm);\n"
+        "    vec2 uvM = quantUV(uvJ, cells);\n"
+        "    vec3 cM = texture2D(uTex, uvM).rgb;\n"
+        "    float grain = mix(0.36, 0.08, tm);\n"
+        "    vec3 g = vec3(hash12(baseUV * uResolution * mix(0.9, 2.6, tm) + uTime * 190.0) - 0.5);\n"
+        "    cM = clamp(cM + g * grain, 0.0, 1.0);\n"
+
+        "    vec3 outCol = vec3(0.0);\n"
+        "    outCol += vec3(snow) * wSnow;\n"
+        "    outCol += cM * wMosaic;\n"
+        "    outCol += col * wNormal;\n"
+
+        "    float flick = 0.90 + 0.10 * sin(uTime * 40.0);\n"
+        "    outCol *= flick;\n"
+        "    col = outCol;\n"
+        "  }\n"
         "  gl_FragColor = vec4(col, 1.0);\n"
         "}\n";
 
@@ -206,6 +288,11 @@ bool CrtFilter::init(int width, int height) {
     u_overlay_active_ = glGetUniformLocation(prog_, "uOverlayActive");
     u_overlay_blur_strength_ = glGetUniformLocation(prog_, "uOverlayBlurStrength");
     u_overlay_darken_ = glGetUniformLocation(prog_, "uOverlayDarken");
+    u_poweroff_t_ = glGetUniformLocation(prog_, "uPoweroffT");
+    u_poweroff_active_ = glGetUniformLocation(prog_, "uPoweroffActive");
+
+    u_boot_t_ = glGetUniformLocation(prog_, "uBootT");
+    u_boot_active_ = glGetUniformLocation(prog_, "uBootActive");
 
     glGenTextures(1, &tex_);
     glBindTexture(GL_TEXTURE_2D, tex_);
@@ -281,6 +368,12 @@ void CrtFilter::shutdown() {
     u_overlay_blur_strength_ = -1;
     u_overlay_darken_ = -1;
 
+    u_poweroff_t_ = -1;
+    u_poweroff_active_ = -1;
+
+    u_boot_t_ = -1;
+    u_boot_active_ = -1;
+
     width_ = 0;
     height_ = 0;
 }
@@ -288,6 +381,16 @@ void CrtFilter::shutdown() {
 void CrtFilter::set_overlay_rect_uv(const ImVec4& rect_uv, bool active) {
     overlay_rect_uv_ = rect_uv;
     overlay_active_ = active;
+}
+
+void CrtFilter::set_poweroff(float t, bool active) {
+    poweroff_t_ = t;
+    poweroff_active_ = active;
+}
+
+void CrtFilter::set_boot(float t, bool active) {
+    boot_t_ = t;
+    boot_active_ = active;
 }
 
 bool CrtFilter::is_ready() const {
@@ -333,6 +436,12 @@ void CrtFilter::end(float time_seconds) {
     if (u_overlay_active_ >= 0) glUniform1f(u_overlay_active_, overlay_active_ ? 1.0f : 0.0f);
     if (u_overlay_blur_strength_ >= 0) glUniform1f(u_overlay_blur_strength_, overlay_blur_strength);
     if (u_overlay_darken_ >= 0) glUniform1f(u_overlay_darken_, overlay_darken);
+
+    if (u_poweroff_t_ >= 0) glUniform1f(u_poweroff_t_, poweroff_t_);
+    if (u_poweroff_active_ >= 0) glUniform1f(u_poweroff_active_, poweroff_active_ ? 1.0f : 0.0f);
+
+    if (u_boot_t_ >= 0) glUniform1f(u_boot_t_, boot_t_);
+    if (u_boot_active_ >= 0) glUniform1f(u_boot_active_, boot_active_ ? 1.0f : 0.0f);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     glEnableVertexAttribArray(0);

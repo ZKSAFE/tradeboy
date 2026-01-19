@@ -96,6 +96,7 @@ DialogResult render_dialog(const char* id,
     struct DialogTwEntry {
         tradeboy::utils::TypewriterState tw;
         float last_open_t = 0.0f;
+        bool started_when_open = false;
         bool has_last = false;
     };
     static std::unordered_map<std::string, DialogTwEntry> tw_map;
@@ -110,10 +111,25 @@ DialogResult render_dialog(const char* id,
     if (open_anim_t < ent.last_open_t) {
         ent.tw.last_text.clear();
         ent.tw.start_time = 0.0;
+        ent.started_when_open = false;
     }
     ent.last_open_t = open_anim_t;
 
-    std::string shown_text = tradeboy::utils::typewriter_shown(ent.tw, body, ImGui::GetTime(), 35.0);
+    // Typewriter should only start AFTER the open animation completes.
+    // Prompt (including '>') always stays visible.
+    std::string shown_text;
+    if (open_anim_t >= 1.0f) {
+        if (!ent.started_when_open) {
+            // Start reveal at the moment the dialog becomes fully open.
+            ent.tw.last_text.clear();
+            ent.tw.start_time = ImGui::GetTime();
+            ent.started_when_open = true;
+        }
+        shown_text = tradeboy::utils::typewriter_shown(ent.tw, body, ImGui::GetTime(), 35.0);
+    } else {
+        ent.started_when_open = false;
+        shown_text.clear();
+    }
 
     dl->AddText(ImVec2(p.x + 20.0f, contentTop + 10.0f), MatrixTheme::TEXT, prompt);
 

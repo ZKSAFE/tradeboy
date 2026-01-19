@@ -74,6 +74,10 @@ void App::startup() {
         market_service.reset(new tradeboy::market::MarketDataService(model, *market_src));
     }
     market_service->start();
+
+    boot_anim_active = true;
+    boot_anim_frames = 0;
+    boot_anim_t = 0.0f;
 }
 
 void App::shutdown() {
@@ -95,11 +99,8 @@ void App::load_private_key() {
 
     if (raw.empty()) {
         log_to_file("[App] private key missing or empty: %s\n", path);
-        
-        log_to_file("[App] clearing priv_key_hex...\n");
-        priv_key_hex = ""; // Try assignment instead of clear()
-        log_to_file("[App] priv_key_hex cleared\n");
-        
+
+        // priv_key_hex is expected to be empty on startup; avoid mutating it here.
         log_to_file("[App] load_private_key early return\n");
         return;
     }
@@ -160,9 +161,23 @@ void App::apply_spot_ui_events(const std::vector<tradeboy::spot::SpotUiEvent>& e
 void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy::app::EdgeState& edges) {
     if (quit_requested) return;
 
+    if (exit_poweroff_anim_active) {
+        return;
+    }
+
     // Exit modal has highest priority.
     if (exit_modal_open) {
         if (exit_dialog_closing) {
+            return;
+        }
+
+        // Always allow B to close/cancel, even while flashing.
+        if (tradeboy::utils::pressed(in.b, edges.prev.b)) {
+            exit_dialog_closing = true;
+            exit_dialog_close_frames = 0;
+            exit_dialog_quit_after_close = false;
+            exit_dialog_flash_frames = 0;
+            exit_dialog_pending_action = -1;
             return;
         }
 
@@ -172,20 +187,22 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
             }
             if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
                 exit_dialog_pending_action = exit_dialog_selected_btn;
-                exit_dialog_flash_frames = 24;
-            }
-            if (tradeboy::utils::pressed(in.b, edges.prev.b)) {
-                exit_dialog_closing = true;
-                exit_dialog_close_frames = 0;
-                exit_dialog_quit_after_close = false;
-                exit_dialog_flash_frames = 0;
-                exit_dialog_pending_action = -1;
+                exit_dialog_flash_frames = 18;
             }
         }
         return;
     }
 
+    // Global M: open exit modal (even if other modals are open).
     if (tradeboy::utils::pressed(in.m, edges.prev.m)) {
+        // Close any lower-priority modals to avoid state conflicts under the exit dialog.
+        account_address_dialog_open = false;
+        account_address_dialog_closing = false;
+        account_address_dialog_open_frames = 0;
+        account_address_dialog_close_frames = 0;
+        account_address_dialog_flash_frames = 0;
+        account_address_dialog_pending_action = -1;
+
         exit_modal_open = true;
         exit_dialog_selected_btn = 1;
         exit_dialog_open_frames = 0;
@@ -198,6 +215,30 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
     }
 
     if (tradeboy::spotOrder::handle_input(spot_order, in, edges)) {
+        return;
+    }
+
+    // Account address dialog (common Dialog) has priority over page inputs.
+    if (account_address_dialog_open) {
+        if (account_address_dialog_closing) {
+            return;
+        }
+
+        if (account_address_dialog_flash_frames <= 0) {
+            if (tradeboy::utils::pressed(in.left, edges.prev.left) || tradeboy::utils::pressed(in.right, edges.prev.right)) {
+                account_address_dialog_selected_btn = 1 - account_address_dialog_selected_btn;
+            }
+            if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
+                account_address_dialog_pending_action = account_address_dialog_selected_btn;
+                account_address_dialog_flash_frames = 18;
+            }
+            if (tradeboy::utils::pressed(in.b, edges.prev.b)) {
+                account_address_dialog_closing = true;
+                account_address_dialog_close_frames = 0;
+                account_address_dialog_flash_frames = 0;
+                account_address_dialog_pending_action = -1;
+            }
+        }
         return;
     }
 
@@ -238,6 +279,34 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
 
         std::vector<tradeboy::spot::SpotUiEvent> ev = tradeboy::spot::collect_spot_ui_events(in, edges, ui);
         apply_spot_ui_events(ev);
+    } else if (tab == Tab::Account) {
+        if (account_flash_timer > 0) {
+            account_flash_timer--;
+        }
+
+        if (tradeboy::utils::pressed(in.x, edges.prev.x)) {
+            account_address_dialog_open = true;
+            account_address_dialog_selected_btn = 1;
+            account_address_dialog_open_frames = 0;
+            account_address_dialog_flash_frames = 0;
+            account_address_dialog_pending_action = -1;
+            account_address_dialog_closing = false;
+            account_address_dialog_close_frames = 0;
+            return;
+        }
+
+        if (tradeboy::utils::pressed(in.left, edges.prev.left)) {
+            account_focused_col = 0;
+        }
+        if (tradeboy::utils::pressed(in.right, edges.prev.right)) {
+            account_focused_col = 1;
+        }
+
+        if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
+            // Trigger action for focused column
+            account_flash_timer = 18;
+            account_flash_btn = account_focused_col;
+        }
     }
 }
 
@@ -297,7 +366,12 @@ void App::render() {
         } else if (tab == Tab::Perp) {
             tradeboy::perp::render_perp_screen(font_bold);
         } else {
-            tradeboy::account::render_account_screen(font_bold);
+            tradeboy::account::render_account_screen(
+                account_focused_col,
+                account_flash_btn,
+                account_flash_timer,
+                font_bold
+            );
         }
     }
 
@@ -306,6 +380,27 @@ void App::render() {
     dec_frame_counter(l1_flash_frames);
     dec_frame_counter(r1_flash_frames);
     tradeboy::spotOrder::render(spot_order, font_bold);
+
+    // Process account address dialog flash -> trigger closing when finished.
+    if (account_address_dialog_open && !account_address_dialog_closing && account_address_dialog_flash_frames > 0) {
+        account_address_dialog_flash_frames--;
+        if (account_address_dialog_flash_frames == 0 && account_address_dialog_pending_action >= 0) {
+            account_address_dialog_closing = true;
+            account_address_dialog_close_frames = 0;
+            account_address_dialog_pending_action = -1;
+        }
+    }
+
+    // Account dialog close animation
+    if (account_address_dialog_open && account_address_dialog_closing) {
+        const int close_dur = 18;
+        account_address_dialog_close_frames++;
+        if (account_address_dialog_close_frames >= close_dur) {
+            account_address_dialog_open = false;
+            account_address_dialog_closing = false;
+            account_address_dialog_close_frames = 0;
+        }
+    }
 
     // Process exit dialog flash -> trigger closing when finished.
     if (exit_modal_open && !exit_dialog_closing && exit_dialog_flash_frames > 0) {
@@ -327,7 +422,8 @@ void App::render() {
             exit_dialog_closing = false;
             exit_dialog_close_frames = 0;
             if (exit_dialog_quit_after_close) {
-                quit_requested = true;
+                exit_poweroff_anim_active = true;
+                exit_poweroff_anim_frames = 0;
             }
             exit_dialog_quit_after_close = false;
         }
@@ -335,6 +431,27 @@ void App::render() {
 
     overlay_rect_active = false;
     overlay_rect_uv = ImVec4(0, 0, 0, 0);
+
+    exit_poweroff_anim_t = 0.0f;
+
+    // Boot animation (CRT startup) is disabled once finished; poweroff overrides it.
+    if (exit_poweroff_anim_active) {
+        boot_anim_active = false;
+        boot_anim_frames = 0;
+        boot_anim_t = 0.0f;
+    } else if (boot_anim_active) {
+        const int dur = 72;
+        boot_anim_frames++;
+        float t = (float)boot_anim_frames / (float)dur;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        boot_anim_t = t;
+        if (boot_anim_frames >= dur) {
+            boot_anim_active = false;
+            boot_anim_frames = 0;
+            boot_anim_t = 0.0f;
+        }
+    }
 
     if (exit_modal_open) {
         float open_t = 1.0f;
@@ -356,6 +473,41 @@ void App::render() {
                                     open_t,
                                     font_bold,
                                     nullptr);
+    }
+
+    if (account_address_dialog_open) {
+        float open_t = 1.0f;
+        if (!account_address_dialog_closing) {
+            if (account_address_dialog_open_frames < 18) account_address_dialog_open_frames++;
+            open_t = (float)account_address_dialog_open_frames / 18.0f;
+        } else {
+            const int close_dur = 18;
+            open_t = 1.0f - (float)account_address_dialog_close_frames / (float)close_dur;
+        }
+
+        tradeboy::ui::render_dialog("AccountAddressDialog",
+                                    "> ",
+                                    "FULL_WALLET_SIGNATURE\n0x88f273412a8901cde4a1bb22390f12c129e4a1",
+                                    "COPY",
+                                    "CLOSE",
+                                    &account_address_dialog_selected_btn,
+                                    account_address_dialog_flash_frames,
+                                    open_t,
+                                    font_bold,
+                                    nullptr);
+    }
+
+    // CRT power-off postprocess (after confirm exit, after exit dialog close completes).
+    if (exit_poweroff_anim_active) {
+        const int dur = 34;
+        exit_poweroff_anim_frames++;
+        float t = (float)exit_poweroff_anim_frames / (float)dur;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        exit_poweroff_anim_t = t;
+        if (exit_poweroff_anim_frames >= dur) {
+            quit_requested = true;
+        }
     }
 }
 

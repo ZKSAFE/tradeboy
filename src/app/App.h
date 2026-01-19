@@ -36,6 +36,19 @@ struct App {
     int spot_action_idx = 0; // 0=buy, 1=sell
     bool spot_action_focus = false;
 
+    // Account state
+    int account_focused_col = 0; // 0=Hyperliquid, 1=Arbitrum
+    int account_flash_timer = 0;
+    int account_flash_btn = -1; // 0=Withdraw, 1=Deposit (based on col)
+
+    bool account_address_dialog_open = false;
+    int account_address_dialog_selected_btn = 1;
+    int account_address_dialog_open_frames = 0;
+    int account_address_dialog_flash_frames = 0;
+    int account_address_dialog_pending_action = -1; // 0=confirm, 1=cancel
+    bool account_address_dialog_closing = false;
+    int account_address_dialog_close_frames = 0;
+
     // UI feedback state
     bool action_btn_held = false; // A button held
     bool l1_btn_held = false;
@@ -56,6 +69,14 @@ struct App {
     bool exit_dialog_closing = false;
     int exit_dialog_close_frames = 0;
     bool exit_dialog_quit_after_close = false;
+
+    bool exit_poweroff_anim_active = false;
+    int exit_poweroff_anim_frames = 0;
+    float exit_poweroff_anim_t = 0.0f;
+
+    bool boot_anim_active = true;
+    int boot_anim_frames = 0;
+    float boot_anim_t = 0.0f;
 
     bool overlay_rect_active = false;
     ImVec4 overlay_rect_uv = ImVec4(0, 0, 0, 0);

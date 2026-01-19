@@ -10,6 +10,7 @@
 #include <vector>
 #include <cstdarg>
 #include <cmath>
+#include <signal.h>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -26,6 +27,15 @@ void log_to_file(const char* fmt, ...) {
     vfprintf(f, fmt, args);
     va_end(args);
     fclose(f);
+}
+
+static void crash_signal_handler(int sig) {
+    FILE* f = fopen("log.txt", "a");
+    if (f) {
+        fprintf(f, "[CRASH] signal=%d\n", sig);
+        fclose(f);
+    }
+    _exit(128 + sig);
 }
 
 static bool file_exists(const char* path) {
@@ -49,6 +59,11 @@ int main(int argc, char** argv) {
         int rc = chdir("/mnt/mmc/Roms/APPS");
         (void)rc;
     }
+
+    signal(SIGSEGV, crash_signal_handler);
+    signal(SIGABRT, crash_signal_handler);
+    signal(SIGFPE, crash_signal_handler);
+    signal(SIGILL, crash_signal_handler);
 
     // Clear log file on startup
     FILE* f = fopen("log.txt", "w");
@@ -220,6 +235,7 @@ int main(int argc, char** argv) {
 
     app.font_bold = loaded_font_bold;
     log_to_file("[Main] App constructed\n");
+    log_to_file("[Main] init_demo_data begin\n");
     app.init_demo_data();
     log_to_file("[Main] init_demo_data done\n");
     log_to_file("[Main] calling load_private_key\n");
@@ -256,8 +272,13 @@ int main(int argc, char** argv) {
         }
         frame_counter++;
 
+        if (frame_counter <= 5) log_to_file("[Frame %d] begin\n", frame_counter);
+
+        if (frame_counter <= 5) log_to_file("[Frame %d] ImGui_ImplOpenGL3_NewFrame\n", frame_counter);
         ImGui_ImplOpenGL3_NewFrame();
+        if (frame_counter <= 5) log_to_file("[Frame %d] ImGui_ImplSDL2_NewFrame\n", frame_counter);
         ImGui_ImplSDL2_NewFrame();
+        if (frame_counter <= 5) log_to_file("[Frame %d] ImGui::NewFrame\n", frame_counter);
         ImGui::NewFrame();
 
         ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
@@ -267,15 +288,23 @@ int main(int argc, char** argv) {
                                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings |
                                  ImGuiWindowFlags_NoBackground;
         ImGui::Begin("Spot", nullptr, wflags);
+        if (frame_counter <= 5) log_to_file("[Frame %d] app.render begin\n", frame_counter);
         app.render();
+        if (frame_counter <= 5) log_to_file("[Frame %d] app.render end\n", frame_counter);
         ImGui::End();
 
+        if (frame_counter <= 5) log_to_file("[Frame %d] ImGui::Render\n", frame_counter);
         ImGui::Render();
 
         if (crt.is_ready()) {
+            if (frame_counter <= 5) log_to_file("[Frame %d] crt.begin\n", frame_counter);
             crt.begin();
+            if (frame_counter <= 5) log_to_file("[Frame %d] ImGui_ImplOpenGL3_RenderDrawData\n", frame_counter);
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
             crt.set_overlay_rect_uv(app.overlay_rect_uv, app.overlay_rect_active);
+            crt.set_poweroff(app.exit_poweroff_anim_t, app.exit_poweroff_anim_active);
+            crt.set_boot(app.boot_anim_t, app.boot_anim_active && !app.exit_poweroff_anim_active);
+            if (frame_counter <= 5) log_to_file("[Frame %d] crt.end\n", frame_counter);
             crt.end((float)ImGui::GetTime());
         } else {
             glViewport(0, 0, mode.w, mode.h);
@@ -284,7 +313,10 @@ int main(int argc, char** argv) {
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         }
 
+        if (frame_counter <= 5) log_to_file("[Frame %d] SDL_GL_SwapWindow\n", frame_counter);
         SDL_GL_SwapWindow(window);
+
+        if (frame_counter <= 5) log_to_file("[Frame %d] end\n", frame_counter);
     }
 
     log_to_file("[Main] main loop exit -> begin shutdown\n");

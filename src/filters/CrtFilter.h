@@ -19,6 +19,8 @@ public:
     void end(float time_seconds);
 
     void set_overlay_rect_uv(const ImVec4& rect_uv, bool active);
+    void set_poweroff(float t, bool active);
+    void set_boot(float t, bool active);
 
     float scan_strength;
     float vignette_strength;
@@ -61,8 +63,20 @@ private:
     GLint u_overlay_blur_strength_;
     GLint u_overlay_darken_;
 
+    GLint u_poweroff_t_;
+    GLint u_poweroff_active_;
+
+    GLint u_boot_t_;
+    GLint u_boot_active_;
+
     ImVec4 overlay_rect_uv_;
     bool overlay_active_;
+
+    float poweroff_t_;
+    bool poweroff_active_;
+
+    float boot_t_;
+    bool boot_active_;
 };
 
 } // namespace filters
