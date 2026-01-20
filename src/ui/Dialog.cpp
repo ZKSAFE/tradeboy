@@ -99,8 +99,13 @@ DialogResult render_dialog(const char* id,
     {
         ImFont* font = ImGui::GetFont();
         const float font_size = ImGui::GetFontSize();
-        const float line_h = font_size + 4.0f;
+        const float line_h = ImGui::GetTextLineHeight();
         const float scale_a = (font && font->LegacySize > 0.0f) ? (font_size / font->LegacySize) : 1.0f;
+
+        // Older ImGui builds used in this project may not expose ImFont::Descent/FontSize.
+        // Use a conservative approximation to avoid descender clipping during dynamic growth.
+        float descent_px = font_size * 0.25f;
+        if (descent_px < 3.0f) descent_px = 3.0f;
 
         const char* pr = prompt ? prompt : "";
         ImVec2 pSz = font ? font->CalcTextSizeA(scale_a, FLT_MAX, 0.0f, pr) : ImGui::CalcTextSize(pr);
@@ -136,7 +141,8 @@ DialogResult render_dialog(const char* id,
 
         if (lines < 1) lines = 1;
 
-        float desired_h = 96.0f + (float)lines * line_h;
+        // Include a small descent buffer so the last visible line doesn't get clipped during dynamic growth.
+        float desired_h = 96.0f + (float)lines * line_h + descent_px + 2.0f;
         if (desired_h < 160.0f) desired_h = 160.0f;
         if (desired_h > 450.0f) desired_h = 450.0f;
         winSize.y = desired_h;
@@ -182,7 +188,7 @@ DialogResult render_dialog(const char* id,
     {
         ImFont* font = ImGui::GetFont();
         const float font_size = ImGui::GetFontSize();
-        const float line_h = font_size + 4.0f;
+        const float line_h = ImGui::GetTextLineHeight();
         const float scale_a = (font && font->LegacySize > 0.0f) ? (font_size / font->LegacySize) : 1.0f;
         ImVec2 pSz = font ? font->CalcTextSizeA(scale_a, FLT_MAX, 0.0f, pr) : ImGui::CalcTextSize(pr);
 
@@ -196,11 +202,15 @@ DialogResult render_dialog(const char* id,
         if (max_w_first < 40.0f) max_w_first = 40.0f;
         if (max_w_next < 40.0f) max_w_next = 40.0f;
 
+        // Add bottom padding so glyph descenders don't get clipped.
+        // (Can't use ImFont::Descent in this ImGui version.)
+        float descent_px = font_size * 0.25f;
+        if (descent_px < 3.0f) descent_px = 3.0f;
         const float min_body_to_buttons = 14.0f;
-        const float body_max_y = footerY - min_body_to_buttons - 3.0f;
+        const float body_max_y = footerY - min_body_to_buttons;
         const ImVec2 clip_min(x_prompt, y - 2.0f);
-        const ImVec2 clip_max(p.x + sz.x - 20.0f, body_max_y);
-        int max_lines = (int)((body_max_y - y + 0.001f) / line_h);
+        const ImVec2 clip_max(p.x + sz.x - 20.0f, body_max_y + descent_px + 8.0f);
+        int max_lines = (int)((clip_max.y - y) / line_h);
         if (max_lines < 1) max_lines = 1;
         int drawn_lines = 0;
         bool truncated = false;
@@ -250,7 +260,7 @@ DialogResult render_dialog(const char* id,
             }
 
             if (nl) {
-                y += line_h * 0.15f;
+                // Newline: move to next line.
                 s = nl + 1;
             } else {
                 break;

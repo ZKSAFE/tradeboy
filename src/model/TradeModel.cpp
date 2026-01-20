@@ -17,19 +17,31 @@ TradeModelSnapshot TradeModel::snapshot() const {
 }
 
 void TradeModel::set_spot_rows(std::vector<SpotRow> rows) {
+    log_to_file("[Model] set_spot_rows enter rows_in=%d\n", (int)rows.size());
+    log_to_file("[Model] set_spot_rows about to lock\n");
     std::lock_guard<std::mutex> lock(mu);
-    spot_rows_ = std::move(rows);
+    log_to_file("[Model] set_spot_rows locked\n");
+    // NOTE: On RG34XX we've seen SIGSEGV in std::vector move-assignment here.
+    // Use copy assignment as a conservative workaround.
+    spot_rows_ = rows;
+    log_to_file("[Model] set_spot_rows copied rows sz=%d\n", (int)spot_rows_.size());
     if (spot_row_idx_ < 0) spot_row_idx_ = 0;
     if (!spot_rows_.empty() && spot_row_idx_ >= (int)spot_rows_.size()) spot_row_idx_ = (int)spot_rows_.size() - 1;
+    log_to_file("[Model] set_spot_rows exit idx=%d\n", spot_row_idx_);
 }
 
 void TradeModel::set_spot_row_idx(int idx) {
+    log_to_file("[Model] set_spot_row_idx enter idx=%d\n", idx);
+    log_to_file("[Model] set_spot_row_idx about to lock\n");
     std::lock_guard<std::mutex> lock(mu);
+    log_to_file("[Model] set_spot_row_idx locked\n");
     if (spot_rows_.empty()) {
         spot_row_idx_ = 0;
+        log_to_file("[Model] set_spot_row_idx exit empty\n");
         return;
     }
     spot_row_idx_ = std::max(0, std::min((int)spot_rows_.size() - 1, idx));
+    log_to_file("[Model] set_spot_row_idx exit idx_now=%d sz=%d\n", spot_row_idx_, (int)spot_rows_.size());
 }
 
 void TradeModel::update_mid_prices_from_allmids_json(const std::string& all_mids_json) {

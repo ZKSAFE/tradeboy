@@ -9,6 +9,8 @@ struct WalletOnchainData {
     std::string eth_balance;  // formatted
     std::string usdc_balance; // formatted
     std::string gas;          // "GAS: ..."
+
+    long double gas_price_wei = 0.0L;
 };
 
 bool fetch_wallet_data(const std::string& rpc_url,

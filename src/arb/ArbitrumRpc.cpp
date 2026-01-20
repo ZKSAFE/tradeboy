@@ -164,6 +164,8 @@ bool fetch_wallet_data(const std::string& rpc_url,
     std::string gwei_s = tradeboy::utils::format_fixed_trunc_sig((double)gwei, 7, 3);
     out.gas = std::string("GAS: ") + gwei_s + " GWEI";
 
+    out.gas_price_wei = gaswei;
+
     out.rpc_ok = true;
     return true;
 }

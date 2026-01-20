@@ -18,7 +18,8 @@ void render_account_screen(int focused_col,
                            const char* arb_address_short,
                            const char* arb_eth,
                            const char* arb_usdc,
-                           const char* arb_gas) {
+                           const char* arb_gas,
+                           const char* arb_fee) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 p = ImGui::GetCursorScreenPos();
     ImVec2 size = ImGui::GetContentRegionAvail();
@@ -218,9 +219,15 @@ void render_account_screen(int focused_col,
         
         // GAS: default size (~14px)
         currY += 10.0f;
+        const float subFont = 20.0f;
         const char* gas = (arb_gas && arb_gas[0]) ? arb_gas : "GAS: UNKNOWN";
-        ImVec2 gasSz = font_reg ? font_reg->CalcTextSizeA(16.0f, FLT_MAX, 0.0f, gas) : ImGui::CalcTextSize(gas);
-        dl->AddText(font_reg, 16.0f, ImVec2(cx + innerP + (innerW - gasSz.x) * 0.5f, currY), MatrixTheme::DIM, gas);
+        ImVec2 gasSz = font_reg ? font_reg->CalcTextSizeA(subFont, FLT_MAX, 0.0f, gas) : ImGui::CalcTextSize(gas);
+        dl->AddText(font_reg, subFont, ImVec2(cx + innerP + (innerW - gasSz.x) * 0.5f, currY), MatrixTheme::DIM, gas);
+
+        currY += 22.0f;
+        const char* fee = (arb_fee && arb_fee[0]) ? arb_fee : "TRANSATION FEE: $UNKNOWN";
+        ImVec2 feeSz = font_reg ? font_reg->CalcTextSizeA(subFont, FLT_MAX, 0.0f, fee) : ImGui::CalcTextSize(fee);
+        dl->AddText(font_reg, subFont, ImVec2(cx + innerP + (innerW - feeSz.x) * 0.5f, currY), MatrixTheme::DIM, fee);
 
         // Bottom Button: <- DEPOSIT USDC
         {

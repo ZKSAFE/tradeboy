@@ -13,6 +13,7 @@ void render_account_screen(int focused_col,
                            const char* arb_address_short,
                            const char* arb_eth,
                            const char* arb_usdc,
-                           const char* arb_gas);
+                           const char* arb_gas,
+                           const char* arb_fee);
 
 } // namespace tradeboy::account

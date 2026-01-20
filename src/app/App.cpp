@@ -56,6 +56,7 @@ static void set_alert(tradeboy::app::App& app, const std::string& body) {
 }
 
 void App::init_demo_data() {
+    log_to_file("[App] init_demo_data enter\n");
     std::vector<tradeboy::model::SpotRow> rows = {
         {"BTC", 87482.75, 87482.75, 0.0, 87482.75},
         {"ETH", 2962.41, 2962.41, 0.0, 2962.41},
@@ -67,12 +68,16 @@ void App::init_demo_data() {
         {"ADA", 0.3599, 0.3599, 0.0, 0.3599},
     };
 
+    log_to_file("[App] init_demo_data rows=%d\n", (int)rows.size());
+
     uint32_t seed = (uint32_t)(SDL_GetTicks() ^ 0xA53C9E17u);
+    log_to_file("[App] init_demo_data seed=%u\n", (unsigned int)seed);
     auto rnd01 = [&]() {
         seed = seed * 1664525u + 1013904223u;
         return (double)((seed >> 8) & 0xFFFFu) / 65535.0;
     };
     for (auto& r : rows) {
+        log_to_file("[App] init_demo_data sym=%s price=%f\n", r.sym.c_str(), r.price);
         double bal = 0.0;
         if (r.sym == "BTC") bal = 0.01 + rnd01() * 0.05;
         else if (r.sym == "ETH") bal = 0.2 + rnd01() * 1.5;
@@ -86,8 +91,12 @@ void App::init_demo_data() {
     wallet_usdc = 10000.0;
     hl_usdc = 0.0;
 
+    log_to_file("[App] init_demo_data applying to model\n");
+
     model.set_spot_rows(std::move(rows));
     model.set_spot_row_idx(spot_row_idx);
+
+    log_to_file("[App] init_demo_data exit\n");
 }
 
 void App::startup() {
@@ -134,6 +143,7 @@ void App::startup() {
                     arb_eth_str = d.eth_balance;
                     arb_usdc_str = d.usdc_balance;
                     arb_gas_str = d.gas;
+                    arb_gas_price_wei = d.gas_price_wei;
                 }
                 arb_rpc_last_ok = true;
             } else {
@@ -142,6 +152,7 @@ void App::startup() {
                     arb_eth_str = "UNKNOWN";
                     arb_usdc_str = "UNKNOWN";
                     arb_gas_str = "GAS: UNKNOWN";
+                    arb_gas_price_wei = 0.0L;
                 }
                 if (arb_rpc_last_ok) {
                     arb_rpc_error_pending_alert.store(true);
@@ -442,12 +453,40 @@ void App::render() {
             std::string eth_s;
             std::string usdc_s;
             std::string gas_s;
+            long double gas_price_wei = 0.0L;
             {
                 std::lock_guard<std::mutex> lk(arb_rpc_mu);
                 eth_s = arb_eth_str;
                 usdc_s = arb_usdc_str;
                 gas_s = arb_gas_str;
+                gas_price_wei = arb_gas_price_wei;
             }
+
+            // Estimate Arbitrum USDC transfer fee in USD.
+            // Gas limit reference: 75,586
+            double eth_mid = 0.0;
+            {
+                tradeboy::model::TradeModelSnapshot snap = model.snapshot();
+                for (const auto& r : snap.spot_rows) {
+                    if (r.sym == "ETH") {
+                        eth_mid = r.price;
+                        break;
+                    }
+                }
+            }
+
+            std::string fee_s = "TRANSATION FEE: $UNKNOWN";
+            if (gas_price_wei > 0.0L && eth_mid > 0.0) {
+                const long double gas_limit = 75586.0L;
+                long double fee_eth = (gas_price_wei * gas_limit) / 1000000000000000000.0L;
+                long double fee_usd = fee_eth * (long double)eth_mid;
+                // 4 decimals
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "TRANSATION FEE: $%.4Lf", fee_usd);
+                fee_s = buf;
+            }
+            arb_tx_fee_str = fee_s;
+
             tradeboy::account::render_account_screen(
                 account_focused_col,
                 account_flash_btn,
@@ -456,7 +495,8 @@ void App::render() {
                 wallet_address_short.c_str(),
                 eth_s.c_str(),
                 usdc_s.c_str(),
-                gas_s.c_str()
+                gas_s.c_str(),
+                arb_tx_fee_str.c_str()
             );
         }
     }

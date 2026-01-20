@@ -11,6 +11,7 @@
 #include <cstdarg>
 #include <cmath>
 #include <signal.h>
+#include <execinfo.h>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -33,6 +34,14 @@ static void crash_signal_handler(int sig) {
     FILE* f = fopen("log.txt", "a");
     if (f) {
         fprintf(f, "[CRASH] signal=%d\n", sig);
+        // Best-effort backtrace for post-mortem debugging (core dumps are disabled on device).
+        void* bt[64];
+        int n = backtrace(bt, 64);
+        fprintf(f, "[CRASH] backtrace_depth=%d\n", n);
+        fflush(f);
+        // backtrace_symbols_fd writes to a file descriptor.
+        backtrace_symbols_fd(bt, n, fileno(f));
+        fprintf(f, "\n");
         fclose(f);
     }
     _exit(128 + sig);

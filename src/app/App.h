@@ -99,6 +99,9 @@ struct App {
     std::string arb_usdc_str;
     std::string arb_gas_str;
 
+    long double arb_gas_price_wei = 0.0L;
+    std::string arb_tx_fee_str;
+
     bool arb_rpc_last_ok = false;
     std::atomic<bool> arb_rpc_error_pending_alert{false};
 
