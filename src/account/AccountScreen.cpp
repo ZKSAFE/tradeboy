@@ -11,11 +11,14 @@ namespace tradeboy::account {
 static const char* MOCK_HL_TOTAL_ASSET = "$42,904.32";
 static const char* MOCK_HL_USDC = "3,124.20";
 
-static const char* MOCK_ARB_ADDRESS_SHORT = "0x88f2...e4a1";
-static const char* MOCK_ARB_ETH = "1.4502";
-static const char* MOCK_ARB_USDC = "1,204.00";
-
-void render_account_screen(int focused_col, int flash_btn, int flash_timer, ImFont* font_bold) {
+void render_account_screen(int focused_col,
+                           int flash_btn,
+                           int flash_timer,
+                           ImFont* font_bold,
+                           const char* arb_address_short,
+                           const char* arb_eth,
+                           const char* arb_usdc,
+                           const char* arb_gas) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 p = ImGui::GetCursorScreenPos();
     ImVec2 size = ImGui::GetContentRegionAvail();
@@ -192,7 +195,7 @@ void render_account_screen(int focused_col, int flash_btn, int flash_timer, ImFo
             ImVec2 xSz = ImGui::CalcTextSize("X");
             dl->AddText(ImVec2(rightEdge - btnSize + (btnSize-xSz.x)*0.5f, currY + (boxH-xSz.y)*0.5f), MatrixTheme::BLACK, "X");
             
-            const char* addr = MOCK_ARB_ADDRESS_SHORT;
+            const char* addr = (arb_address_short && arb_address_short[0]) ? arb_address_short : "UNKNOWN";
             ImVec2 addrSz = font_reg ? font_reg->CalcTextSizeA(20.0f, FLT_MAX, 0.0f, addr) : ImGui::CalcTextSize(addr);
             float addrX = rightEdge - btnSize - 8.0f - addrSz.x;
             dl->AddText(font_reg, 20.0f, ImVec2(addrX, currY + (boxH-addrSz.y)*0.5f), MatrixTheme::TEXT, addr);
@@ -210,12 +213,12 @@ void render_account_screen(int focused_col, int flash_btn, int flash_timer, ImFo
             currY += 40.0f;
         };
         
-        draw_row("ETH", MOCK_ARB_ETH);
-        draw_row("USDC", MOCK_ARB_USDC);
+        draw_row("ETH", (arb_eth && arb_eth[0]) ? arb_eth : "UNKNOWN");
+        draw_row("USDC", (arb_usdc && arb_usdc[0]) ? arb_usdc : "UNKNOWN");
         
         // GAS: default size (~14px)
         currY += 10.0f;
-        const char* gas = "GAS: 12 GWEI ≈ $0.01";
+        const char* gas = (arb_gas && arb_gas[0]) ? arb_gas : "GAS: UNKNOWN";
         ImVec2 gasSz = font_reg ? font_reg->CalcTextSizeA(16.0f, FLT_MAX, 0.0f, gas) : ImGui::CalcTextSize(gas);
         dl->AddText(font_reg, 16.0f, ImVec2(cx + innerP + (innerW - gasSz.x) * 0.5f, currY), MatrixTheme::DIM, gas);
 

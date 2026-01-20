@@ -4,6 +4,8 @@
 #include <vector>
 #include <mutex>
 #include <memory>
+#include <thread>
+#include <atomic>
 
 #include "imgui.h"
 
@@ -11,6 +13,8 @@
 #include "../market/IMarketDataSource.h"
 #include "../market/MarketDataService.h"
 #include "../model/TradeModel.h"
+
+#include "../wallet/Wallet.h"
 
 namespace tradeboy::spot { struct SpotUiEvent; }
 
@@ -49,6 +53,13 @@ struct App {
     bool account_address_dialog_closing = false;
     int account_address_dialog_close_frames = 0;
 
+    bool alert_dialog_open = false;
+    int alert_dialog_open_frames = 0;
+    int alert_dialog_flash_frames = 0;
+    bool alert_dialog_closing = false;
+    int alert_dialog_close_frames = 0;
+    std::string alert_dialog_body;
+
     // UI feedback state
     bool action_btn_held = false; // A button held
     bool l1_btn_held = false;
@@ -81,7 +92,17 @@ struct App {
     bool overlay_rect_active = false;
     ImVec4 overlay_rect_uv = ImVec4(0, 0, 0, 0);
 
-    std::string priv_key_hex;
+    tradeboy::wallet::WalletConfig wallet_cfg;
+    std::string wallet_address_short;
+
+    std::string arb_eth_str;
+    std::string arb_usdc_str;
+    std::string arb_gas_str;
+
+    bool arb_rpc_last_ok = false;
+    std::atomic<bool> arb_rpc_error_pending_alert{false};
+
+    std::mutex arb_rpc_mu;
 
     double wallet_usdc = 0.0;
     double hl_usdc = 0.0;
@@ -92,11 +113,13 @@ struct App {
     
     ImFont* font_bold = nullptr;
 
+    std::thread arb_rpc_thread;
+    std::atomic<bool> arb_rpc_stop{false};
+
     void startup();
     void shutdown();
 
     void init_demo_data();
-    void load_private_key();
     static void dec_frame_counter(int& v);
 
     void open_spot_order(bool buy);

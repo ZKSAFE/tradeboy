@@ -3,6 +3,8 @@
 #include <fstream>
 #include <sstream>
 
+#include <cstdio>
+
 namespace tradeboy::utils {
 
 bool file_exists(const std::string& path) {
@@ -16,6 +18,48 @@ std::string read_text_file(const std::string& path) {
     std::ostringstream ss;
     ss << in.rdbuf();
     return ss.str();
+}
+
+bool write_text_file(const std::string& path, const std::string& contents) {
+    std::ofstream out(path, std::ios::out | std::ios::trunc);
+    if (!out) return false;
+    out << contents;
+    return (bool)out;
+}
+
+bool read_random_bytes(size_t n, std::string& out_bytes) {
+    out_bytes.clear();
+    if (n == 0) return true;
+
+    FILE* f = std::fopen("/dev/urandom", "rb");
+    if (!f) return false;
+    out_bytes.resize(n);
+    size_t got = std::fread(&out_bytes[0], 1, n, f);
+    std::fclose(f);
+    if (got != n) {
+        out_bytes.clear();
+        return false;
+    }
+    return true;
+}
+
+bool read_true_random_bytes(size_t n, std::string& out_bytes) {
+    out_bytes.clear();
+    if (n == 0) return true;
+
+    FILE* f = std::fopen("/dev/random", "rb");
+    if (!f) {
+        // Fallback if /dev/random is not available.
+        return read_random_bytes(n, out_bytes);
+    }
+    out_bytes.resize(n);
+    size_t got = std::fread(&out_bytes[0], 1, n, f);
+    std::fclose(f);
+    if (got != n) {
+        out_bytes.clear();
+        return false;
+    }
+    return true;
 }
 
 std::string trim(const std::string& s) {

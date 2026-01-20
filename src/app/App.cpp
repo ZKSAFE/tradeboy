@@ -1,4 +1,4 @@
-#include "App.h"
+#include "app/App.h"
 
 #include <algorithm>
 #include <sstream>
@@ -17,9 +17,15 @@
 #include "../model/TradeModel.h"
 #include "../perp/PerpScreen.h"
 #include "../account/AccountScreen.h"
-#include "../utils/File.h"
-#include "../utils/Flash.h"
-#include "../utils/Math.h"
+#include "utils/File.h"
+#include "utils/Flash.h"
+#include "utils/Typewriter.h"
+#include "wallet/Wallet.h"
+#include "arb/ArbitrumRpc.h"
+
+#include <cstdio>
+#include <chrono>
+
 #include "../ui/MatrixBackground.h"
 #include "../ui/MatrixTheme.h"
 #include "../ui/MainUI.h"
@@ -29,6 +35,25 @@
 extern void log_to_file(const char* fmt, ...);
 
 namespace tradeboy::app {
+
+static std::string make_address_short(const std::string& addr_0x) {
+    if (addr_0x.size() < 10) return addr_0x;
+    std::string s = addr_0x;
+    if (s.rfind("0x", 0) == 0 || s.rfind("0X", 0) == 0) s = s.substr(2);
+    if (s.size() <= 10) return addr_0x;
+    std::string a = s.substr(0, 4);
+    std::string b = s.substr(s.size() - 4);
+    return std::string("0x") + a + "..." + b;
+}
+
+static void set_alert(tradeboy::app::App& app, const std::string& body) {
+    app.alert_dialog_open = true;
+    app.alert_dialog_open_frames = 0;
+    app.alert_dialog_flash_frames = 0;
+    app.alert_dialog_closing = false;
+    app.alert_dialog_close_frames = 0;
+    app.alert_dialog_body = body;
+}
 
 void App::init_demo_data() {
     std::vector<tradeboy::model::SpotRow> rows = {
@@ -78,36 +103,71 @@ void App::startup() {
     boot_anim_active = true;
     boot_anim_frames = 0;
     boot_anim_t = 0.0f;
+
+    bool created = false;
+    std::string err;
+    if (!tradeboy::wallet::load_or_create_config("./tradeboy.cfg", wallet_cfg, created, err)) {
+        set_alert(*this, std::string("RPC_CONFIG_ERROR\n") + err);
+    } else {
+        wallet_address_short = make_address_short(wallet_cfg.wallet_address);
+        if (created) {
+            set_alert(*this, std::string("NEW_WALLET_CREATED\n") + wallet_cfg.wallet_address);
+        }
+    }
+
+    arb_eth_str = "UNKNOWN";
+    arb_usdc_str = "UNKNOWN";
+    arb_gas_str = "GAS: UNKNOWN";
+    arb_rpc_last_ok = false;
+    arb_rpc_error_pending_alert.store(false);
+
+    arb_rpc_stop = false;
+    arb_rpc_thread = std::thread([this]() {
+        while (!arb_rpc_stop.load()) {
+            tradeboy::arb::WalletOnchainData d;
+            std::string e;
+            bool ok = tradeboy::arb::fetch_wallet_data(wallet_cfg.arb_rpc_url, wallet_cfg.wallet_address, d, e);
+
+            if (ok && d.rpc_ok) {
+                {
+                    std::lock_guard<std::mutex> lk(arb_rpc_mu);
+                    arb_eth_str = d.eth_balance;
+                    arb_usdc_str = d.usdc_balance;
+                    arb_gas_str = d.gas;
+                }
+                arb_rpc_last_ok = true;
+            } else {
+                {
+                    std::lock_guard<std::mutex> lk(arb_rpc_mu);
+                    arb_eth_str = "UNKNOWN";
+                    arb_usdc_str = "UNKNOWN";
+                    arb_gas_str = "GAS: UNKNOWN";
+                }
+                if (arb_rpc_last_ok) {
+                    arb_rpc_error_pending_alert.store(true);
+                }
+                arb_rpc_last_ok = false;
+            }
+
+            for (int i = 0; i < 20; i++) {
+                if (arb_rpc_stop.load()) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        }
+    });
 }
 
 void App::shutdown() {
     log_to_file("[App] shutdown()\n");
+    arb_rpc_stop = true;
+    if (arb_rpc_thread.joinable()) {
+        arb_rpc_thread.join();
+    }
     if (market_service) {
         market_service->stop();
         market_service.reset();
     }
     market_src.reset();
-}
-
-void App::load_private_key() {
-    log_to_file("[App] load_private_key start, this=%p\n", this);
-    const char* path = "./data/private_key.txt";
-    
-    log_to_file("[App] reading file: %s\n", path);
-    std::string raw = tradeboy::utils::read_text_file(path);
-    log_to_file("[App] read_text_file done, size=%d\n", (int)raw.size());
-
-    if (raw.empty()) {
-        log_to_file("[App] private key missing or empty: %s\n", path);
-
-        // priv_key_hex is expected to be empty on startup; avoid mutating it here.
-        log_to_file("[App] load_private_key early return\n");
-        return;
-    }
-    
-    log_to_file("[App] private key raw_len=%d\n", (int)raw.size());
-    priv_key_hex = tradeboy::utils::normalize_hex_private_key(raw);
-    log_to_file("[App] private key normalized_len=%d\n", (int)priv_key_hex.size());
 }
 
 void App::dec_frame_counter(int& v) {
@@ -162,6 +222,18 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
     if (quit_requested) return;
 
     if (exit_poweroff_anim_active) {
+        return;
+    }
+
+    if (alert_dialog_open) {
+        if (alert_dialog_closing) {
+            return;
+        }
+        if (alert_dialog_flash_frames <= 0) {
+            if (tradeboy::utils::pressed(in.a, edges.prev.a) || tradeboy::utils::pressed(in.b, edges.prev.b)) {
+                alert_dialog_flash_frames = 18;
+            }
+        }
         return;
     }
 
@@ -229,6 +301,7 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
                 account_address_dialog_selected_btn = 1 - account_address_dialog_selected_btn;
             }
             if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
+                // 0=PRIVATE_KEY, 1=CLOSE
                 account_address_dialog_pending_action = account_address_dialog_selected_btn;
                 account_address_dialog_flash_frames = 18;
             }
@@ -366,11 +439,24 @@ void App::render() {
         } else if (tab == Tab::Perp) {
             tradeboy::perp::render_perp_screen(font_bold);
         } else {
+            std::string eth_s;
+            std::string usdc_s;
+            std::string gas_s;
+            {
+                std::lock_guard<std::mutex> lk(arb_rpc_mu);
+                eth_s = arb_eth_str;
+                usdc_s = arb_usdc_str;
+                gas_s = arb_gas_str;
+            }
             tradeboy::account::render_account_screen(
                 account_focused_col,
                 account_flash_btn,
                 account_flash_timer,
-                font_bold
+                font_bold,
+                wallet_address_short.c_str(),
+                eth_s.c_str(),
+                usdc_s.c_str(),
+                gas_s.c_str()
             );
         }
     }
@@ -381,13 +467,21 @@ void App::render() {
     dec_frame_counter(r1_flash_frames);
     tradeboy::spotOrder::render(spot_order, font_bold);
 
+    // Process alert dialog flash -> trigger closing when finished.
+    if (alert_dialog_open && !alert_dialog_closing && alert_dialog_flash_frames > 0) {
+        alert_dialog_flash_frames--;
+        if (alert_dialog_flash_frames == 0) {
+            alert_dialog_closing = true;
+            alert_dialog_close_frames = 0;
+        }
+    }
+
     // Process account address dialog flash -> trigger closing when finished.
     if (account_address_dialog_open && !account_address_dialog_closing && account_address_dialog_flash_frames > 0) {
         account_address_dialog_flash_frames--;
         if (account_address_dialog_flash_frames == 0 && account_address_dialog_pending_action >= 0) {
             account_address_dialog_closing = true;
             account_address_dialog_close_frames = 0;
-            account_address_dialog_pending_action = -1;
         }
     }
 
@@ -399,7 +493,28 @@ void App::render() {
             account_address_dialog_open = false;
             account_address_dialog_closing = false;
             account_address_dialog_close_frames = 0;
+
+            if (account_address_dialog_pending_action == 0) {
+                set_alert(*this, std::string("PRIVATE_KEY\n") + wallet_cfg.private_key);
+            }
+            account_address_dialog_pending_action = -1;
         }
+    }
+
+    // Alert dialog close animation
+    if (alert_dialog_open && alert_dialog_closing) {
+        const int close_dur = 18;
+        alert_dialog_close_frames++;
+        if (alert_dialog_close_frames >= close_dur) {
+            alert_dialog_open = false;
+            alert_dialog_closing = false;
+            alert_dialog_close_frames = 0;
+            alert_dialog_open_frames = 0;
+        }
+    }
+
+    if (arb_rpc_error_pending_alert.exchange(false)) {
+        set_alert(*this, "RPC_CONNECTION_FAILED");
     }
 
     // Process exit dialog flash -> trigger closing when finished.
@@ -475,6 +590,29 @@ void App::render() {
                                     nullptr);
     }
 
+    if (alert_dialog_open) {
+        float open_t = 1.0f;
+        if (!alert_dialog_closing) {
+            if (alert_dialog_open_frames < 18) alert_dialog_open_frames++;
+            open_t = (float)alert_dialog_open_frames / 18.0f;
+        } else {
+            const int close_dur = 18;
+            open_t = 1.0f - (float)alert_dialog_close_frames / (float)close_dur;
+        }
+
+        int sel = 1;
+        tradeboy::ui::render_dialog("AlertDialog",
+                                    "> ",
+                                    alert_dialog_body,
+                                    "",
+                                    "OK",
+                                    &sel,
+                                    alert_dialog_flash_frames,
+                                    open_t,
+                                    font_bold,
+                                    nullptr);
+    }
+
     if (account_address_dialog_open) {
         float open_t = 1.0f;
         if (!account_address_dialog_closing) {
@@ -487,8 +625,8 @@ void App::render() {
 
         tradeboy::ui::render_dialog("AccountAddressDialog",
                                     "> ",
-                                    "FULL_WALLET_SIGNATURE\n0x88f273412a8901cde4a1bb22390f12c129e4a1",
-                                    "COPY",
+                                    std::string("WALLET_ADDRESS\n") + wallet_cfg.wallet_address,
+                                    "PRIVATE_KEY",
                                     "CLOSE",
                                     &account_address_dialog_selected_btn,
                                     account_address_dialog_flash_frames,

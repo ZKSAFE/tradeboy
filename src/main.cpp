@@ -238,9 +238,6 @@ int main(int argc, char** argv) {
     log_to_file("[Main] init_demo_data begin\n");
     app.init_demo_data();
     log_to_file("[Main] init_demo_data done\n");
-    log_to_file("[Main] calling load_private_key\n");
-    app.load_private_key();
-    log_to_file("[Main] load_private_key done\n");
     log_to_file("[Main] calling startup\n");
     app.startup();
     log_to_file("[Main] app.startup done\n");

@@ -36,11 +36,45 @@ DialogResult render_dialog(const char* id,
     float ease = open_anim_t;
     ease = 1.0f - (1.0f - ease) * (1.0f - ease);
 
+    struct DialogTwEntry {
+        tradeboy::utils::TypewriterState tw;
+        float last_open_t = 0.0f;
+        bool started_when_open = false;
+        bool has_last = false;
+    };
+    static std::unordered_map<std::string, DialogTwEntry> tw_map;
+
+    const char* key_c = id ? id : "Dialog";
+    DialogTwEntry& ent = tw_map[std::string(key_c)];
+    if (!ent.has_last) {
+        ent.has_last = true;
+        ent.last_open_t = open_anim_t;
+    }
+    if (open_anim_t < ent.last_open_t) {
+        ent.tw.last_text.clear();
+        ent.tw.start_time = 0.0;
+        ent.started_when_open = false;
+    }
+    ent.last_open_t = open_anim_t;
+
+    std::string shown_text;
+    if (open_anim_t >= 1.0f) {
+        if (!ent.started_when_open) {
+            ent.tw.last_text.clear();
+            ent.tw.start_time = ImGui::GetTime();
+            ent.started_when_open = true;
+        }
+        shown_text = tradeboy::utils::typewriter_shown(ent.tw, body, ImGui::GetTime(), 35.0);
+    } else {
+        ent.started_when_open = false;
+        shown_text.clear();
+    }
+
     // Dim layer: must be ABOVE the underlying UI (including its text), but BELOW the dialog window.
     // Using a full-screen ImGui window ensures correct z-order.
     {
-        char dim_id[128];
-        std::snprintf(dim_id, sizeof(dim_id), "##DialogDimLayer_%s", id ? id : "Dialog");
+        // Keep a stable window id to avoid flicker when switching between dialogs.
+        const char* dim_id = "##DialogDimLayer";
         // Make the window slightly larger than the screen to prevent light leakage at edges
         ImGui::SetNextWindowPos(ImVec2(-10.0f, -10.0f), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(display.x + 20.0f, display.y + 20.0f), ImGuiCond_Always);
@@ -61,7 +95,46 @@ DialogResult render_dialog(const char* id,
 
     ImVec2 winSize(display.x * 0.70f, display.y * 0.36f);
     if (winSize.x < 420.0f) winSize.x = 420.0f;
-    if (winSize.y < 160.0f) winSize.y = 160.0f;
+
+    {
+        ImFont* font = ImGui::GetFont();
+        const float font_size = ImGui::GetFontSize();
+        const float line_h = font_size + 4.0f;
+        const float scale_a = (font && font->LegacySize > 0.0f) ? (font_size / font->LegacySize) : 1.0f;
+
+        const char* pr = prompt ? prompt : "";
+        ImVec2 pSz = font ? font->CalcTextSizeA(scale_a, FLT_MAX, 0.0f, pr) : ImGui::CalcTextSize(pr);
+
+        const float body_pad_x = 8.0f;
+        const float x_body_rel = 20.0f + pSz.x + body_pad_x;
+        float max_w = (winSize.x - 20.0f) - x_body_rel;
+        if (max_w < 40.0f) max_w = 40.0f;
+
+        int lines = 0;
+        const char* s = shown_text.c_str();
+        const char* end = s + shown_text.size();
+        while (s < end) {
+            const char* nl = (const char*)memchr(s, '\n', (size_t)(end - s));
+            const char* seg_end = nl ? nl : end;
+            const char* line = s;
+            while (line < seg_end) {
+                const char* wrap = font->CalcWordWrapPositionA(scale_a, line, seg_end, max_w);
+                if (wrap == line) wrap = line + 1;
+                lines++;
+                line = wrap;
+                while (line < seg_end && (*line == ' ' || *line == '\t')) line++;
+            }
+            if (nl) s = nl + 1;
+            else break;
+        }
+
+        if (lines < 1) lines = 1;
+
+        float desired_h = 88.0f + (float)lines * line_h;
+        if (desired_h < 160.0f) desired_h = 160.0f;
+        if (desired_h > 450.0f) desired_h = 450.0f;
+        winSize.y = desired_h;
+    }
 
     ImVec2 basePos((display.x - winSize.x) * 0.5f, (display.y - winSize.y) * 0.42f);
     float scale = 0.1f + 0.9f * ease;
@@ -93,55 +166,36 @@ DialogResult render_dialog(const char* id,
     float contentTop = p.y + 10.0f;
     float footerY = p.y + sz.y - 54.0f;
 
-    struct DialogTwEntry {
-        tradeboy::utils::TypewriterState tw;
-        float last_open_t = 0.0f;
-        bool started_when_open = false;
-        bool has_last = false;
-    };
-    static std::unordered_map<std::string, DialogTwEntry> tw_map;
-
-    const char* key_c = id ? id : "Dialog";
-    DialogTwEntry& ent = tw_map[std::string(key_c)];
-    if (!ent.has_last) {
-        ent.has_last = true;
-        ent.last_open_t = open_anim_t;
-    }
-    // When a new open starts, open_anim_t resets back toward 0. Restart typewriter.
-    if (open_anim_t < ent.last_open_t) {
-        ent.tw.last_text.clear();
-        ent.tw.start_time = 0.0;
-        ent.started_when_open = false;
-    }
-    ent.last_open_t = open_anim_t;
-
-    // Typewriter should only start AFTER the open animation completes.
-    // Prompt (including '>') always stays visible.
-    std::string shown_text;
-    if (open_anim_t >= 1.0f) {
-        if (!ent.started_when_open) {
-            // Start reveal at the moment the dialog becomes fully open.
-            ent.tw.last_text.clear();
-            ent.tw.start_time = ImGui::GetTime();
-            ent.started_when_open = true;
-        }
-        shown_text = tradeboy::utils::typewriter_shown(ent.tw, body, ImGui::GetTime(), 35.0);
-    } else {
-        ent.started_when_open = false;
-        shown_text.clear();
-    }
-
-    dl->AddText(ImVec2(p.x + 20.0f, contentTop + 10.0f), MatrixTheme::TEXT, prompt);
+    const float prompt_y = contentTop + 10.0f;
+    const float x_prompt = p.x + 20.0f;
+    const float y_text = prompt_y;
+    const char* pr = prompt ? prompt : "";
+    dl->AddText(ImVec2(x_prompt, y_text), MatrixTheme::TEXT, pr);
 
     // Wrapped, multi-line body text (preserves typewriter reveal by wrapping only the shown substring).
     {
-        const float x = p.x + 38.0f;
-        float y = contentTop + 10.0f;
-        const float max_w = (p.x + sz.x - 20.0f) - x;
         ImFont* font = ImGui::GetFont();
         const float font_size = ImGui::GetFontSize();
         const float line_h = font_size + 4.0f;
         const float scale_a = (font && font->LegacySize > 0.0f) ? (font_size / font->LegacySize) : 1.0f;
+        ImVec2 pSz = font ? font->CalcTextSizeA(scale_a, FLT_MAX, 0.0f, pr) : ImGui::CalcTextSize(pr);
+
+        const float body_pad_x = 8.0f;
+        const float x_body = x_prompt + pSz.x + body_pad_x;
+        float y = y_text;
+        float max_w = (p.x + sz.x - 20.0f) - x_body;
+        if (max_w < 40.0f) max_w = 40.0f;
+
+        const float min_body_to_buttons = 14.0f;
+        const float body_max_y = footerY - min_body_to_buttons;
+        const ImVec2 clip_min(x_body, y - 2.0f);
+        const ImVec2 clip_max(p.x + sz.x - 20.0f, body_max_y);
+        int max_lines = (int)((body_max_y - y) / line_h);
+        if (max_lines < 1) max_lines = 1;
+        int drawn_lines = 0;
+        bool truncated = false;
+
+        dl->PushClipRect(clip_min, clip_max, true);
 
         const char* s = shown_text.c_str();
         const char* end = s + shown_text.size();
@@ -157,9 +211,26 @@ DialogResult render_dialog(const char* id,
                     // Safety: ensure progress even if a single glyph exceeds max width.
                     wrap = line + 1;
                 }
+
+                if (drawn_lines >= max_lines) {
+                    truncated = true;
+                    line = seg_end;
+                    s = end;
+                    break;
+                }
+                if (drawn_lines == max_lines - 1) {
+                    if (wrap < seg_end || nl) {
+                        truncated = true;
+                        line = seg_end;
+                        s = end;
+                        break;
+                    }
+                }
+
                 std::string part(line, wrap);
-                dl->AddText(ImVec2(x, y), MatrixTheme::TEXT, part.c_str());
+                dl->AddText(ImVec2(x_body, y), MatrixTheme::TEXT, part.c_str());
                 y += line_h;
+                drawn_lines++;
                 line = wrap;
                 while (line < seg_end && (*line == ' ' || *line == '\t')) line++;
             }
@@ -171,25 +242,77 @@ DialogResult render_dialog(const char* id,
                 break;
             }
         }
+
+        dl->PopClipRect();
+
+        if (truncated) {
+            const char* ell = "...";
+            float ey = y_text + (float)(max_lines - 1) * line_h;
+            dl->AddText(ImVec2(x_body, ey), MatrixTheme::TEXT, ell);
+        }
     }
 
-    float btnW = 120.0f;
-    float btnH = 40.0f;
+    const float btnH = 40.0f;
+    const float btnGap = 16.0f;
+    const float btnPadX = 18.0f;
+    const float btnMinW = 96.0f;
+
+    auto measure_btn_w = [&](const char* txt) -> float {
+        if (!txt) return btnMinW;
+        float btnFontSize = 20.0f;
+        float tw = 0.0f;
+        if (font_bold) {
+            ImVec2 tSz = font_bold->CalcTextSizeA(btnFontSize, FLT_MAX, 0.0f, txt);
+            tw = tSz.x;
+        } else {
+            ImVec2 tSz = ImGui::CalcTextSize(txt);
+            tw = tSz.x;
+        }
+        float w = tw + btnPadX * 2.0f;
+        if (w < btnMinW) w = btnMinW;
+        return w;
+    };
+
     float btnY = footerY;
-    float btnBX = p.x + sz.x - 16.0f - btnW;
-    float btnAX = btnBX - 16.0f - btnW;
+
+    const bool single_btn = (!btn_a || btn_a[0] == 0);
+    float btnWA = single_btn ? 0.0f : measure_btn_w(btn_a);
+    float btnWB = measure_btn_w(btn_b);
+
+    const float avail_w = sz.x - 32.0f;
+    if (!single_btn) {
+        float total = btnWA + btnWB + btnGap;
+        if (total > avail_w) {
+            float half = (avail_w - btnGap) * 0.5f;
+            if (btnWA > half) btnWA = half;
+            if (btnWB > half) btnWB = half;
+        }
+    } else {
+        if (btnWB > avail_w) btnWB = avail_w;
+    }
+
+    float btnBX = p.x + sz.x - 16.0f - btnWB;
+    float btnAX = btnBX - btnGap - btnWA;
+    if (single_btn) {
+        btnBX = p.x + (sz.x - btnWB) * 0.5f;
+        btnAX = btnBX;
+    }
 
     int sel = 1;
     if (io_selected_btn) sel = *io_selected_btn;
-    if (sel < 0) sel = 0;
-    if (sel > 1) sel = 1;
+    if (single_btn) {
+        sel = 1;
+    } else {
+        if (sel < 0) sel = 0;
+        if (sel > 1) sel = 1;
+    }
 
     bool flash_on = false;
     if (flash_frames > 0) {
         flash_on = tradeboy::utils::blink_on(flash_frames, 6, 3);
     }
 
-    auto draw_btn = [&](float x, const char* txt, bool selected) {
+    auto draw_btn = [&](float x, float w, const char* txt, bool selected) {
         ImU32 fill = MatrixTheme::TEXT;
         ImU32 border = MatrixTheme::TEXT;
         ImU32 text = MatrixTheme::BLACK;
@@ -203,26 +326,28 @@ DialogResult render_dialog(const char* id,
         }
 
         if (fill >> 24) {
-            dl->AddRectFilled(ImVec2(x, btnY), ImVec2(x + btnW, btnY + btnH), fill, 0.0f);
+            dl->AddRectFilled(ImVec2(x, btnY), ImVec2(x + w, btnY + btnH), fill, 0.0f);
         }
-        dl->AddRect(ImVec2(x, btnY), ImVec2(x + btnW, btnY + btnH), border, 0.0f, 0, 2.0f);
+        dl->AddRect(ImVec2(x, btnY), ImVec2(x + w, btnY + btnH), border, 0.0f, 0, 2.0f);
 
         float btnFontSize = 20.0f;
         if (font_bold) {
             ImVec2 tSz = font_bold->CalcTextSizeA(btnFontSize, FLT_MAX, 0.0f, txt);
             dl->AddText(font_bold,
                         btnFontSize,
-                        ImVec2(x + (btnW - tSz.x) * 0.5f, btnY + (btnH - tSz.y) * 0.5f),
+                        ImVec2(x + (w - tSz.x) * 0.5f, btnY + (btnH - tSz.y) * 0.5f),
                         text,
                         txt);
         } else {
             ImVec2 tSz = ImGui::CalcTextSize(txt);
-            dl->AddText(ImVec2(x + (btnW - tSz.x) * 0.5f, btnY + (btnH - tSz.y) * 0.5f), text, txt);
+            dl->AddText(ImVec2(x + (w - tSz.x) * 0.5f, btnY + (btnH - tSz.y) * 0.5f), text, txt);
         }
     };
 
-    draw_btn(btnAX, btn_a, sel == 0);
-    draw_btn(btnBX, btn_b, sel == 1);
+    if (!single_btn) {
+        draw_btn(btnAX, btnWA, btn_a, sel == 0);
+    }
+    draw_btn(btnBX, btnWB, btn_b, sel == 1);
 
     if (out_layout) {
         out_layout->active = true;

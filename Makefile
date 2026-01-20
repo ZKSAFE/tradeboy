@@ -38,7 +38,12 @@ TRADEBOY_SOURCES = \
 	src/market/MarketDataService.cpp \
 	src/model/TradeModel.cpp \
 	src/utils/File.cpp \
+	src/utils/Process.cpp \
+	src/utils/Hex.cpp \
+	src/utils/Keccak.cpp \
 	src/utils/Format.cpp \
+	src/wallet/Wallet.cpp \
+	src/arb/ArbitrumRpc.cpp \
 	src/spot/SpotScreen.cpp \
 	src/spotOrder/SpotOrderScreen.cpp
 
