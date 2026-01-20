@@ -105,12 +105,16 @@ DialogResult render_dialog(const char* id,
         const char* pr = prompt ? prompt : "";
         ImVec2 pSz = font ? font->CalcTextSizeA(scale_a, FLT_MAX, 0.0f, pr) : ImGui::CalcTextSize(pr);
 
-        const float body_pad_x = 8.0f;
-        const float x_body_rel = 20.0f + pSz.x + body_pad_x;
-        float max_w = (winSize.x - 20.0f) - x_body_rel;
-        if (max_w < 40.0f) max_w = 40.0f;
+        float space_w = ImGui::CalcTextSize(" ").x;
+        const float body_pad_x = 12.0f + space_w;
+        const float x_body_rel_first = 20.0f + pSz.x + body_pad_x;
+        float max_w_first = (winSize.x - 20.0f) - x_body_rel_first;
+        float max_w_next = (winSize.x - 20.0f) - 20.0f;
+        if (max_w_first < 40.0f) max_w_first = 40.0f;
+        if (max_w_next < 40.0f) max_w_next = 40.0f;
 
         int lines = 0;
+        bool first_line = true;
         const char* s = shown_text.c_str();
         const char* end = s + shown_text.size();
         while (s < end) {
@@ -118,9 +122,11 @@ DialogResult render_dialog(const char* id,
             const char* seg_end = nl ? nl : end;
             const char* line = s;
             while (line < seg_end) {
-                const char* wrap = font->CalcWordWrapPositionA(scale_a, line, seg_end, max_w);
+                const float w = first_line ? max_w_first : max_w_next;
+                const char* wrap = font->CalcWordWrapPositionA(scale_a, line, seg_end, w);
                 if (wrap == line) wrap = line + 1;
                 lines++;
+                first_line = false;
                 line = wrap;
                 while (line < seg_end && (*line == ' ' || *line == '\t')) line++;
             }
@@ -130,7 +136,7 @@ DialogResult render_dialog(const char* id,
 
         if (lines < 1) lines = 1;
 
-        float desired_h = 88.0f + (float)lines * line_h;
+        float desired_h = 96.0f + (float)lines * line_h;
         if (desired_h < 160.0f) desired_h = 160.0f;
         if (desired_h > 450.0f) desired_h = 450.0f;
         winSize.y = desired_h;
@@ -180,20 +186,26 @@ DialogResult render_dialog(const char* id,
         const float scale_a = (font && font->LegacySize > 0.0f) ? (font_size / font->LegacySize) : 1.0f;
         ImVec2 pSz = font ? font->CalcTextSizeA(scale_a, FLT_MAX, 0.0f, pr) : ImGui::CalcTextSize(pr);
 
-        const float body_pad_x = 8.0f;
-        const float x_body = x_prompt + pSz.x + body_pad_x;
+        float space_w = ImGui::CalcTextSize(" ").x;
+        const float body_pad_x = 12.0f + space_w;
+        const float x_body_first = x_prompt + pSz.x + body_pad_x;
+        const float x_body_next = x_prompt;
         float y = y_text;
-        float max_w = (p.x + sz.x - 20.0f) - x_body;
-        if (max_w < 40.0f) max_w = 40.0f;
+        float max_w_first = (p.x + sz.x - 20.0f) - x_body_first;
+        float max_w_next = (p.x + sz.x - 20.0f) - x_body_next;
+        if (max_w_first < 40.0f) max_w_first = 40.0f;
+        if (max_w_next < 40.0f) max_w_next = 40.0f;
 
         const float min_body_to_buttons = 14.0f;
-        const float body_max_y = footerY - min_body_to_buttons;
-        const ImVec2 clip_min(x_body, y - 2.0f);
+        const float body_max_y = footerY - min_body_to_buttons - 3.0f;
+        const ImVec2 clip_min(x_prompt, y - 2.0f);
         const ImVec2 clip_max(p.x + sz.x - 20.0f, body_max_y);
-        int max_lines = (int)((body_max_y - y) / line_h);
+        int max_lines = (int)((body_max_y - y + 0.001f) / line_h);
         if (max_lines < 1) max_lines = 1;
         int drawn_lines = 0;
         bool truncated = false;
+
+        bool first_line = true;
 
         dl->PushClipRect(clip_min, clip_max, true);
 
@@ -206,7 +218,8 @@ DialogResult render_dialog(const char* id,
 
             const char* line = s;
             while (line < seg_end) {
-                const char* wrap = font->CalcWordWrapPositionA(scale_a, line, seg_end, max_w);
+                const float w = first_line ? max_w_first : max_w_next;
+                const char* wrap = font->CalcWordWrapPositionA(scale_a, line, seg_end, w);
                 if (wrap == line) {
                     // Safety: ensure progress even if a single glyph exceeds max width.
                     wrap = line + 1;
@@ -228,9 +241,10 @@ DialogResult render_dialog(const char* id,
                 }
 
                 std::string part(line, wrap);
-                dl->AddText(ImVec2(x_body, y), MatrixTheme::TEXT, part.c_str());
+                dl->AddText(ImVec2(first_line ? x_body_first : x_body_next, y), MatrixTheme::TEXT, part.c_str());
                 y += line_h;
                 drawn_lines++;
+                first_line = false;
                 line = wrap;
                 while (line < seg_end && (*line == ' ' || *line == '\t')) line++;
             }
@@ -245,11 +259,7 @@ DialogResult render_dialog(const char* id,
 
         dl->PopClipRect();
 
-        if (truncated) {
-            const char* ell = "...";
-            float ey = y_text + (float)(max_lines - 1) * line_h;
-            dl->AddText(ImVec2(x_body, ey), MatrixTheme::TEXT, ell);
-        }
+        (void)truncated;
     }
 
     const float btnH = 40.0f;

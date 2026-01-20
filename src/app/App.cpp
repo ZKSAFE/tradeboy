@@ -580,7 +580,7 @@ void App::render() {
 
         tradeboy::ui::render_dialog("ExitDialog",
                                     "> ",
-                                    "Exit TradeBoy?",
+                                    "Exit TradeBoy?\n\nDEVICE INFO\n- Model: RG34XX\n- OS: Ubuntu 22.04\n- Arch: armhf\n- Build: tradeboy-armhf\n- Display: 720x480\n- Renderer: SDL2 + OpenGL\n- Storage: /mnt/mmc\n- AppDir: /mnt/mmc/Roms/APPS\n- RPC: Arbitrum JSON-RPC\n- HL: Hyperliquid\n\nNETWORK\n- SSH: root@<device-ip>\n- WLAN: <ssid>\n- IP: <ip>\n\nWALLET\n- Address: <0x...>\n- USDC: <balance>\n- ETH: <balance>\n- GAS: <gwei>\n\nNOTES\nThis is a long diagnostic message used to test:\n1) auto-wrap across dialog width\n2) dialog height auto-grow up to 450px\n3) truncation when max height reached\n4) last visible line replaced with '...'\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\n\nMore lines:\n- Line A\n- Line B\n- Line C\n- Line D\n- Line E\n- Line F\n- Line G\n- Line H\n- Line I\n- Line J\n- Line K\n- Line L\n- Line M\n- Line N\n- Line O\n- Line P\n- Line Q\n- Line R\n- Line S\n- Line T\n- Line U\n- Line V\n- Line W\n- Line X\n- Line Y\n- Line Z",
                                     "EXIT",
                                     "CANCEL",
                                     &exit_dialog_selected_btn,
