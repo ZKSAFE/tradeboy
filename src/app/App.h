@@ -110,6 +110,13 @@ struct App {
     double wallet_usdc = 0.0;
     double hl_usdc = 0.0;
 
+    std::string hl_usdc_str;
+    std::mutex hl_mu;
+    std::thread hl_rpc_thread;
+    std::atomic<bool> hl_rpc_stop{false};
+    bool hl_bootstrap_started = false;
+    bool last_addr_short_valid = false;
+
     tradeboy::model::TradeModel model;
     std::unique_ptr<tradeboy::market::IMarketDataSource> market_src;
     std::unique_ptr<tradeboy::market::MarketDataService> market_service;

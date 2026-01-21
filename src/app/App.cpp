@@ -22,6 +22,7 @@
 #include "utils/Typewriter.h"
 #include "wallet/Wallet.h"
 #include "arb/ArbitrumRpc.h"
+#include "market/Hyperliquid.h"
 
 #include <cstdio>
 #include <chrono>
@@ -33,6 +34,7 @@
 #include "../ui/Dialog.h"
 
 extern void log_to_file(const char* fmt, ...);
+extern void log_str(const char* s);
 
 namespace tradeboy::app {
 
@@ -68,16 +70,15 @@ void App::init_demo_data() {
         {"ADA", 0.3599, 0.3599, 0.0, 0.3599},
     };
 
-    log_to_file("[App] init_demo_data rows=%d\n", (int)rows.size());
+    log_to_file("[App] init_demo_data rows ready\n");
 
     uint32_t seed = (uint32_t)(SDL_GetTicks() ^ 0xA53C9E17u);
-    log_to_file("[App] init_demo_data seed=%u\n", (unsigned int)seed);
+    log_to_file("[App] init_demo_data rng seeded\n");
     auto rnd01 = [&]() {
         seed = seed * 1664525u + 1013904223u;
         return (double)((seed >> 8) & 0xFFFFu) / 65535.0;
     };
     for (auto& r : rows) {
-        log_to_file("[App] init_demo_data sym=%s price=%f\n", r.sym.c_str(), r.price);
         double bal = 0.0;
         if (r.sym == "BTC") bal = 0.01 + rnd01() * 0.05;
         else if (r.sym == "ETH") bal = 0.2 + rnd01() * 1.5;
@@ -93,8 +94,14 @@ void App::init_demo_data() {
 
     log_to_file("[App] init_demo_data applying to model\n");
 
+    log_to_file("[App] init_demo_data call set_spot_rows\n");
     model.set_spot_rows(std::move(rows));
+
+    log_str("[App] init_demo_data returned set_spot_rows\n");
+    log_to_file("[App] init_demo_data call set_spot_row_idx idx=%d\n", spot_row_idx);
     model.set_spot_row_idx(spot_row_idx);
+
+    log_to_file("[App] init_demo_data returned set_spot_row_idx\n");
 
     log_to_file("[App] init_demo_data exit\n");
 }
@@ -129,6 +136,14 @@ void App::startup() {
     arb_gas_str = "GAS: UNKNOWN";
     arb_rpc_last_ok = false;
     arb_rpc_error_pending_alert.store(false);
+
+    {
+        std::lock_guard<std::mutex> lk(hl_mu);
+        hl_usdc_str = "UNKNOWN";
+    }
+    hl_rpc_stop = false;
+    hl_bootstrap_started = false;
+    last_addr_short_valid = false;
 
     arb_rpc_stop = false;
     arb_rpc_thread = std::thread([this]() {
@@ -170,6 +185,10 @@ void App::startup() {
 
 void App::shutdown() {
     log_to_file("[App] shutdown()\n");
+    hl_rpc_stop = true;
+    if (hl_rpc_thread.joinable()) {
+        hl_rpc_thread.join();
+    }
     arb_rpc_stop = true;
     if (arb_rpc_thread.joinable()) {
         arb_rpc_thread.join();
@@ -450,6 +469,66 @@ void App::render() {
         } else if (tab == Tab::Perp) {
             tradeboy::perp::render_perp_screen(font_bold);
         } else {
+            const bool addr_short_valid = (!wallet_address_short.empty() && wallet_address_short != "UNKNOWN");
+            if (addr_short_valid && !last_addr_short_valid) {
+                // Wallet address is now visible/ready on the Account page.
+                hl_bootstrap_started = false;
+            }
+            last_addr_short_valid = addr_short_valid;
+
+            if (addr_short_valid && !hl_bootstrap_started) {
+                hl_bootstrap_started = true;
+                if (hl_rpc_thread.joinable()) {
+                    hl_rpc_stop = true;
+                    hl_rpc_thread.join();
+                    hl_rpc_stop = false;
+                }
+
+                const std::string user_addr = wallet_cfg.wallet_address;
+                hl_rpc_thread = std::thread([this, user_addr]() {
+                    log_to_file("[HL] bootstrap: addr_short_visible user=%s\n", user_addr.c_str());
+
+                    std::string user_role_json;
+                    bool ok_role = tradeboy::market::fetch_user_role_raw(user_addr, user_role_json);
+                    log_to_file("[HL] /info userRole ok=%d\n", ok_role ? 1 : 0);
+                    log_to_file("[HL] /info userRole raw:\n%s\n", user_role_json.c_str());
+
+                    std::string dep;
+                    if (tradeboy::market::parse_usdc_deposit_address(user_role_json, dep)) {
+                        log_to_file("[HL] USDC_DEPOSIT_ADDRESS=%s\n", dep.c_str());
+                    } else {
+                        log_to_file("[HL] USDC_DEPOSIT_ADDRESS=UNKNOWN\n");
+                    }
+
+                    while (!hl_rpc_stop.load()) {
+                        std::string spot_json;
+                        bool ok_spot = tradeboy::market::fetch_spot_clearinghouse_state_raw(user_addr, spot_json);
+                        if (ok_spot) {
+                            double usdc = 0.0;
+                            if (tradeboy::market::parse_spot_usdc_balance(spot_json, usdc)) {
+                                char buf[64];
+                                std::snprintf(buf, sizeof(buf), "%.2f", usdc);
+                                {
+                                    std::lock_guard<std::mutex> lk(hl_mu);
+                                    hl_usdc_str = buf;
+                                }
+                            } else {
+                                std::lock_guard<std::mutex> lk(hl_mu);
+                                hl_usdc_str = "UNKNOWN";
+                            }
+                        } else {
+                            std::lock_guard<std::mutex> lk(hl_mu);
+                            hl_usdc_str = "UNKNOWN";
+                        }
+
+                        for (int i = 0; i < 20; i++) {
+                            if (hl_rpc_stop.load()) break;
+                            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        }
+                    }
+                });
+            }
+
             std::string eth_s;
             std::string usdc_s;
             std::string gas_s;
@@ -460,6 +539,12 @@ void App::render() {
                 usdc_s = arb_usdc_str;
                 gas_s = arb_gas_str;
                 gas_price_wei = arb_gas_price_wei;
+            }
+
+            std::string hl_usdc_s;
+            {
+                std::lock_guard<std::mutex> lk(hl_mu);
+                hl_usdc_s = hl_usdc_str;
             }
 
             // Estimate Arbitrum USDC transfer fee in USD.
@@ -492,6 +577,7 @@ void App::render() {
                 account_flash_btn,
                 account_flash_timer,
                 font_bold,
+                hl_usdc_s.c_str(),
                 wallet_address_short.c_str(),
                 eth_s.c_str(),
                 usdc_s.c_str(),

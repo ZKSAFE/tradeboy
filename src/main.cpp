@@ -30,6 +30,14 @@ void log_to_file(const char* fmt, ...) {
     fclose(f);
 }
 
+void log_str(const char* s) {
+    if (!s) return;
+    FILE* f = fopen("log.txt", "a");
+    if (!f) return;
+    fputs(s, f);
+    fclose(f);
+}
+
 static void crash_signal_handler(int sig) {
     FILE* f = fopen("log.txt", "a");
     if (f) {
@@ -262,7 +270,10 @@ int main(int argc, char** argv) {
         while (SDL_PollEvent(&e)) {
             ImGui_ImplSDL2_ProcessEvent(&e);
             events.push_back(e);
-            if (e.type == SDL_QUIT) running = false;
+            if (e.type == SDL_QUIT) {
+                log_str("[Main] SDL_QUIT event\n");
+                running = false;
+            }
         }
 
         tradeboy::app::InputState in = tradeboy::app::poll_input_state_from_events(events);
@@ -270,6 +281,7 @@ int main(int argc, char** argv) {
         edges.prev = in;
 
         if (app.quit_requested) {
+            log_str("[Main] app.quit_requested\n");
             running = false;
         }
 

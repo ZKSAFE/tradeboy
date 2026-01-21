@@ -5,47 +5,82 @@
 #include "../market/Hyperliquid.h"
 
 extern void log_to_file(const char* fmt, ...);
+extern void log_str(const char* s);
 
 namespace tradeboy::model {
 
+TradeModel::TradeModel() {
+    log_str("[Model] ctor\n");
+    int rc = pthread_mutex_init(&mu, nullptr);
+    if (rc != 0) {
+        log_to_file("[Model] pthread_mutex_init failed rc=%d\n", rc);
+    }
+}
+
+TradeModel::~TradeModel() {
+    pthread_mutex_destroy(&mu);
+}
+
 TradeModelSnapshot TradeModel::snapshot() const {
-    std::lock_guard<std::mutex> lock(mu);
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) {
+        log_to_file("[Model] snapshot mutex_lock failed rc=%d\n", rc);
+        return TradeModelSnapshot();
+    }
     TradeModelSnapshot s;
     s.spot_row_idx = spot_row_idx_;
     s.spot_rows = spot_rows_;
+    pthread_mutex_unlock(&mu);
     return s;
 }
 
 void TradeModel::set_spot_rows(std::vector<SpotRow> rows) {
-    log_to_file("[Model] set_spot_rows enter rows_in=%d\n", (int)rows.size());
-    log_to_file("[Model] set_spot_rows about to lock\n");
-    std::lock_guard<std::mutex> lock(mu);
-    log_to_file("[Model] set_spot_rows locked\n");
+    log_str("[Model] set_spot_rows enter\n");
+    log_str("[Model] set_spot_rows about to lock\n");
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) {
+        log_str("[Model] set_spot_rows mutex_lock failed\n");
+        return;
+    }
+    log_str("[Model] set_spot_rows locked\n");
     // NOTE: On RG34XX we've seen SIGSEGV in std::vector move-assignment here.
     // Use copy assignment as a conservative workaround.
-    spot_rows_ = rows;
-    log_to_file("[Model] set_spot_rows copied rows sz=%d\n", (int)spot_rows_.size());
+    spot_rows_.swap(rows);
+    log_str("[Model] set_spot_rows swapped\n");
     if (spot_row_idx_ < 0) spot_row_idx_ = 0;
     if (!spot_rows_.empty() && spot_row_idx_ >= (int)spot_rows_.size()) spot_row_idx_ = (int)spot_rows_.size() - 1;
-    log_to_file("[Model] set_spot_rows exit idx=%d\n", spot_row_idx_);
+    log_str("[Model] set_spot_rows exit\n");
+    pthread_mutex_unlock(&mu);
+    log_str("[Model] set_spot_rows unlocked\n");
 }
 
 void TradeModel::set_spot_row_idx(int idx) {
-    log_to_file("[Model] set_spot_row_idx enter idx=%d\n", idx);
-    log_to_file("[Model] set_spot_row_idx about to lock\n");
-    std::lock_guard<std::mutex> lock(mu);
-    log_to_file("[Model] set_spot_row_idx locked\n");
+    (void)idx;
+    log_str("[Model] set_spot_row_idx enter\n");
+    log_str("[Model] set_spot_row_idx about to lock\n");
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) {
+        log_str("[Model] set_spot_row_idx mutex_lock failed\n");
+        return;
+    }
+    log_str("[Model] set_spot_row_idx locked\n");
     if (spot_rows_.empty()) {
         spot_row_idx_ = 0;
-        log_to_file("[Model] set_spot_row_idx exit empty\n");
+        log_str("[Model] set_spot_row_idx exit empty\n");
+        pthread_mutex_unlock(&mu);
         return;
     }
     spot_row_idx_ = std::max(0, std::min((int)spot_rows_.size() - 1, idx));
-    log_to_file("[Model] set_spot_row_idx exit idx_now=%d sz=%d\n", spot_row_idx_, (int)spot_rows_.size());
+    log_str("[Model] set_spot_row_idx exit\n");
+    pthread_mutex_unlock(&mu);
 }
 
 void TradeModel::update_mid_prices_from_allmids_json(const std::string& all_mids_json) {
-    std::lock_guard<std::mutex> lock(mu);
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) {
+        log_to_file("[Model] allMids mutex_lock failed rc=%d\n", rc);
+        return;
+    }
     int updated = 0;
     for (auto& r : spot_rows_) {
         double p = 0.0;
@@ -56,6 +91,7 @@ void TradeModel::update_mid_prices_from_allmids_json(const std::string& all_mids
         }
     }
     log_to_file("[Model] allMids updated=%d json_len=%d\n", updated, (int)all_mids_json.size());
+    pthread_mutex_unlock(&mu);
 }
 
 } // namespace tradeboy::model

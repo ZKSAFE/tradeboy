@@ -1,6 +1,6 @@
 #pragma once
 
-#include <mutex>
+#include <pthread.h>
 #include <string>
 #include <vector>
 
@@ -25,7 +25,15 @@ struct TradeModelSnapshot {
 };
 
 struct TradeModel {
-    mutable std::mutex mu;
+    TradeModel();
+    ~TradeModel();
+
+    TradeModel(const TradeModel&) = delete;
+    TradeModel& operator=(const TradeModel&) = delete;
+    TradeModel(TradeModel&&) = delete;
+    TradeModel& operator=(TradeModel&&) = delete;
+
+    mutable pthread_mutex_t mu;
 
     TradeModelSnapshot snapshot() const;
 

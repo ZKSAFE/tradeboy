@@ -9,12 +9,12 @@ namespace tradeboy::account {
 
 // Mock data to match design
 static const char* MOCK_HL_TOTAL_ASSET = "$42,904.32";
-static const char* MOCK_HL_USDC = "3,124.20";
 
 void render_account_screen(int focused_col,
                            int flash_btn,
                            int flash_timer,
                            ImFont* font_bold,
+                           const char* hl_usdc,
                            const char* arb_address_short,
                            const char* arb_eth,
                            const char* arb_usdc,
@@ -112,8 +112,9 @@ void render_account_screen(int focused_col,
             dl->AddText(font_reg, 26.0f, ImVec2(cx + innerP, currY), MatrixTheme::DIM, "USDC");
             
             // Value: text-3xl -> 30px
-            ImVec2 valSz = font_reg->CalcTextSizeA(26.0f, FLT_MAX, 0.0f, MOCK_HL_USDC);
-            dl->AddText(font_reg, 26.0f, ImVec2(cx + innerP + innerW - valSz.x, currY), MatrixTheme::TEXT, MOCK_HL_USDC);
+            const char* v = (hl_usdc && hl_usdc[0]) ? hl_usdc : "UNKNOWN";
+            ImVec2 valSz = font_reg->CalcTextSizeA(26.0f, FLT_MAX, 0.0f, v);
+            dl->AddText(font_reg, 26.0f, ImVec2(cx + innerP + innerW - valSz.x, currY), MatrixTheme::TEXT, v);
         }
 
         // Bottom Button: WITHDRAW USDC ->

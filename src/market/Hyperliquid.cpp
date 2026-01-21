@@ -2,9 +2,12 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <sstream>
+
+extern void log_to_file(const char* fmt, ...);
 
 namespace tradeboy::market {
 
@@ -13,6 +16,24 @@ static bool write_file(const char* path, const std::string& s) {
     if (!f.good()) return false;
     f << s;
     return true;
+}
+
+static bool hl_post_file(const char* json_path, std::string& out_json);
+
+bool fetch_info_raw(const std::string& request_json, std::string& out_json) {
+    const char* path = "/tmp/hl_req.json";
+    if (!write_file(path, request_json)) return false;
+    return hl_post_file(path, out_json);
+}
+
+bool fetch_user_role_raw(const std::string& user_address_0x, std::string& out_json) {
+    std::string req = std::string("{\"type\":\"userRole\",\"user\":\"") + user_address_0x + "\"}\n";
+    return fetch_info_raw(req, out_json);
+}
+
+bool fetch_spot_clearinghouse_state_raw(const std::string& user_address_0x, std::string& out_json) {
+    std::string req = std::string("{\"type\":\"spotClearinghouseState\",\"user\":\"") + user_address_0x + "\"}\n";
+    return fetch_info_raw(req, out_json);
 }
 
 static bool run_cmd_capture(const std::string& cmd, std::string& out) {
@@ -68,6 +89,66 @@ static bool parse_quoted_value(const std::string& s, size_t start, std::string& 
         }
         i++;
     }
+    return false;
+}
+
+static bool parse_json_string_field(const std::string& s, const std::string& key, std::string& out) {
+    std::string needle = "\"" + key + "\":";
+    size_t p = s.find(needle);
+    if (p == std::string::npos) return false;
+    p += needle.size();
+    while (p < s.size() && (s[p] == ' ' || s[p] == '\n' || s[p] == '\r' || s[p] == '\t')) p++;
+    if (p >= s.size() || s[p] != '"') return false;
+    return parse_quoted_value(s, p, out);
+}
+
+static bool parse_json_number_string_field(const std::string& s, const std::string& key, std::string& out) {
+    // Many HL numeric fields are encoded as strings.
+    return parse_json_string_field(s, key, out);
+}
+
+bool parse_usdc_deposit_address(const std::string& user_role_json, std::string& out_addr) {
+    if (parse_json_string_field(user_role_json, "usdcDepositAddress", out_addr)) return true;
+    if (parse_json_string_field(user_role_json, "depositAddress", out_addr)) return true;
+    if (parse_json_string_field(user_role_json, "usdc_deposit_address", out_addr)) return true;
+    if (parse_json_string_field(user_role_json, "deposit_address", out_addr)) return true;
+    return false;
+}
+
+static bool parse_spot_usdc_balance_coin_total(const std::string& s, double& out_usdc) {
+    // Look for an object like {"coin":"USDC", ... "total":"123.45"}
+    size_t p = s.find("\"coin\":\"USDC\"");
+    if (p == std::string::npos) return false;
+    size_t win_end = s.find('}', p);
+    if (win_end == std::string::npos) win_end = std::min(s.size(), p + (size_t)2048);
+    std::string win = s.substr(p, win_end - p);
+    std::string v;
+    if (!parse_json_number_string_field(win, "total", v)) {
+        if (!parse_json_number_string_field(win, "available", v)) return false;
+    }
+    out_usdc = std::strtod(v.c_str(), nullptr);
+    return true;
+}
+
+static bool parse_spot_usdc_balance_token0(const std::string& s, double& out_usdc) {
+    // Fallback: if USDC token index is 0, some responses contain {"token":0, ...}
+    size_t p = s.find("\"token\":0");
+    if (p == std::string::npos) return false;
+    size_t win_end = s.find('}', p);
+    if (win_end == std::string::npos) win_end = std::min(s.size(), p + (size_t)2048);
+    std::string win = s.substr(p, win_end - p);
+    std::string v;
+    if (!parse_json_number_string_field(win, "total", v)) {
+        if (!parse_json_number_string_field(win, "balance", v)) return false;
+    }
+    out_usdc = std::strtod(v.c_str(), nullptr);
+    return true;
+}
+
+bool parse_spot_usdc_balance(const std::string& spot_state_json, double& out_usdc) {
+    out_usdc = 0.0;
+    if (parse_spot_usdc_balance_coin_total(spot_state_json, out_usdc)) return true;
+    if (parse_spot_usdc_balance_token0(spot_state_json, out_usdc)) return true;
     return false;
 }
 

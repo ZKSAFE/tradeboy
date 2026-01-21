@@ -8,7 +8,7 @@
 set -e
 
 # 默认配置
-DEFAULT_IP="192.168.66.194"
+DEFAULT_IP="192.168.3.97"
 DEFAULT_PASSWORD="root"
 DEFAULT_USER="root"
 
@@ -21,7 +21,7 @@ SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=10 -o PreferredAuthentic
 
 retry() {
     local n=0
-    local max=3
+    local max=8
     local delay=1
     until "$@"; do
         n=$((n+1))
@@ -30,6 +30,9 @@ retry() {
         fi
         sleep $delay
         delay=$((delay*2))
+        if [ $delay -gt 8 ]; then
+            delay=8
+        fi
     done
 }
 
@@ -208,3 +211,18 @@ echo -e "运行命令:"
 echo -e "${YELLOW}ssh $USER@$IP 'export LD_LIBRARY_PATH=/usr/lib32:/usr/lib:/mnt/vendor/lib && cd /mnt/mmc/Roms/APPS && ./tradeboy-armhf'${NC}"
 echo ""
 echo -e "${GREEN}安装脚本执行完成！${NC}"
+
+echo ""
+echo -e "${YELLOW}请在掌机上手动启动 TradeBoy（从 APPS 里运行 tradeboy-armhf）。${NC}"
+read -r -p "你已经手动启动了吗？(y/N): " STARTED
+if [[ "$STARTED" != "y" && "$STARTED" != "Y" ]]; then
+    echo "未确认启动，脚本结束。你启动后可以重新运行本脚本并输入 y 以抓取日志。"
+    exit 0
+fi
+
+echo ""
+echo "📄 抓取最新 log.txt..."
+if ! retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "tail -n 260 /mnt/mmc/Roms/APPS/log.txt"; then
+    echo -e "${RED}❌ 读取 log.txt 失败（SSH可能偶发错误），请重试运行 upload.sh${NC}"
+    exit 1
+fi
