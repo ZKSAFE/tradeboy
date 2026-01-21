@@ -39,8 +39,11 @@ DialogResult render_dialog(const char* id,
     struct DialogTwEntry {
         tradeboy::utils::TypewriterState tw;
         float last_open_t = 0.0f;
+        int last_frame = -1;
         bool started_when_open = false;
         bool has_last = false;
+        bool frozen = false;
+        std::string frozen_text;
     };
     static std::unordered_map<std::string, DialogTwEntry> tw_map;
 
@@ -50,15 +53,32 @@ DialogResult render_dialog(const char* id,
         ent.has_last = true;
         ent.last_open_t = open_anim_t;
     }
-    if (open_anim_t < ent.last_open_t) {
-        ent.tw.last_text.clear();
-        ent.tw.start_time = 0.0;
+
+    // Treat "wasn't rendered last frame" as a new open cycle.
+    // This works for both animated dialogs and always-open bottom dialogs.
+    const int frame = ImGui::GetFrameCount();
+    const bool new_open_cycle = (ent.last_frame >= 0) && (frame - ent.last_frame > 1);
+    if (new_open_cycle) {
+        ent.frozen = false;
+        ent.frozen_text.clear();
         ent.started_when_open = false;
+        ent.tw.last_text.clear();
+        ent.tw.start_time = ImGui::GetTime();
+    }
+    ent.last_frame = frame;
+
+    const bool closing_now = (open_anim_t < ent.last_open_t);
+    if (closing_now && !ent.frozen) {
+        // freeze current typewriter output while closing
+        ent.frozen = true;
+        ent.frozen_text = tradeboy::utils::typewriter_shown(ent.tw, body, ImGui::GetTime(), 35.0);
     }
     ent.last_open_t = open_anim_t;
 
     std::string shown_text;
-    if (open_anim_t >= 1.0f) {
+    if (ent.frozen) {
+        shown_text = ent.frozen_text;
+    } else if (open_anim_t >= 1.0f) {
         if (!ent.started_when_open) {
             ent.tw.last_text.clear();
             ent.tw.start_time = ImGui::GetTime();
@@ -68,6 +88,11 @@ DialogResult render_dialog(const char* id,
     } else {
         ent.started_when_open = false;
         shown_text.clear();
+    }
+
+    if (!closing_now && open_anim_t >= 1.0f && ent.frozen) {
+        ent.frozen = false;
+        ent.frozen_text.clear();
     }
 
     // Dim layer: must be ABOVE the underlying UI (including its text), but BELOW the dialog window.
@@ -182,7 +207,6 @@ DialogResult render_dialog(const char* id,
     const float x_prompt = p.x + 20.0f;
     const float y_text = prompt_y;
     const char* pr = prompt ? prompt : "";
-    dl->AddText(ImVec2(x_prompt, y_text), MatrixTheme::TEXT, pr);
 
     // Wrapped, multi-line body text (preserves typewriter reveal by wrapping only the shown substring).
     {
@@ -196,7 +220,6 @@ DialogResult render_dialog(const char* id,
         const float body_pad_x = 12.0f + space_w;
         const float x_body_first = x_prompt + pSz.x + body_pad_x;
         const float x_body_next = x_prompt;
-        float y = y_text;
         float max_w_first = (p.x + sz.x - 20.0f) - x_body_first;
         float max_w_next = (p.x + sz.x - 20.0f) - x_body_next;
         if (max_w_first < 40.0f) max_w_first = 40.0f;
@@ -208,14 +231,50 @@ DialogResult render_dialog(const char* id,
         if (descent_px < 3.0f) descent_px = 3.0f;
         const float min_body_to_buttons = 14.0f;
         const float body_max_y = footerY - min_body_to_buttons;
-        const ImVec2 clip_min(x_prompt, y - 2.0f);
+        const ImVec2 clip_min(x_prompt, y_text - 2.0f);
         const ImVec2 clip_max(p.x + sz.x - 20.0f, body_max_y + descent_px + 8.0f);
-        int max_lines = (int)((clip_max.y - y) / line_h);
+        int max_lines = (int)((clip_max.y - y_text) / line_h);
         if (max_lines < 1) max_lines = 1;
+
+        // Count total wrapped lines so we can bottom-anchor the view.
+        int total_lines = 0;
+        {
+            bool first = true;
+            const char* s0 = shown_text.c_str();
+            const char* end0 = s0 + shown_text.size();
+            const char* s = s0;
+            while (s < end0) {
+                const char* nl = (const char*)memchr(s, '\n', (size_t)(end0 - s));
+                const char* seg_end = nl ? nl : end0;
+                const char* line = s;
+                while (line < seg_end) {
+                    const float w = first ? max_w_first : max_w_next;
+                    const char* wrap = font->CalcWordWrapPositionA(scale_a, line, seg_end, w);
+                    if (wrap == line) wrap = line + 1;
+                    total_lines++;
+                    first = false;
+                    line = wrap;
+                    while (line < seg_end && (*line == ' ' || *line == '\t')) line++;
+                }
+                if (nl) s = nl + 1;
+                else break;
+            }
+            if (total_lines < 1) total_lines = 1;
+        }
+
+        int start_line = 0;
+        if (total_lines > max_lines) start_line = total_lines - max_lines;
+
+        float y0 = y_text;
         int drawn_lines = 0;
         bool truncated = false;
 
         bool first_line = true;
+        int line_idx = 0;
+
+        if (start_line == 0) {
+            dl->AddText(ImVec2(x_prompt, y0), MatrixTheme::TEXT, pr);
+        }
 
         dl->PushClipRect(clip_min, clip_max, true);
 
@@ -235,25 +294,29 @@ DialogResult render_dialog(const char* id,
                     wrap = line + 1;
                 }
 
-                if (drawn_lines >= max_lines) {
-                    truncated = true;
-                    line = seg_end;
-                    s = end;
-                    break;
-                }
-                if (drawn_lines == max_lines - 1) {
-                    if (wrap < seg_end || nl) {
+                if (line_idx >= start_line) {
+                    if (drawn_lines >= max_lines) {
                         truncated = true;
                         line = seg_end;
                         s = end;
                         break;
                     }
+                    if (drawn_lines == max_lines - 1) {
+                        if (wrap < seg_end || nl) {
+                            truncated = true;
+                            line = seg_end;
+                            s = end;
+                            break;
+                        }
+                    }
+
+                    std::string part(line, wrap);
+                    float y = y0 + (float)drawn_lines * line_h;
+                    dl->AddText(ImVec2(first_line ? x_body_first : x_body_next, y), MatrixTheme::TEXT, part.c_str());
+                    drawn_lines++;
                 }
 
-                std::string part(line, wrap);
-                dl->AddText(ImVec2(first_line ? x_body_first : x_body_next, y), MatrixTheme::TEXT, part.c_str());
-                y += line_h;
-                drawn_lines++;
+                line_idx++;
                 first_line = false;
                 line = wrap;
                 while (line < seg_end && (*line == ' ' || *line == '\t')) line++;
