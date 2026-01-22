@@ -147,7 +147,7 @@ void TradeModel::set_spot_row_idx(int idx) {
 void TradeModel::update_mid_prices_from_allmids_json(const std::string& all_mids_json) {
     int rc = pthread_mutex_lock(&mu);
     if (rc != 0) {
-        log_to_file("[Model] allMids mutex_lock failed rc=%d\n", rc);
+        log_str("[Model] allMids mutex_lock failed\n");
         return;
     }
     int updated = 0;
@@ -159,7 +159,9 @@ void TradeModel::update_mid_prices_from_allmids_json(const std::string& all_mids
             updated++;
         }
     }
-    log_to_file("[Model] allMids updated=%d json_len=%d\n", updated, (int)all_mids_json.size());
+    (void)updated;
+    (void)all_mids_json;
+    log_str("[Model] allMids updated\n");
     pthread_mutex_unlock(&mu);
 }
 

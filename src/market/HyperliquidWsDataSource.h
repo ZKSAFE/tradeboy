@@ -37,6 +37,8 @@ private:
     std::atomic<bool> spot_request_pending_{false};
     unsigned int spot_request_id_ = 1;
     unsigned int spot_request_sent_id_ = 0;
+    long long spot_request_last_ms_ = 0;
+    int spot_request_interval_ms_ = 3000;
 
     std::atomic<bool> reconnect_requested_{false};
 };

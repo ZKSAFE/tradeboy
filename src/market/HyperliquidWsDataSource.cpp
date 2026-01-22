@@ -20,6 +20,7 @@
 #include "Hyperliquid.h"
 
 extern void log_to_file(const char* fmt, ...);
+extern void log_str(const char* s);
 
 namespace tradeboy::market {
 
@@ -562,25 +563,20 @@ bool HyperliquidWsDataSource::fetch_user_webdata_raw(std::string& out_json) {
 }
 
 bool HyperliquidWsDataSource::fetch_spot_clearinghouse_state_raw(std::string& out_json) {
-    const long long now_ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
-                                 std::chrono::system_clock::now().time_since_epoch())
-                                 .count();
-
+    std::string addr;
     {
         std::lock_guard<std::mutex> lock(mu_);
-        if (!latest_spot_json_.empty() && latest_spot_ms_ != 0 && (now_ms - latest_spot_ms_) <= 15000) {
-            out_json = latest_spot_json_;
-            return true;
-        }
+        addr = user_address_0x_;
     }
-
-    spot_request_pending_.store(true);
-    return false;
+    if (addr.empty()) return false;
+    return tradeboy::market::fetch_spot_clearinghouse_state_raw(addr, out_json);
 }
 
 void HyperliquidWsDataSource::run() {
     int reconnect_backoff_ms = 1000;
     unsigned int log_every = 0;
+    bool logged_binary_frame = false;
+    bool logged_post_seen = false;
 
     while (!stop_.load()) {
         Popen2 p;
@@ -618,23 +614,7 @@ void HyperliquidWsDataSource::run() {
                 break;
             }
 
-            if (spot_request_pending_.exchange(false)) {
-                std::string addr;
-                {
-                    std::lock_guard<std::mutex> lock(mu_);
-                    addr = user_address_0x_;
-                }
-                if (!addr.empty()) {
-                    unsigned int req_id = spot_request_id_++;
-                    std::string req = std::string("{\"method\":\"post\",\"id\":") + std::to_string(req_id) +
-                                      ",\"request\":{\"type\":\"info\",\"payload\":{\"type\":\"spotClearinghouseState\",\"user\":\"" +
-                                      addr + "\"}}}";
-                    if (ws_write_text(p.in, req, (unsigned int)std::rand())) {
-                        std::lock_guard<std::mutex> lock(mu_);
-                        spot_request_sent_id_ = req_id;
-                    }
-                }
-            }
+            (void)now_ms;
 
             // Proactive ping heartbeat (keepalive). The server may also send pings; we respond with pong.
             if (last_ping_ms == 0 || (now_ms - last_ping_ms) > 20000) {
@@ -650,6 +630,14 @@ void HyperliquidWsDataSource::run() {
 
             if (opcode == 0x8) {
                 break;
+            }
+
+            if (opcode == 0x2) {
+                if (!logged_binary_frame) {
+                    logged_binary_frame = true;
+                    log_str("[WS] binary frame seen\n");
+                }
+                continue;
             }
 
             if (opcode == 0x9) {
@@ -691,6 +679,10 @@ void HyperliquidWsDataSource::run() {
             }
 
             if (msg.find("\"channel\":\"post\"") != std::string::npos) {
+                if (!logged_post_seen) {
+                    logged_post_seen = true;
+                    log_str("[WS] post response seen\n");
+                }
                 unsigned int resp_id = 0;
                 if (parse_post_id(msg, resp_id)) {
                     unsigned int expected = 0;
@@ -698,13 +690,17 @@ void HyperliquidWsDataSource::run() {
                         std::lock_guard<std::mutex> lock(mu_);
                         expected = spot_request_sent_id_;
                     }
-                    if (expected != 0 && resp_id == expected && msg.find("spotClearinghouseState") != std::string::npos) {
-                        std::string data_obj = extract_data_object_if_wrapped(msg);
-                        if (!data_obj.empty()) {
+                    if (expected != 0 && resp_id == expected) {
+                        std::string data_obj = extract_object_after_key(msg, "response");
+                        if (data_obj.empty()) data_obj = extract_object_after_key(msg, "data");
+                        if (data_obj.empty()) data_obj = extract_data_object_if_wrapped(msg);
+                        if (data_obj.empty()) data_obj = msg;
+                        {
                             std::lock_guard<std::mutex> lock(mu_);
                             latest_spot_json_ = std::move(data_obj);
                             latest_spot_ms_ = now_ms;
                         }
+                        log_str("[WS] spot post cached\n");
                     }
                 }
                 continue;
