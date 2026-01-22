@@ -39,15 +39,11 @@ extern void log_str(const char* s);
 namespace tradeboy::app {
 
 App::App() {
-    pthread_mutex_init(&arb_rpc_mu, nullptr);
     pthread_mutex_init(&arb_deposit_mu, nullptr);
-    pthread_mutex_init(&hl_mu, nullptr);
 }
 
 App::~App() {
-    pthread_mutex_destroy(&hl_mu);
     pthread_mutex_destroy(&arb_deposit_mu);
-    pthread_mutex_destroy(&arb_rpc_mu);
 }
 
 static std::string make_address_short(const std::string& addr_0x) {
@@ -108,9 +104,6 @@ void App::init_demo_data() {
         r.entry_price = r.price * entry_mul;
     }
 
-    wallet_usdc = 10000.0;
-    hl_usdc = 0.0;
-
     log_str("[App] init_demo_data applying to model\n");
 
     log_str("[App] init_demo_data call set_spot_rows\n");
@@ -126,15 +119,6 @@ void App::init_demo_data() {
 }
 
 void App::startup() {
-    if (!market_src) {
-        log_str("[App] Market source: WS (forced)\n");
-        market_src.reset(new tradeboy::market::HyperliquidWsDataSource());
-    }
-    if (!market_service) {
-        market_service.reset(new tradeboy::market::MarketDataService(model, *market_src));
-    }
-    market_service->start();
-
     boot_anim_active = true;
     boot_anim_frames = 0;
     boot_anim_t = 0.0f;
@@ -151,60 +135,27 @@ void App::startup() {
         }
     }
 
-    arb_eth_str = "UNKNOWN";
-    arb_usdc_str = "UNKNOWN";
-    arb_gas_str = "GAS: UNKNOWN";
-    arb_rpc_last_ok = false;
-    arb_rpc_error_pending_alert.store(false);
-
-    {
-        pthread_mutex_lock(&hl_mu);
-        hl_usdc_str = "UNKNOWN";
-        pthread_mutex_unlock(&hl_mu);
+    if (!market_src) {
+        log_str("[App] Market source: WS (forced)\n");
+        market_src.reset(new tradeboy::market::HyperliquidWsDataSource());
     }
-    hl_rpc_stop = false;
-    hl_bootstrap_started = false;
-    last_addr_short_valid = false;
+    if (!market_service) {
+        market_service.reset(new tradeboy::market::MarketDataService(model, *market_src));
+    }
+    if (!wallet_cfg.wallet_address.empty()) {
+        market_src->set_user_address(wallet_cfg.wallet_address);
+    }
+    market_service->start();
 
-    arb_rpc_stop = false;
-    arb_rpc_thread = std::thread([this]() {
-        while (!arb_rpc_stop.load()) {
-            tradeboy::arb::WalletOnchainData d;
-            std::string e;
-            const std::string addr = model.wallet_snapshot().wallet_address;
-            bool ok = tradeboy::arb::fetch_wallet_data(wallet_cfg.arb_rpc_url, addr, d, e);
-
-            if (ok && d.rpc_ok) {
-                {
-                    pthread_mutex_lock(&arb_rpc_mu);
-                    arb_eth_str = d.eth_balance;
-                    arb_usdc_str = d.usdc_balance;
-                    arb_gas_str = d.gas;
-                    arb_gas_price_wei = d.gas_price_wei;
-                    pthread_mutex_unlock(&arb_rpc_mu);
-                }
-                arb_rpc_last_ok = true;
-            } else {
-                {
-                    pthread_mutex_lock(&arb_rpc_mu);
-                    arb_eth_str = "UNKNOWN";
-                    arb_usdc_str = "UNKNOWN";
-                    arb_gas_str = "GAS: UNKNOWN";
-                    arb_gas_price_wei = 0.0L;
-                    pthread_mutex_unlock(&arb_rpc_mu);
-                }
-                if (arb_rpc_last_ok) {
-                    arb_rpc_error_pending_alert.store(true);
-                }
-                arb_rpc_last_ok = false;
-            }
-
-            for (int i = 0; i < 20; i++) {
-                if (arb_rpc_stop.load()) break;
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
-        }
-    });
+    if (!arb_rpc_service) {
+        arb_rpc_service.reset(new tradeboy::arb::ArbitrumRpcService(model,
+                                                                    wallet_cfg.arb_rpc_url,
+                                                                    wallet_cfg.wallet_address));
+    } else {
+        arb_rpc_service->set_wallet(wallet_cfg.arb_rpc_url, wallet_cfg.wallet_address);
+    }
+    arb_rpc_service->start();
+    arb_rpc_last_ok = false;
 }
 
 void App::shutdown() {
@@ -212,13 +163,9 @@ void App::shutdown() {
     if (arb_deposit_thread.joinable()) {
         arb_deposit_thread.join();
     }
-    hl_rpc_stop = true;
-    if (hl_rpc_thread.joinable()) {
-        hl_rpc_thread.join();
-    }
-    arb_rpc_stop = true;
-    if (arb_rpc_thread.joinable()) {
-        arb_rpc_thread.join();
+    if (arb_rpc_service) {
+        arb_rpc_service->stop();
+        arb_rpc_service.reset();
     }
     if (market_service) {
         market_service->stop();
@@ -236,9 +183,10 @@ void App::open_spot_order(bool buy) {
     if (snap.spot_rows.empty()) return;
     if (spot_row_idx < 0 || spot_row_idx >= (int)snap.spot_rows.size()) return;
     const auto& row = snap.spot_rows[(size_t)spot_row_idx];
+    const tradeboy::model::AccountSnapshot account = model.account_snapshot();
     double maxv = 0.0;
     if (buy) {
-        maxv = (row.price > 0.0) ? (hl_usdc / row.price) : 0.0;
+        maxv = (row.price > 0.0) ? (account.hl_usdc / row.price) : 0.0;
     } else {
         maxv = row.balance;
     }
@@ -530,97 +478,12 @@ void App::render() {
         } else if (tab == Tab::Perp) {
             tradeboy::perp::render_perp_screen(font_bold);
         } else {
-            const bool addr_short_valid = (!wallet_address_short.empty() && wallet_address_short != "UNKNOWN");
-            if (addr_short_valid && !last_addr_short_valid) {
-                // Wallet address is now visible/ready on the Account page.
-                hl_bootstrap_started = false;
-            }
-            last_addr_short_valid = addr_short_valid;
-
-            if (addr_short_valid && !hl_bootstrap_started) {
-                hl_bootstrap_started = true;
-                if (hl_rpc_thread.joinable()) {
-                    hl_rpc_stop = true;
-                    hl_rpc_thread.join();
-                    hl_rpc_stop = false;
-                }
-
-                const std::string user_addr = model.wallet_snapshot().wallet_address;
-                hl_rpc_thread = std::thread([this, user_addr]() {
-                    log_to_file("[HL] bootstrap: addr_short_visible user=%s\n", user_addr.c_str());
-
-                    std::string user_role_json;
-                    bool ok_role = tradeboy::market::fetch_user_role_raw(user_addr, user_role_json);
-                    log_to_file("[HL] /info userRole ok=%d\n", ok_role ? 1 : 0);
-                    log_to_file("[HL] /info userRole raw:\n%s\n", user_role_json.c_str());
-
-                    std::string dep;
-                    if (tradeboy::market::parse_usdc_deposit_address(user_role_json, dep)) {
-                        log_to_file("[HL] USDC_DEPOSIT_ADDRESS=%s\n", dep.c_str());
-                    } else {
-                        log_to_file("[HL] USDC_DEPOSIT_ADDRESS=UNKNOWN\n");
-                    }
-
-                    bool logged_spot_fail = false;
-                    while (!hl_rpc_stop.load()) {
-                        std::string spot_json;
-                        bool ok_spot = tradeboy::market::fetch_spot_clearinghouse_state_raw(user_addr, spot_json);
-                        if (ok_spot) {
-                            double usdc = 0.0;
-                            if (tradeboy::market::parse_spot_usdc_balance(spot_json, usdc)) {
-                                char buf[64];
-                                std::snprintf(buf, sizeof(buf), "%.2f", usdc);
-                                {
-                                    pthread_mutex_lock(&hl_mu);
-                                    hl_usdc_str = buf;
-                                    pthread_mutex_unlock(&hl_mu);
-                                }
-                                hl_usdc = usdc;
-                            } else {
-                                if (!logged_spot_fail) {
-                                    logged_spot_fail = true;
-                                    log_to_file("[HL] spotClearinghouseState parse failed, raw prefix=<<<%.*s>>>\n",
-                                                512, spot_json.c_str());
-                                }
-                                pthread_mutex_lock(&hl_mu);
-                                hl_usdc_str = "UNKNOWN";
-                                pthread_mutex_unlock(&hl_mu);
-                                hl_usdc = 0.0;
-                            }
-                        } else {
-                            pthread_mutex_lock(&hl_mu);
-                            hl_usdc_str = "UNKNOWN";
-                            pthread_mutex_unlock(&hl_mu);
-                            hl_usdc = 0.0;
-                        }
-
-                        for (int i = 0; i < 20; i++) {
-                            if (hl_rpc_stop.load()) break;
-                            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                        }
-                    }
-                });
-            }
-
-            std::string eth_s;
-            std::string usdc_s;
-            std::string gas_s;
-            long double gas_price_wei = 0.0L;
-            {
-                pthread_mutex_lock(&arb_rpc_mu);
-                eth_s = arb_eth_str;
-                usdc_s = arb_usdc_str;
-                gas_s = arb_gas_str;
-                gas_price_wei = arb_gas_price_wei;
-                pthread_mutex_unlock(&arb_rpc_mu);
-            }
-
-            std::string hl_usdc_s;
-            {
-                pthread_mutex_lock(&hl_mu);
-                hl_usdc_s = hl_usdc_str;
-                pthread_mutex_unlock(&hl_mu);
-            }
+            tradeboy::model::AccountSnapshot account = model.account_snapshot();
+            const std::string eth_s = account.arb_eth_str.empty() ? "UNKNOWN" : account.arb_eth_str;
+            const std::string usdc_s = account.arb_usdc_str.empty() ? "UNKNOWN" : account.arb_usdc_str;
+            const std::string gas_s = account.arb_gas_str.empty() ? "GAS: UNKNOWN" : account.arb_gas_str;
+            const long double gas_price_wei = account.arb_gas_price_wei;
+            const std::string hl_usdc_s = account.hl_usdc_str.empty() ? "UNKNOWN" : account.hl_usdc_str;
 
             // Estimate Arbitrum USDC transfer fee in USD.
             // Gas limit reference: 75,586
@@ -714,8 +577,12 @@ void App::render() {
         }
     }
 
-    if (arb_rpc_error_pending_alert.exchange(false)) {
-        set_alert(*this, "RPC_CONNECTION_FAILED");
+    {
+        const bool now_ok = model.account_snapshot().arb_rpc_ok;
+        if (!now_ok && arb_rpc_last_ok) {
+            set_alert(*this, "RPC_CONNECTION_FAILED");
+        }
+        arb_rpc_last_ok = now_ok;
     }
 
     if (arb_deposit_alert_pending.exchange(false)) {

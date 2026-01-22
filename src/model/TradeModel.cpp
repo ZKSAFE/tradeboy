@@ -41,6 +41,23 @@ WalletSnapshot TradeModel::wallet_snapshot() const {
     return w;
 }
 
+AccountSnapshot TradeModel::account_snapshot() const {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) {
+        return AccountSnapshot();
+    }
+    AccountSnapshot a;
+    a.hl_usdc_str = hl_usdc_str_;
+    a.hl_usdc = hl_usdc_;
+    a.arb_eth_str = arb_eth_str_;
+    a.arb_usdc_str = arb_usdc_str_;
+    a.arb_gas_str = arb_gas_str_;
+    a.arb_gas_price_wei = arb_gas_price_wei_;
+    a.arb_rpc_ok = arb_rpc_ok_;
+    pthread_mutex_unlock(&mu);
+    return a;
+}
+
 void TradeModel::set_wallet(const std::string& wallet_address, const std::string& private_key) {
     int rc = pthread_mutex_lock(&mu);
     if (rc != 0) {
@@ -48,6 +65,41 @@ void TradeModel::set_wallet(const std::string& wallet_address, const std::string
     }
     wallet_address_ = wallet_address;
     private_key_ = private_key;
+    pthread_mutex_unlock(&mu);
+}
+
+void TradeModel::set_hl_usdc(double usdc, const std::string& usdc_str, bool ok) {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) {
+        return;
+    }
+    hl_usdc_ = ok ? usdc : 0.0;
+    hl_usdc_str_ = ok ? usdc_str : std::string("UNKNOWN");
+    pthread_mutex_unlock(&mu);
+}
+
+void TradeModel::set_arb_wallet_data(const std::string& eth_str,
+                                     const std::string& usdc_str,
+                                     const std::string& gas_str,
+                                     long double gas_price_wei,
+                                     bool ok) {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) {
+        return;
+    }
+    if (ok) {
+        arb_eth_str_ = eth_str;
+        arb_usdc_str_ = usdc_str;
+        arb_gas_str_ = gas_str;
+        arb_gas_price_wei_ = gas_price_wei;
+        arb_rpc_ok_ = true;
+    } else {
+        arb_eth_str_ = "UNKNOWN";
+        arb_usdc_str_ = "UNKNOWN";
+        arb_gas_str_ = "GAS: UNKNOWN";
+        arb_gas_price_wei_ = 0.0L;
+        arb_rpc_ok_ = false;
+    }
     pthread_mutex_unlock(&mu);
 }
 

@@ -29,6 +29,25 @@ struct Popen2 {
     pid_t pid = -1;
 };
 
+static bool parse_post_id(const std::string& msg, unsigned int& out_id) {
+    size_t p = msg.find("\"id\"");
+    if (p == std::string::npos) return false;
+    p = msg.find(':', p);
+    if (p == std::string::npos) return false;
+    p++;
+    while (p < msg.size() && (msg[p] == ' ' || msg[p] == '\n' || msg[p] == '\t')) p++;
+    unsigned int v = 0;
+    bool any = false;
+    while (p < msg.size() && msg[p] >= '0' && msg[p] <= '9') {
+        any = true;
+        v = v * 10u + (unsigned int)(msg[p] - '0');
+        p++;
+    }
+    if (!any) return false;
+    out_id = v;
+    return true;
+}
+
 static bool popen2_sh(const char* cmd, Popen2& p) {
     int in_pipe[2];
     int out_pipe[2];
@@ -510,6 +529,13 @@ HyperliquidWsDataSource::~HyperliquidWsDataSource() {
     if (th_.joinable()) th_.join();
 }
 
+void HyperliquidWsDataSource::set_user_address(const std::string& user_address_0x) {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (user_address_0x_ == user_address_0x) return;
+    user_address_0x_ = user_address_0x;
+    reconnect_requested_.store(true);
+}
+
 bool HyperliquidWsDataSource::fetch_all_mids_raw(std::string& out_json) {
     const long long now_ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
                                  std::chrono::system_clock::now().time_since_epoch())
@@ -521,6 +547,35 @@ bool HyperliquidWsDataSource::fetch_all_mids_raw(std::string& out_json) {
     if (latest_mids_ms_ == 0 || (now_ms - latest_mids_ms_) > 15000) return false;
     out_json = latest_mids_json_;
     return true;
+}
+
+bool HyperliquidWsDataSource::fetch_user_webdata_raw(std::string& out_json) {
+    const long long now_ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 std::chrono::system_clock::now().time_since_epoch())
+                                 .count();
+
+    std::lock_guard<std::mutex> lock(mu_);
+    if (latest_user_json_.empty()) return false;
+    if (latest_user_ms_ == 0 || (now_ms - latest_user_ms_) > 15000) return false;
+    out_json = latest_user_json_;
+    return true;
+}
+
+bool HyperliquidWsDataSource::fetch_spot_clearinghouse_state_raw(std::string& out_json) {
+    const long long now_ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 std::chrono::system_clock::now().time_since_epoch())
+                                 .count();
+
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        if (!latest_spot_json_.empty() && latest_spot_ms_ != 0 && (now_ms - latest_spot_ms_) <= 15000) {
+            out_json = latest_spot_json_;
+            return true;
+        }
+    }
+
+    spot_request_pending_.store(true);
+    return false;
 }
 
 void HyperliquidWsDataSource::run() {
@@ -535,6 +590,20 @@ void HyperliquidWsDataSource::run() {
             continue;
         }
 
+        std::string user_addr;
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            user_addr = user_address_0x_;
+        }
+        if (!user_addr.empty()) {
+            const std::string sub_user = std::string("{\"method\":\"subscribe\",\"subscription\":{\"type\":\"webData3\",\"user\":\"") +
+                                         user_addr + "\"}}";
+            if (!ws_write_text(p.in, sub_user, (unsigned int)std::rand())) {
+                pclose2(p);
+                continue;
+            }
+        }
+
         reconnect_backoff_ms = 1000;
         log_every = 0;
 
@@ -544,6 +613,28 @@ void HyperliquidWsDataSource::run() {
             const long long now_ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
                                          std::chrono::system_clock::now().time_since_epoch())
                                          .count();
+
+            if (reconnect_requested_.exchange(false)) {
+                break;
+            }
+
+            if (spot_request_pending_.exchange(false)) {
+                std::string addr;
+                {
+                    std::lock_guard<std::mutex> lock(mu_);
+                    addr = user_address_0x_;
+                }
+                if (!addr.empty()) {
+                    unsigned int req_id = spot_request_id_++;
+                    std::string req = std::string("{\"method\":\"post\",\"id\":") + std::to_string(req_id) +
+                                      ",\"request\":{\"type\":\"info\",\"payload\":{\"type\":\"spotClearinghouseState\",\"user\":\"" +
+                                      addr + "\"}}}";
+                    if (ws_write_text(p.in, req, (unsigned int)std::rand())) {
+                        std::lock_guard<std::mutex> lock(mu_);
+                        spot_request_sent_id_ = req_id;
+                    }
+                }
+            }
 
             // Proactive ping heartbeat (keepalive). The server may also send pings; we respond with pong.
             if (last_ping_ms == 0 || (now_ms - last_ping_ms) > 20000) {
@@ -571,30 +662,54 @@ void HyperliquidWsDataSource::run() {
             }
 
             std::string msg((const char*)payload.data(), payload.size());
-            if (msg.find("\"mids\"") == std::string::npos) continue;
-
-            std::string data_obj = extract_data_object_if_wrapped(msg);
-            std::string mids_obj = extract_object_after_key(data_obj, "mids");
-            if (mids_obj.empty()) mids_obj = extract_object_after_key(msg, "mids");
-            if (mids_obj.empty() || mids_obj.find("\":\"") == std::string::npos) continue;
-
-            {
-                std::lock_guard<std::mutex> lock(mu_);
-                latest_mids_json_ = std::move(mids_obj);
-                latest_mids_ms_ = now_ms;
-            }
-
-            // keep logs low-noise
-            log_every++;
-            if ((log_every % 20) == 1) {
-                std::string prefix;
-                {
+            if (msg.find("\"mids\"") != std::string::npos) {
+                std::string data_obj = extract_data_object_if_wrapped(msg);
+                std::string mids_obj = extract_object_after_key(data_obj, "mids");
+                if (mids_obj.empty()) mids_obj = extract_object_after_key(msg, "mids");
+                if (!mids_obj.empty() && mids_obj.find("\":\"") != std::string::npos) {
                     std::lock_guard<std::mutex> lock(mu_);
-                    prefix = latest_mids_json_;
+                    latest_mids_json_ = std::move(mids_obj);
+                    latest_mids_ms_ = now_ms;
+                    log_every++;
+                    if ((log_every % 20) == 1) {
+                        std::string prefix = latest_mids_json_;
+                        if (prefix.size() > 120) prefix.resize(120);
+                        log_to_file("[WS] allMids mids cached len=%d prefix=<<<%s>>>\n", (int)prefix.size(), prefix.c_str());
+                    }
                 }
-                if (prefix.size() > 120) prefix.resize(120);
-                log_to_file("[WS] allMids mids cached len=%d prefix=<<<%s>>>\n", (int)prefix.size(), prefix.c_str());
+                continue;
             }
+
+            if (msg.find("\"webData3\"") != std::string::npos) {
+                std::string data_obj = extract_data_object_if_wrapped(msg);
+                if (!data_obj.empty()) {
+                    std::lock_guard<std::mutex> lock(mu_);
+                    latest_user_json_ = std::move(data_obj);
+                    latest_user_ms_ = now_ms;
+                }
+                continue;
+            }
+
+            if (msg.find("\"channel\":\"post\"") != std::string::npos) {
+                unsigned int resp_id = 0;
+                if (parse_post_id(msg, resp_id)) {
+                    unsigned int expected = 0;
+                    {
+                        std::lock_guard<std::mutex> lock(mu_);
+                        expected = spot_request_sent_id_;
+                    }
+                    if (expected != 0 && resp_id == expected && msg.find("spotClearinghouseState") != std::string::npos) {
+                        std::string data_obj = extract_data_object_if_wrapped(msg);
+                        if (!data_obj.empty()) {
+                            std::lock_guard<std::mutex> lock(mu_);
+                            latest_spot_json_ = std::move(data_obj);
+                            latest_spot_ms_ = now_ms;
+                        }
+                    }
+                }
+                continue;
+            }
+
         }
 
         pclose2(p);

@@ -15,6 +15,8 @@
 #include "../market/MarketDataService.h"
 #include "../model/TradeModel.h"
 
+#include "../arb/ArbitrumRpcService.h"
+
 #include "../wallet/Wallet.h"
 
 namespace tradeboy::spot { struct SpotUiEvent; }
@@ -98,18 +100,9 @@ struct App {
 
     tradeboy::wallet::WalletConfig wallet_cfg;
     std::string wallet_address_short;
-
-    std::string arb_eth_str;
-    std::string arb_usdc_str;
-    std::string arb_gas_str;
-
-    long double arb_gas_price_wei = 0.0L;
     std::string arb_tx_fee_str;
 
     bool arb_rpc_last_ok = false;
-    std::atomic<bool> arb_rpc_error_pending_alert{false};
-
-    mutable pthread_mutex_t arb_rpc_mu;
 
     std::atomic<bool> arb_deposit_inflight{false};
     std::atomic<bool> arb_deposit_alert_pending{false};
@@ -118,24 +111,12 @@ struct App {
 
     std::thread arb_deposit_thread;
 
-    double wallet_usdc = 0.0;
-    double hl_usdc = 0.0;
-
-    std::string hl_usdc_str;
-    mutable pthread_mutex_t hl_mu;
-    std::thread hl_rpc_thread;
-    std::atomic<bool> hl_rpc_stop{false};
-    bool hl_bootstrap_started = false;
-    bool last_addr_short_valid = false;
-
     tradeboy::model::TradeModel model;
     std::unique_ptr<tradeboy::market::IMarketDataSource> market_src;
     std::unique_ptr<tradeboy::market::MarketDataService> market_service;
+    std::unique_ptr<tradeboy::arb::ArbitrumRpcService> arb_rpc_service;
     
     ImFont* font_bold = nullptr;
-
-    std::thread arb_rpc_thread;
-    std::atomic<bool> arb_rpc_stop{false};
 
     void startup();
     void shutdown();

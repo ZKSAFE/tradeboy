@@ -205,6 +205,7 @@ int main(int argc, char** argv) {
     else if (file_exists("output/NotoSansCJK-Regular.ttc")) font_path = "output/NotoSansCJK-Regular.ttc";
     else if (file_exists("NotoSansCJK-Regular.ttc")) font_path = "NotoSansCJK-Regular.ttc";
 
+    ImFont* loaded_font_bold = nullptr;
     if (font_path) {
         log_str("[Main] Loading font\n");
         ImFontConfig cfg;
@@ -214,10 +215,6 @@ int main(int argc, char** argv) {
         ImFont* f = io.Fonts->AddFontFromFileTTF(font_path, 28.0f, &cfg);
         if (f) {
             io.FontDefault = f;
-            unsigned char* pixels = nullptr;
-            int w = 0, h = 0;
-            io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
-            log_str("[Main] Font atlas built\n");
         } else {
             log_str("[Main] Font load failed, using default\n");
         }
@@ -225,20 +222,25 @@ int main(int argc, char** argv) {
         log_str("[Main] No font file found, using default\n");
     }
 
-    // Load Bold Font
+    // Load Bold Font (must be before font atlas build)
     const char* font_path_bold = nullptr;
     if (file_exists("cour-new-BOLDITALIC.ttf")) font_path_bold = "cour-new-BOLDITALIC.ttf";
     else if (file_exists("output/cour-new-BOLDITALIC.ttf")) font_path_bold = "output/cour-new-BOLDITALIC.ttf";
-    
-    ImFont* loaded_font_bold = nullptr;
+
     if (font_path_bold) {
-         log_str("[Main] Loading bold font\n");
-         ImFontConfig cfg;
-         cfg.OversampleH = 1;
-         cfg.OversampleV = 1;
-         cfg.PixelSnapH = true;
-         // Merge? No, separate font.
-         loaded_font_bold = io.Fonts->AddFontFromFileTTF(font_path_bold, 28.0f, &cfg);
+        log_str("[Main] Loading bold font\n");
+        ImFontConfig cfg;
+        cfg.OversampleH = 1;
+        cfg.OversampleV = 1;
+        cfg.PixelSnapH = true;
+        loaded_font_bold = io.Fonts->AddFontFromFileTTF(font_path_bold, 28.0f, &cfg);
+    }
+
+    if (font_path) {
+        unsigned char* pixels = nullptr;
+        int w = 0, h = 0;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
+        log_str("[Main] Font atlas built\n");
     }
 
     SDL_Joystick* joy0 = nullptr;

@@ -44,6 +44,7 @@ TRADEBOY_SOURCES = \
 	src/utils/Format.cpp \
 	src/wallet/Wallet.cpp \
 	src/arb/ArbitrumRpc.cpp \
+	src/arb/ArbitrumRpcService.cpp \
 	src/spot/SpotScreen.cpp \
 	src/spotOrder/SpotOrderScreen.cpp
 
