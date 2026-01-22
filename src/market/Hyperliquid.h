@@ -15,8 +15,12 @@ bool fetch_user_role_raw(const std::string& user_address_0x, std::string& out_js
 
 bool fetch_spot_clearinghouse_state_raw(const std::string& user_address_0x, std::string& out_json);
 
+bool fetch_perp_clearinghouse_state_raw(const std::string& user_address_0x, std::string& out_json);
+
 bool parse_usdc_deposit_address(const std::string& user_role_json, std::string& out_addr);
 
 bool parse_spot_usdc_balance(const std::string& spot_state_json, double& out_usdc);
+
+bool parse_perp_usdc_balance(const std::string& perp_state_json, double& out_usdc);
 
 } // namespace tradeboy::market

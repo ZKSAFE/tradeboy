@@ -9,6 +9,7 @@ struct HyperliquidWgetDataSource final : public IMarketDataSource {
     void set_user_address(const std::string& user_address_0x) override;
     bool fetch_user_webdata_raw(std::string& out_json) override;
     bool fetch_spot_clearinghouse_state_raw(std::string& out_json) override;
+    bool fetch_perp_clearinghouse_state_raw(std::string& out_json) override;
 
 private:
     std::string user_address_0x_;

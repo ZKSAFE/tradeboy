@@ -7,9 +7,7 @@
 
 #include "../model/TradeModel.h"
 #include "Hyperliquid.h"
-
-extern void log_to_file(const char* fmt, ...);
-extern void log_str(const char* s);
+#include "utils/Log.h"
 
 namespace tradeboy::market {
 
@@ -29,6 +27,16 @@ static bool parse_spot_usdc_balance_any(const std::string& json, double& out_usd
         if (tradeboy::market::parse_spot_usdc_balance(win2, out_usdc)) return true;
     }
     return false;
+}
+
+static bool parse_perp_usdc_balance_any(const std::string& json, double& out_usdc) {
+    if (tradeboy::market::parse_perp_usdc_balance(json, out_usdc)) return true;
+
+    size_t p = json.find("\"accountValue\"");
+    if (p == std::string::npos) return false;
+    size_t win_end = std::min(json.size(), p + (size_t)2048);
+    std::string win = json.substr(p, win_end - p);
+    return tradeboy::market::parse_perp_usdc_balance(win, out_usdc);
 }
 
 MarketDataService::MarketDataService(tradeboy::model::TradeModel& model, IMarketDataSource& src)
@@ -63,13 +71,18 @@ void MarketDataService::run() {
     log_str("[Market] run() enter\n");
     std::string mids_json;
     std::string user_json;
+    std::string perp_json;
     bool logged_user_dump = false;
     long long last_mids_ms = 0;
     int mids_backoff_ms = 0;
     long long last_user_ms = 0;
     int user_backoff_ms = 0;
+    long long last_perp_ms = 0;
+    int perp_backoff_ms = 0;
     long long last_heartbeat_ms = 0;
     bool logged_user_fail = false;
+    bool logged_perp_dump = false;
+    bool logged_perp_fail = false;
 
     while (!stop_flag.load()) {
         long long now_ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -118,6 +131,33 @@ void MarketDataService::run() {
                 user_backoff_ms = (user_backoff_ms == 0) ? 5000 : std::min(30000, user_backoff_ms * 2);
             }
             last_user_ms = now_ms;
+        }
+
+        const int perp_interval_ms = (perp_backoff_ms > 0) ? perp_backoff_ms : 3000;
+        if (now_ms - last_perp_ms > perp_interval_ms) {
+            if (src.fetch_perp_clearinghouse_state_raw(perp_json)) {
+                if (!logged_perp_dump) {
+                    logged_perp_dump = true;
+                    log_str("[Market] clearinghouseState raw received\n");
+                }
+                double usdc = 0.0;
+                if (parse_perp_usdc_balance_any(perp_json, usdc)) {
+                    char buf[64];
+                    std::snprintf(buf, sizeof(buf), "%.2f", usdc);
+                    model.set_hl_perp_usdc(usdc, buf, true);
+                    perp_backoff_ms = 0;
+                    logged_perp_fail = false;
+                } else {
+                    if (!logged_perp_fail) {
+                        logged_perp_fail = true;
+                        log_str("[Market] clearinghouseState parse failed\n");
+                    }
+                    perp_backoff_ms = (perp_backoff_ms == 0) ? 5000 : std::min(30000, perp_backoff_ms * 2);
+                }
+            } else {
+                perp_backoff_ms = (perp_backoff_ms == 0) ? 5000 : std::min(30000, perp_backoff_ms * 2);
+            }
+            last_perp_ms = now_ms;
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));

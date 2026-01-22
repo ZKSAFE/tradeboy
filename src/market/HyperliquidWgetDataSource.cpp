@@ -22,4 +22,9 @@ bool HyperliquidWgetDataSource::fetch_spot_clearinghouse_state_raw(std::string& 
     return tradeboy::market::fetch_spot_clearinghouse_state_raw(user_address_0x_, out_json);
 }
 
+bool HyperliquidWgetDataSource::fetch_perp_clearinghouse_state_raw(std::string& out_json) {
+    if (user_address_0x_.empty()) return false;
+    return tradeboy::market::fetch_perp_clearinghouse_state_raw(user_address_0x_, out_json);
+}
+
 } // namespace tradeboy::market

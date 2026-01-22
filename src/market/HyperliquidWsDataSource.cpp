@@ -18,9 +18,7 @@
 #include <sys/select.h>
 
 #include "Hyperliquid.h"
-
-extern void log_to_file(const char* fmt, ...);
-extern void log_str(const char* s);
+#include "utils/Log.h"
 
 namespace tradeboy::market {
 
@@ -466,7 +464,7 @@ static std::string extract_object_after_key(const std::string& msg, const char* 
 static bool ws_connect_and_subscribe(Popen2& p) {
     const char* cmd = "/usr/bin/openssl s_client -quiet -connect api.hyperliquid.xyz:443 -servername api.hyperliquid.xyz";
     if (!popen2_sh(cmd, p)) {
-        log_to_file("[WS] popen2 failed\n");
+        log_str("[WS] popen2 failed\n");
         return false;
     }
 
@@ -496,21 +494,21 @@ static bool ws_connect_and_subscribe(Popen2& p) {
         if (!headers.empty()) {
             std::string prefix = headers;
             if (prefix.size() > 512) prefix.resize(512);
-            log_to_file("[WS] handshake read headers failed (read=%d) prefix=<<<%s>>>\n", (int)headers.size(), prefix.c_str());
+            log_str("[WS] handshake read headers failed (prefix)\n");
         } else {
-            log_to_file("[WS] handshake read headers failed (read=0)\n");
+            log_str("[WS] handshake read headers failed (read=0)\n");
         }
         pclose2(p);
         return false;
     }
 
     if (headers.find(" 101 ") == std::string::npos && headers.find(" 101\r\n") == std::string::npos) {
-        log_to_file("[WS] handshake failed: %s\n", headers.c_str());
+        log_str("[WS] handshake failed\n");
         pclose2(p);
         return false;
     }
 
-    log_to_file("[WS] handshake ok\n");
+    log_str("[WS] handshake ok\n");
 
     const std::string sub = "{\"method\":\"subscribe\",\"subscription\":{\"type\":\"allMids\"}}";
     if (!ws_write_text(p.in, sub, (unsigned int)std::rand())) {
@@ -570,6 +568,16 @@ bool HyperliquidWsDataSource::fetch_spot_clearinghouse_state_raw(std::string& ou
     }
     if (addr.empty()) return false;
     return tradeboy::market::fetch_spot_clearinghouse_state_raw(addr, out_json);
+}
+
+bool HyperliquidWsDataSource::fetch_perp_clearinghouse_state_raw(std::string& out_json) {
+    std::string addr;
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        addr = user_address_0x_;
+    }
+    if (addr.empty()) return false;
+    return tradeboy::market::fetch_perp_clearinghouse_state_raw(addr, out_json);
 }
 
 void HyperliquidWsDataSource::run() {
@@ -662,7 +670,7 @@ void HyperliquidWsDataSource::run() {
                     if ((log_every % 20) == 1) {
                         std::string prefix = latest_mids_json_;
                         if (prefix.size() > 120) prefix.resize(120);
-                        log_to_file("[WS] allMids mids cached len=%d prefix=<<<%s>>>\n", (int)prefix.size(), prefix.c_str());
+                        log_str("[WS] allMids mids cached\n");
                     }
                 }
                 continue;

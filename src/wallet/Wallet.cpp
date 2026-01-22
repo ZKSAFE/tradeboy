@@ -4,13 +4,12 @@
 #include "utils/Hex.h"
 #include "utils/Keccak.h"
 #include "utils/Process.h"
+#include "utils/Log.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <sstream>
 #include <vector>
-
-extern void log_to_file(const char* fmt, ...);
 
 namespace tradeboy::wallet {
 
@@ -213,8 +212,8 @@ bool load_or_create_config(const std::string& path, WalletConfig& out_cfg, bool&
     }
 
     out_created = true;
-    log_to_file("[CFG] created %s\n", path.c_str());
-    log_to_file("[CFG] address=%s\n", addr.c_str());
+    log_str("[CFG] created\n");
+    log_str("[CFG] address saved\n");
 
     return true;
 }

@@ -15,6 +15,7 @@ void render_account_screen(int focused_col,
                            int flash_timer,
                            ImFont* font_bold,
                            const char* hl_usdc,
+                           const char* hl_perp_usdc,
                            const char* arb_address_short,
                            const char* arb_eth,
                            const char* arb_usdc,
@@ -110,12 +111,23 @@ void render_account_screen(int focused_col,
             
             // Label: text-3xl -> 30px
             dl->AddText(font_reg, 26.0f, ImVec2(cx + innerP, currY), MatrixTheme::DIM, "USDC(SPOT)");
-            
+
             // Value: text-3xl -> 30px
             const char* v = (hl_usdc && hl_usdc[0]) ? hl_usdc : "UNKNOWN";
             ImVec2 valSz = font_reg->CalcTextSizeA(26.0f, FLT_MAX, 0.0f, v);
             dl->AddText(font_reg, 26.0f, ImVec2(cx + innerP + innerW - valSz.x, currY), MatrixTheme::TEXT, v);
         }
+
+        // USDC(PERP) Row
+        {
+            currY += 40.0f;
+            dl->AddText(font_reg, 26.0f, ImVec2(cx + innerP, currY), MatrixTheme::DIM, "USDC(PERP)");
+            const char* v = (hl_perp_usdc && hl_perp_usdc[0]) ? hl_perp_usdc : "UNKNOWN";
+            ImVec2 valSz = font_reg->CalcTextSizeA(26.0f, FLT_MAX, 0.0f, v);
+            dl->AddText(font_reg, 26.0f, ImVec2(cx + innerP + innerW - valSz.x, currY), MatrixTheme::TEXT, v);
+        }
+
+        currY += 30.0f;
 
         // Bottom Button: WITHDRAW USDC ->
         {

@@ -33,6 +33,9 @@ struct AccountSnapshot {
     std::string hl_usdc_str;
     double hl_usdc = 0.0;
 
+    std::string hl_perp_usdc_str;
+    double hl_perp_usdc = 0.0;
+
     std::string arb_eth_str;
     std::string arb_usdc_str;
     std::string arb_gas_str;
@@ -61,6 +64,7 @@ struct TradeModel {
     void set_wallet(const std::string& wallet_address, const std::string& private_key);
 
     void set_hl_usdc(double usdc, const std::string& usdc_str, bool ok);
+    void set_hl_perp_usdc(double usdc, const std::string& usdc_str, bool ok);
     void set_arb_wallet_data(const std::string& eth_str,
                              const std::string& usdc_str,
                              const std::string& gas_str,
@@ -79,6 +83,9 @@ private:
 
     std::string hl_usdc_str_;
     double hl_usdc_ = 0.0;
+
+    std::string hl_perp_usdc_str_;
+    double hl_perp_usdc_ = 0.0;
 
     std::string arb_eth_str_;
     std::string arb_usdc_str_;

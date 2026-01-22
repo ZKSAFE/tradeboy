@@ -18,18 +18,9 @@
 #include "app/App.h"
 #include "app/Input.h"
 #include "filters/CrtFilter.h"
+#include "utils/Log.h"
 
-// Simple file logger
-void log_to_file(const char* fmt, ...) {
-    FILE* f = fopen("log.txt", "a");
-    if (!f) return;
-    va_list args;
-    va_start(args, fmt);
-    vfprintf(f, fmt, args);
-    va_end(args);
-    fclose(f);
-}
-
+// NOTE: log_to_file is intentionally removed. Use log_str instead.
 void log_str(const char* s) {
     if (!s) return;
     FILE* f = fopen("log.txt", "a");

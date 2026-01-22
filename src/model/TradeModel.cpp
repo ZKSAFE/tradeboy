@@ -4,8 +4,7 @@
 
 #include "../market/Hyperliquid.h"
 
-extern void log_to_file(const char* fmt, ...);
-extern void log_str(const char* s);
+#include "utils/Log.h"
 
 namespace tradeboy::model {
 
@@ -19,7 +18,7 @@ TradeModel::~TradeModel() {
 TradeModelSnapshot TradeModel::snapshot() const {
     int rc = pthread_mutex_lock(&mu);
     if (rc != 0) {
-        log_to_file("[Model] snapshot mutex_lock failed rc=%d\n", rc);
+        log_str("[Model] snapshot mutex_lock failed\n");
         return TradeModelSnapshot();
     }
     TradeModelSnapshot s;
@@ -49,6 +48,8 @@ AccountSnapshot TradeModel::account_snapshot() const {
     AccountSnapshot a;
     a.hl_usdc_str = hl_usdc_str_;
     a.hl_usdc = hl_usdc_;
+    a.hl_perp_usdc_str = hl_perp_usdc_str_;
+    a.hl_perp_usdc = hl_perp_usdc_;
     a.arb_eth_str = arb_eth_str_;
     a.arb_usdc_str = arb_usdc_str_;
     a.arb_gas_str = arb_gas_str_;
@@ -75,6 +76,16 @@ void TradeModel::set_hl_usdc(double usdc, const std::string& usdc_str, bool ok) 
     }
     hl_usdc_ = ok ? usdc : 0.0;
     hl_usdc_str_ = ok ? usdc_str : std::string("UNKNOWN");
+    pthread_mutex_unlock(&mu);
+}
+
+void TradeModel::set_hl_perp_usdc(double usdc, const std::string& usdc_str, bool ok) {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) {
+        return;
+    }
+    hl_perp_usdc_ = ok ? usdc : 0.0;
+    hl_perp_usdc_str_ = ok ? usdc_str : std::string("UNKNOWN");
     pthread_mutex_unlock(&mu);
 }
 

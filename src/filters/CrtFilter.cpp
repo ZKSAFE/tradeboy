@@ -2,7 +2,7 @@
 
 #include <cstdio>
 
-extern void log_to_file(const char* fmt, ...);
+#include "utils/Log.h"
 
 namespace {
 
@@ -16,7 +16,7 @@ static GLuint compile_shader(GLenum type, const char* src) {
         GLchar logbuf[1024];
         GLsizei n = 0;
         glGetShaderInfoLog(sh, (GLsizei)sizeof(logbuf), &n, logbuf);
-        log_to_file("[CRT] shader compile failed: %s\n", logbuf);
+        log_str("[CRT] shader compile failed\n");
         glDeleteShader(sh);
         return 0;
     }
@@ -36,7 +36,7 @@ static GLuint link_program(GLuint vs, GLuint fs) {
         GLchar logbuf[1024];
         GLsizei n = 0;
         glGetProgramInfoLog(prog, (GLsizei)sizeof(logbuf), &n, logbuf);
-        log_to_file("[CRT] program link failed: %s\n", logbuf);
+        log_str("[CRT] program link failed\n");
         glDeleteProgram(prog);
         return 0;
     }
@@ -314,7 +314,7 @@ bool CrtFilter::init(int width, int height) {
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth_);
     GLenum fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (fb_status != GL_FRAMEBUFFER_COMPLETE) {
-        log_to_file("[CRT] FBO incomplete: 0x%x\n", (unsigned int)fb_status);
+        log_str("[CRT] FBO incomplete\n");
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         shutdown();
         return false;

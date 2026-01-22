@@ -7,7 +7,7 @@
 #include <fstream>
 #include <sstream>
 
-extern void log_to_file(const char* fmt, ...);
+#include "utils/Log.h"
 
 namespace tradeboy::market {
 
@@ -33,6 +33,11 @@ bool fetch_user_role_raw(const std::string& user_address_0x, std::string& out_js
 
 bool fetch_spot_clearinghouse_state_raw(const std::string& user_address_0x, std::string& out_json) {
     std::string req = std::string("{\"type\":\"spotClearinghouseState\",\"user\":\"") + user_address_0x + "\"}\n";
+    return fetch_info_raw(req, out_json);
+}
+
+bool fetch_perp_clearinghouse_state_raw(const std::string& user_address_0x, std::string& out_json) {
+    std::string req = std::string("{\"type\":\"clearinghouseState\",\"user\":\"") + user_address_0x + "\"}\n";
     return fetch_info_raw(req, out_json);
 }
 
@@ -176,6 +181,16 @@ bool parse_spot_usdc_balance(const std::string& spot_state_json, double& out_usd
     if (spot_state_json.find("\"balances\": []") != std::string::npos) return true;
     if (parse_spot_usdc_balance_coin_total(spot_state_json, out_usdc)) return true;
     if (parse_spot_usdc_balance_token0(spot_state_json, out_usdc)) return true;
+    return false;
+}
+
+bool parse_perp_usdc_balance(const std::string& perp_state_json, double& out_usdc) {
+    out_usdc = 0.0;
+    std::string v;
+    if (parse_json_number_string_field(perp_state_json, "accountValue", v)) {
+        out_usdc = std::strtod(v.c_str(), nullptr);
+        return true;
+    }
     return false;
 }
 

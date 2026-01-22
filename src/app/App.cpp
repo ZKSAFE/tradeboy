@@ -24,6 +24,8 @@
 #include "arb/ArbitrumRpc.h"
 #include "market/Hyperliquid.h"
 
+#include "utils/Log.h"
+
 #include <cstdio>
 #include <chrono>
 
@@ -32,9 +34,6 @@
 #include "../ui/MainUI.h"
 
 #include "../ui/Dialog.h"
-
-extern void log_to_file(const char* fmt, ...);
-extern void log_str(const char* s);
 
 namespace tradeboy::app {
 
@@ -484,6 +483,7 @@ void App::render() {
             const std::string gas_s = account.arb_gas_str.empty() ? "GAS: UNKNOWN" : account.arb_gas_str;
             const long double gas_price_wei = account.arb_gas_price_wei;
             const std::string hl_usdc_s = account.hl_usdc_str.empty() ? "UNKNOWN" : account.hl_usdc_str;
+            const std::string hl_perp_usdc_s = account.hl_perp_usdc_str.empty() ? "UNKNOWN" : account.hl_perp_usdc_str;
 
             // Estimate Arbitrum USDC transfer fee in USD.
             // Gas limit reference: 75,586
@@ -516,6 +516,7 @@ void App::render() {
                 account_flash_timer,
                 font_bold,
                 hl_usdc_s.c_str(),
+                hl_perp_usdc_s.c_str(),
                 wallet_address_short.c_str(),
                 eth_s.c_str(),
                 usdc_s.c_str(),
