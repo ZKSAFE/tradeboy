@@ -500,6 +500,7 @@ void App::render() {
                         log_to_file("[HL] USDC_DEPOSIT_ADDRESS=UNKNOWN\n");
                     }
 
+                    bool logged_spot_fail = false;
                     while (!hl_rpc_stop.load()) {
                         std::string spot_json;
                         bool ok_spot = tradeboy::market::fetch_spot_clearinghouse_state_raw(user_addr, spot_json);
@@ -512,13 +513,21 @@ void App::render() {
                                     std::lock_guard<std::mutex> lk(hl_mu);
                                     hl_usdc_str = buf;
                                 }
+                                hl_usdc = usdc;
                             } else {
+                                if (!logged_spot_fail) {
+                                    logged_spot_fail = true;
+                                    log_to_file("[HL] spotClearinghouseState parse failed, raw prefix=<<<%.*s>>>\n",
+                                                512, spot_json.c_str());
+                                }
                                 std::lock_guard<std::mutex> lk(hl_mu);
                                 hl_usdc_str = "UNKNOWN";
+                                hl_usdc = 0.0;
                             }
                         } else {
                             std::lock_guard<std::mutex> lk(hl_mu);
                             hl_usdc_str = "UNKNOWN";
+                            hl_usdc = 0.0;
                         }
 
                         for (int i = 0; i < 20; i++) {

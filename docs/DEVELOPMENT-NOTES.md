@@ -273,6 +273,42 @@ make tradeboy-ui-demo-armhf-docker
 - 运行时 CWD：如果存在 `/mnt/mmc/Roms/APPS`，先 `chdir("/mnt/mmc/Roms/APPS")`，避免字体路径找不到
 - Window 创建：优先使用 `SDL_WINDOWPOS_UNDEFINED_DISPLAY(0)` + `SDL_WINDOW_FULLSCREEN_DESKTOP`（与 RG34XX 的 mali-fbdev 更兼容）
 
+### 坑 7：RG34XX 启动期 SIGSEGV（`std::mutex` / 变参日志 / `std::string`）
+
+现象：
+
+- 掌机上启动后在初始化阶段随机闪退（`SIGSEGV`），常出现在 `App::init_demo_data()` / `TradeModel::set_spot_rows()` 附近
+- backtrace 很浅，偶尔指向 `std::string` 赋值/析构，或者直接落在上层函数地址（典型“栈/返回地址被破坏”）
+
+根因（结论）：
+
+- RG34XX 的 armhf 用户态环境下，`std::mutex`/libstdc++/glibc + 变参 `vfprintf` 的组合存在 ABI/实现差异导致的不稳定（容易触发未定义行为/栈破坏）。
+- 这类问题的特征是：看起来像业务代码某行崩了，但实际上是更早的 ABI/变参路径把内存/栈破坏了。
+
+定位方法（建议流程）：
+
+- 在关键路径打“分段日志”确认崩溃点是否发生在某函数返回之前/之后。
+- 优先把日志改为“常量字符串写入”验证是否为 varargs/ABI：
+  - 新增 `log_str(const char*)`，内部用 `fputs` 追加到 `log.txt`（避免 `va_list/vfprintf`）。
+- 一旦怀疑死锁/锁相关：可以临时跳过 `unlock` 验证是否是 `unlock` 触发崩溃，但注意这会导致后续必然卡死（用于诊断即可）。
+
+稳定修复（最终采用）：
+
+- **锁替换**：`TradeModel` 的 `std::mutex` 替换为 `pthread_mutex_t`，并在构造/析构里 `pthread_mutex_init/destroy`。
+- **降低 string 赋值链路风险**：`set_spot_rows` 使用 `spot_rows_.swap(rows)`，避免大量 `std::string` 赋值/拷贝。
+- **关键日志改为非变参**：启动期关键点（model ctor / set_spot_rows / set_spot_row_idx / init_demo_data return）使用 `log_str`。
+
+验证点（健康日志应出现）：
+
+- `[Model] ctor`
+- `set_spot_rows unlocked`
+- `[App] init_demo_data returned set_spot_rows`
+- `[Main] entering main loop`
+
+常见误判：
+
+- 看到卡在 `set_spot_row_idx about to lock`：通常是之前为诊断跳过了 `unlock` 导致死锁，并非性能问题。
+
 ## 清理掌机端测试文件
 
 只清理 demo 相关文件（不影响系统菜单）：

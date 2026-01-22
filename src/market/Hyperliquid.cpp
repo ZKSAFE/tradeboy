@@ -103,8 +103,30 @@ static bool parse_json_string_field(const std::string& s, const std::string& key
 }
 
 static bool parse_json_number_string_field(const std::string& s, const std::string& key, std::string& out) {
-    // Many HL numeric fields are encoded as strings.
-    return parse_json_string_field(s, key, out);
+    // Many HL numeric fields are encoded as strings, but sometimes they may be real JSON numbers.
+    // Accept either "123.45" or 123.45.
+    std::string needle = "\"" + key + "\":";
+    size_t p = s.find(needle);
+    if (p == std::string::npos) return false;
+    p += needle.size();
+    while (p < s.size() && (s[p] == ' ' || s[p] == '\n' || s[p] == '\r' || s[p] == '\t')) p++;
+    if (p >= s.size()) return false;
+    if (s[p] == '"') {
+        return parse_quoted_value(s, p, out);
+    }
+    // Parse a JSON number token.
+    size_t start = p;
+    while (p < s.size()) {
+        char c = s[p];
+        if ((c >= '0' && c <= '9') || c == '.' || c == '-' || c == '+') {
+            p++;
+            continue;
+        }
+        break;
+    }
+    if (p == start) return false;
+    out.assign(s.begin() + start, s.begin() + p);
+    return true;
 }
 
 bool parse_usdc_deposit_address(const std::string& user_role_json, std::string& out_addr) {
@@ -147,6 +169,11 @@ static bool parse_spot_usdc_balance_token0(const std::string& s, double& out_usd
 
 bool parse_spot_usdc_balance(const std::string& spot_state_json, double& out_usdc) {
     out_usdc = 0.0;
+    // If the account has never used HL spot, balances may be an empty array.
+    // Treat that as a valid 0 balance instead of a parse failure.
+    if (spot_state_json.find("\"balances\":[ ][]") != std::string::npos) return true;
+    if (spot_state_json.find("\"balances\":[]") != std::string::npos) return true;
+    if (spot_state_json.find("\"balances\": []") != std::string::npos) return true;
     if (parse_spot_usdc_balance_coin_total(spot_state_json, out_usdc)) return true;
     if (parse_spot_usdc_balance_token0(spot_state_json, out_usdc)) return true;
     return false;
