@@ -2,10 +2,11 @@
 
 #include <string>
 #include <vector>
-#include <mutex>
 #include <memory>
 #include <thread>
 #include <atomic>
+
+#include <pthread.h>
 
 #include "imgui.h"
 
@@ -27,6 +28,9 @@ enum class Tab {
 };
 
 struct App {
+    App();
+    ~App();
+
     Tab tab = Tab::Spot;
 
     int buy_press_frames = 0;
@@ -105,13 +109,20 @@ struct App {
     bool arb_rpc_last_ok = false;
     std::atomic<bool> arb_rpc_error_pending_alert{false};
 
-    std::mutex arb_rpc_mu;
+    mutable pthread_mutex_t arb_rpc_mu;
+
+    std::atomic<bool> arb_deposit_inflight{false};
+    std::atomic<bool> arb_deposit_alert_pending{false};
+    mutable pthread_mutex_t arb_deposit_mu;
+    std::string arb_deposit_alert_body;
+
+    std::thread arb_deposit_thread;
 
     double wallet_usdc = 0.0;
     double hl_usdc = 0.0;
 
     std::string hl_usdc_str;
-    std::mutex hl_mu;
+    mutable pthread_mutex_t hl_mu;
     std::thread hl_rpc_thread;
     std::atomic<bool> hl_rpc_stop{false};
     bool hl_bootstrap_started = false;

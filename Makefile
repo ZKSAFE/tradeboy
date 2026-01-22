@@ -11,9 +11,9 @@ ARMHF_CC = arm-linux-gnueabihf-gcc
 ARMHF_CXX = arm-linux-gnueabihf-g++
 
 # 库依赖
-LIBS = -lEGL -lGLESv2 -lm -lpthread
+LIBS = -lEGL -lGLESv2 -lm -lpthread -lcrypto
 LIBS_ARMHF = -L./lib32 -lmali -ldl -lm -lpthread
-LIBS_ARMHF_GLES = -lEGL -lGLESv2 -ldl -lm -lpthread
+LIBS_ARMHF_GLES = -lEGL -lGLESv2 -ldl -lm -lpthread -lcrypto
 LDFLAGS_ARMHF = -Wl,--no-as-needed -Wl,-rpath-link,./lib32
 
 # 包含路径

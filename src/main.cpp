@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
     (void)argv;
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_TIMER) != 0) {
-        log_to_file("SDL_Init failed: %s\n", SDL_GetError());
+        log_str("SDL_Init failed\n");
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return 1;
     }
@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
             mode.refresh_rate = 60;
         }
     }
-    log_to_file("Display Mode: %dx%d @ %dHz\n", mode.w, mode.h, mode.refresh_rate);
+    log_str("Display Mode: <logged>\n");
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
@@ -147,7 +147,7 @@ int main(int argc, char** argv) {
         };
 
         for (const auto& a : attempts) {
-            log_to_file("[SDL] CreateWindow attempt: %s flags=0x%x\n", a.name, (unsigned int)a.flags);
+            log_str("[SDL] CreateWindow attempt\n");
             window = SDL_CreateWindow(
                 "tradeboy",
                 SDL_WINDOWPOS_UNDEFINED_DISPLAY(0),
@@ -156,12 +156,12 @@ int main(int argc, char** argv) {
                 mode.h,
                 a.flags);
             if (window) break;
-            log_to_file("[SDL] CreateWindow attempt failed (%s): %s\n", a.name, SDL_GetError());
+            log_str("[SDL] CreateWindow attempt failed\n");
         }
     }
 
     if (!window) {
-        log_to_file("SDL_CreateWindow failed: %s\n", SDL_GetError());
+        log_str("SDL_CreateWindow failed\n");
         fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
         SDL_Quit();
         return 1;
@@ -169,7 +169,7 @@ int main(int argc, char** argv) {
 
     SDL_GLContext glctx = SDL_GL_CreateContext(window);
     if (!glctx) {
-        log_to_file("SDL_GL_CreateContext failed: %s\n", SDL_GetError());
+        log_str("SDL_GL_CreateContext failed\n");
         fprintf(stderr, "SDL_GL_CreateContext failed: %s\n", SDL_GetError());
         SDL_DestroyWindow(window);
         SDL_Quit();
@@ -194,7 +194,7 @@ int main(int argc, char** argv) {
 
     tradeboy::filters::CrtFilter crt;
     if (!crt.init(mode.w, mode.h)) {
-        log_to_file("[CRT] init failed, running without CRT\n");
+        log_str("[CRT] init failed, running without CRT\n");
     }
 
     // Font: prefer bundled cour-new.ttf for readable UI on 720x480.
@@ -206,7 +206,7 @@ int main(int argc, char** argv) {
     else if (file_exists("NotoSansCJK-Regular.ttc")) font_path = "NotoSansCJK-Regular.ttc";
 
     if (font_path) {
-        log_to_file("[Main] Loading font: %s\n", font_path);
+        log_str("[Main] Loading font\n");
         ImFontConfig cfg;
         cfg.OversampleH = 1;
         cfg.OversampleV = 1;
@@ -217,12 +217,12 @@ int main(int argc, char** argv) {
             unsigned char* pixels = nullptr;
             int w = 0, h = 0;
             io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
-            log_to_file("[Main] Font atlas built: %dx%d\n", w, h);
+            log_str("[Main] Font atlas built\n");
         } else {
-            log_to_file("[Main] Font load failed, using default\n");
+            log_str("[Main] Font load failed, using default\n");
         }
     } else {
-        log_to_file("[Main] No font file found, using default\n");
+        log_str("[Main] No font file found, using default\n");
     }
 
     // Load Bold Font
@@ -232,7 +232,7 @@ int main(int argc, char** argv) {
     
     ImFont* loaded_font_bold = nullptr;
     if (font_path_bold) {
-         log_to_file("[Main] Loading bold font: %s\n", font_path_bold);
+         log_str("[Main] Loading bold font\n");
          ImFontConfig cfg;
          cfg.OversampleH = 1;
          cfg.OversampleV = 1;
@@ -246,23 +246,24 @@ int main(int argc, char** argv) {
         joy0 = SDL_JoystickOpen(0);
     }
 
-    log_to_file("[Main] Allocating App on heap...\n");
+    log_str("[Main] Allocating App on heap...\n");
     auto* app_ptr = new tradeboy::app::App();
+    log_str("[Main] new App returned\n");
     tradeboy::app::App& app = *app_ptr;
 
+    log_str("[Main] App constructed\n");
     app.font_bold = loaded_font_bold;
-    log_to_file("[Main] App constructed\n");
-    log_to_file("[Main] init_demo_data begin\n");
+    log_str("[Main] init_demo_data begin\n");
     app.init_demo_data();
-    log_to_file("[Main] init_demo_data done\n");
-    log_to_file("[Main] calling startup\n");
+    log_str("[Main] init_demo_data done\n");
+    log_str("[Main] calling startup\n");
     app.startup();
-    log_to_file("[Main] app.startup done\n");
+    log_str("[Main] app.startup done\n");
 
     tradeboy::app::EdgeState edges;
 
     bool running = true;
-    log_to_file("[Main] entering main loop\n");
+    log_str("[Main] entering main loop\n");
     int frame_counter = 0;
     while (running) {
         std::vector<SDL_Event> events;
@@ -286,17 +287,17 @@ int main(int argc, char** argv) {
         }
 
         if (frame_counter == 0) {
-            log_to_file("[Main] first frame\n");
+            log_str("[Main] first frame\n");
         }
         frame_counter++;
 
-        if (frame_counter <= 5) log_to_file("[Frame %d] begin\n", frame_counter);
+        if (frame_counter <= 5) log_str("[Frame] begin\n");
 
-        if (frame_counter <= 5) log_to_file("[Frame %d] ImGui_ImplOpenGL3_NewFrame\n", frame_counter);
+        if (frame_counter <= 5) log_str("[Frame] ImGui_ImplOpenGL3_NewFrame\n");
         ImGui_ImplOpenGL3_NewFrame();
-        if (frame_counter <= 5) log_to_file("[Frame %d] ImGui_ImplSDL2_NewFrame\n", frame_counter);
+        if (frame_counter <= 5) log_str("[Frame] ImGui_ImplSDL2_NewFrame\n");
         ImGui_ImplSDL2_NewFrame();
-        if (frame_counter <= 5) log_to_file("[Frame %d] ImGui::NewFrame\n", frame_counter);
+        if (frame_counter <= 5) log_str("[Frame] ImGui::NewFrame\n");
         ImGui::NewFrame();
 
         ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
@@ -306,23 +307,23 @@ int main(int argc, char** argv) {
                                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings |
                                  ImGuiWindowFlags_NoBackground;
         ImGui::Begin("Spot", nullptr, wflags);
-        if (frame_counter <= 5) log_to_file("[Frame %d] app.render begin\n", frame_counter);
+        if (frame_counter <= 5) log_str("[Frame] app.render begin\n");
         app.render();
-        if (frame_counter <= 5) log_to_file("[Frame %d] app.render end\n", frame_counter);
+        if (frame_counter <= 5) log_str("[Frame] app.render end\n");
         ImGui::End();
 
-        if (frame_counter <= 5) log_to_file("[Frame %d] ImGui::Render\n", frame_counter);
+        if (frame_counter <= 5) log_str("[Frame] ImGui::Render\n");
         ImGui::Render();
 
         if (crt.is_ready()) {
-            if (frame_counter <= 5) log_to_file("[Frame %d] crt.begin\n", frame_counter);
+            if (frame_counter <= 5) log_str("[Frame] crt.begin\n");
             crt.begin();
-            if (frame_counter <= 5) log_to_file("[Frame %d] ImGui_ImplOpenGL3_RenderDrawData\n", frame_counter);
+            if (frame_counter <= 5) log_str("[Frame] ImGui_ImplOpenGL3_RenderDrawData\n");
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
             crt.set_overlay_rect_uv(app.overlay_rect_uv, app.overlay_rect_active);
             crt.set_poweroff(app.exit_poweroff_anim_t, app.exit_poweroff_anim_active);
             crt.set_boot(app.boot_anim_t, app.boot_anim_active && !app.exit_poweroff_anim_active);
-            if (frame_counter <= 5) log_to_file("[Frame %d] crt.end\n", frame_counter);
+            if (frame_counter <= 5) log_str("[Frame] crt.end\n");
             crt.end((float)ImGui::GetTime());
         } else {
             glViewport(0, 0, mode.w, mode.h);
@@ -331,53 +332,53 @@ int main(int argc, char** argv) {
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         }
 
-        if (frame_counter <= 5) log_to_file("[Frame %d] SDL_GL_SwapWindow\n", frame_counter);
+        if (frame_counter <= 5) log_str("[Frame] SDL_GL_SwapWindow\n");
         SDL_GL_SwapWindow(window);
 
-        if (frame_counter <= 5) log_to_file("[Frame %d] end\n", frame_counter);
+        if (frame_counter <= 5) log_str("[Frame] end\n");
     }
 
-    log_to_file("[Main] main loop exit -> begin shutdown\n");
+    log_str("[Main] main loop exit -> begin shutdown\n");
 
-    log_to_file("[Main] calling app.shutdown()\n");
+    log_str("[Main] calling app.shutdown()\n");
     app.shutdown();
-    log_to_file("[Main] app.shutdown() done\n");
+    log_str("[Main] app.shutdown() done\n");
 
-    log_to_file("[Main] deleting app_ptr\n");
+    log_str("[Main] deleting app_ptr\n");
     delete app_ptr;
-    log_to_file("[Main] delete app_ptr done\n");
+    log_str("[Main] delete app_ptr done\n");
 
     if (joy0) {
-        log_to_file("[Main] SDL_JoystickClose\n");
+        log_str("[Main] SDL_JoystickClose\n");
         SDL_JoystickClose(joy0);
-        log_to_file("[Main] SDL_JoystickClose done\n");
+        log_str("[Main] SDL_JoystickClose done\n");
     }
 
-    log_to_file("[Main] ImGui_ImplOpenGL3_Shutdown\n");
+    log_str("[Main] ImGui_ImplOpenGL3_Shutdown\n");
     ImGui_ImplOpenGL3_Shutdown();
-    log_to_file("[Main] ImGui_ImplOpenGL3_Shutdown done\n");
+    log_str("[Main] ImGui_ImplOpenGL3_Shutdown done\n");
 
-    log_to_file("[Main] ImGui_ImplSDL2_Shutdown\n");
+    log_str("[Main] ImGui_ImplSDL2_Shutdown\n");
     ImGui_ImplSDL2_Shutdown();
-    log_to_file("[Main] ImGui_ImplSDL2_Shutdown done\n");
+    log_str("[Main] ImGui_ImplSDL2_Shutdown done\n");
 
-    log_to_file("[Main] ImGui::DestroyContext\n");
+    log_str("[Main] ImGui::DestroyContext\n");
     ImGui::DestroyContext();
-    log_to_file("[Main] ImGui::DestroyContext done\n");
+    log_str("[Main] ImGui::DestroyContext done\n");
 
     crt.shutdown();
 
-    log_to_file("[Main] SDL_GL_DeleteContext\n");
+    log_str("[Main] SDL_GL_DeleteContext\n");
     SDL_GL_DeleteContext(glctx);
-    log_to_file("[Main] SDL_GL_DeleteContext done\n");
+    log_str("[Main] SDL_GL_DeleteContext done\n");
 
-    log_to_file("[Main] SDL_DestroyWindow\n");
+    log_str("[Main] SDL_DestroyWindow\n");
     SDL_DestroyWindow(window);
-    log_to_file("[Main] SDL_DestroyWindow done\n");
+    log_str("[Main] SDL_DestroyWindow done\n");
 
-    log_to_file("[Main] SDL_Quit\n");
+    log_str("[Main] SDL_Quit\n");
     SDL_Quit();
-    log_to_file("[Main] SDL_Quit done\n");
+    log_str("[Main] SDL_Quit done\n");
 
     return 0;
 }

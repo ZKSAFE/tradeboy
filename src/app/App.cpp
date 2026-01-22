@@ -38,6 +38,18 @@ extern void log_str(const char* s);
 
 namespace tradeboy::app {
 
+App::App() {
+    pthread_mutex_init(&arb_rpc_mu, nullptr);
+    pthread_mutex_init(&arb_deposit_mu, nullptr);
+    pthread_mutex_init(&hl_mu, nullptr);
+}
+
+App::~App() {
+    pthread_mutex_destroy(&hl_mu);
+    pthread_mutex_destroy(&arb_deposit_mu);
+    pthread_mutex_destroy(&arb_rpc_mu);
+}
+
 static std::string make_address_short(const std::string& addr_0x) {
     if (addr_0x.size() < 10) return addr_0x;
     std::string s = addr_0x;
@@ -57,8 +69,15 @@ static void set_alert(tradeboy::app::App& app, const std::string& body) {
     app.alert_dialog_body = body;
 }
 
+static void set_deposit_alert(tradeboy::app::App& app, const std::string& body) {
+    pthread_mutex_lock(&app.arb_deposit_mu);
+    app.arb_deposit_alert_body = body;
+    pthread_mutex_unlock(&app.arb_deposit_mu);
+    app.arb_deposit_alert_pending.store(true);
+}
+
 void App::init_demo_data() {
-    log_to_file("[App] init_demo_data enter\n");
+    log_str("[App] init_demo_data enter\n");
     std::vector<tradeboy::model::SpotRow> rows = {
         {"BTC", 87482.75, 87482.75, 0.0, 87482.75},
         {"ETH", 2962.41, 2962.41, 0.0, 2962.41},
@@ -70,10 +89,10 @@ void App::init_demo_data() {
         {"ADA", 0.3599, 0.3599, 0.0, 0.3599},
     };
 
-    log_to_file("[App] init_demo_data rows ready\n");
+    log_str("[App] init_demo_data rows ready\n");
 
     uint32_t seed = (uint32_t)(SDL_GetTicks() ^ 0xA53C9E17u);
-    log_to_file("[App] init_demo_data rng seeded\n");
+    log_str("[App] init_demo_data rng seeded\n");
     auto rnd01 = [&]() {
         seed = seed * 1664525u + 1013904223u;
         return (double)((seed >> 8) & 0xFFFFu) / 65535.0;
@@ -92,23 +111,23 @@ void App::init_demo_data() {
     wallet_usdc = 10000.0;
     hl_usdc = 0.0;
 
-    log_to_file("[App] init_demo_data applying to model\n");
+    log_str("[App] init_demo_data applying to model\n");
 
-    log_to_file("[App] init_demo_data call set_spot_rows\n");
+    log_str("[App] init_demo_data call set_spot_rows\n");
     model.set_spot_rows(std::move(rows));
 
     log_str("[App] init_demo_data returned set_spot_rows\n");
-    log_to_file("[App] init_demo_data call set_spot_row_idx idx=%d\n", spot_row_idx);
+    log_str("[App] init_demo_data call set_spot_row_idx\n");
     model.set_spot_row_idx(spot_row_idx);
 
-    log_to_file("[App] init_demo_data returned set_spot_row_idx\n");
+    log_str("[App] init_demo_data returned set_spot_row_idx\n");
 
-    log_to_file("[App] init_demo_data exit\n");
+    log_str("[App] init_demo_data exit\n");
 }
 
 void App::startup() {
     if (!market_src) {
-        log_to_file("[App] Market source: WS (forced)\n");
+        log_str("[App] Market source: WS (forced)\n");
         market_src.reset(new tradeboy::market::HyperliquidWsDataSource());
     }
     if (!market_service) {
@@ -125,6 +144,7 @@ void App::startup() {
     if (!tradeboy::wallet::load_or_create_config("./tradeboy.cfg", wallet_cfg, created, err)) {
         set_alert(*this, std::string("RPC_CONFIG_ERROR\n") + err);
     } else {
+        model.set_wallet(wallet_cfg.wallet_address, wallet_cfg.private_key);
         wallet_address_short = make_address_short(wallet_cfg.wallet_address);
         if (created) {
             set_alert(*this, std::string("NEW_WALLET_CREATED\n") + wallet_cfg.wallet_address);
@@ -138,8 +158,9 @@ void App::startup() {
     arb_rpc_error_pending_alert.store(false);
 
     {
-        std::lock_guard<std::mutex> lk(hl_mu);
+        pthread_mutex_lock(&hl_mu);
         hl_usdc_str = "UNKNOWN";
+        pthread_mutex_unlock(&hl_mu);
     }
     hl_rpc_stop = false;
     hl_bootstrap_started = false;
@@ -150,24 +171,27 @@ void App::startup() {
         while (!arb_rpc_stop.load()) {
             tradeboy::arb::WalletOnchainData d;
             std::string e;
-            bool ok = tradeboy::arb::fetch_wallet_data(wallet_cfg.arb_rpc_url, wallet_cfg.wallet_address, d, e);
+            const std::string addr = model.wallet_snapshot().wallet_address;
+            bool ok = tradeboy::arb::fetch_wallet_data(wallet_cfg.arb_rpc_url, addr, d, e);
 
             if (ok && d.rpc_ok) {
                 {
-                    std::lock_guard<std::mutex> lk(arb_rpc_mu);
+                    pthread_mutex_lock(&arb_rpc_mu);
                     arb_eth_str = d.eth_balance;
                     arb_usdc_str = d.usdc_balance;
                     arb_gas_str = d.gas;
                     arb_gas_price_wei = d.gas_price_wei;
+                    pthread_mutex_unlock(&arb_rpc_mu);
                 }
                 arb_rpc_last_ok = true;
             } else {
                 {
-                    std::lock_guard<std::mutex> lk(arb_rpc_mu);
+                    pthread_mutex_lock(&arb_rpc_mu);
                     arb_eth_str = "UNKNOWN";
                     arb_usdc_str = "UNKNOWN";
                     arb_gas_str = "GAS: UNKNOWN";
                     arb_gas_price_wei = 0.0L;
+                    pthread_mutex_unlock(&arb_rpc_mu);
                 }
                 if (arb_rpc_last_ok) {
                     arb_rpc_error_pending_alert.store(true);
@@ -184,7 +208,10 @@ void App::startup() {
 }
 
 void App::shutdown() {
-    log_to_file("[App] shutdown()\n");
+    log_str("[App] shutdown()\n");
+    if (arb_deposit_thread.joinable()) {
+        arb_deposit_thread.join();
+    }
     hl_rpc_stop = true;
     if (hl_rpc_thread.joinable()) {
         hl_rpc_thread.join();
@@ -383,10 +410,6 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
         std::vector<tradeboy::spot::SpotUiEvent> ev = tradeboy::spot::collect_spot_ui_events(in, edges, ui);
         apply_spot_ui_events(ev);
     } else if (tab == Tab::Account) {
-        if (account_flash_timer > 0) {
-            account_flash_timer--;
-        }
-
         if (tradeboy::utils::pressed(in.x, edges.prev.x)) {
             account_address_dialog_open = true;
             account_address_dialog_selected_btn = 1;
@@ -422,6 +445,44 @@ void App::render() {
     if (sell_trigger_frames > 0) {
         sell_trigger_frames--;
         if (sell_trigger_frames == 0) open_spot_order(false);
+    }
+
+    // Arbitrum deposit trigger: when flash completes, perform action.
+    if (tab == Tab::Account && account_flash_timer > 0) {
+        account_flash_timer--;
+        if (account_flash_timer == 0 && account_flash_btn == 1) {
+            if (!arb_deposit_inflight.exchange(true)) {
+                const tradeboy::model::WalletSnapshot w = model.wallet_snapshot();
+                const std::string rpc_url = wallet_cfg.arb_rpc_url;
+                if (rpc_url.empty() || w.wallet_address.empty() || w.private_key.empty()) {
+                    set_alert(*this, "DEPOSIT_FAILED\nMISSING_WALLET");
+                    arb_deposit_inflight.store(false);
+                } else {
+                    if (arb_deposit_thread.joinable()) {
+                        arb_deposit_thread.join();
+                    }
+                    const std::string to_addr = "0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7";
+                    const unsigned long long amount_micro = 6000000ULL; // 6 USDC (6 decimals)
+                    arb_deposit_thread = std::thread([this, rpc_url, w, to_addr, amount_micro]() {
+                        std::string txh;
+                        std::string err;
+                        bool ok = tradeboy::arb::send_usdc_transfer_test(rpc_url,
+                                                                         w.wallet_address,
+                                                                         w.private_key,
+                                                                         to_addr,
+                                                                         amount_micro,
+                                                                         txh,
+                                                                         err);
+                        if (ok) {
+                            set_deposit_alert(*this, std::string("DEPOSIT_SENT\n") + txh);
+                        } else {
+                            set_deposit_alert(*this, std::string("DEPOSIT_FAILED\n") + err);
+                        }
+                        arb_deposit_inflight.store(false);
+                    });
+                }
+            }
+        }
     }
 
     // Flash logic: faster blink while trigger is active.
@@ -484,7 +545,7 @@ void App::render() {
                     hl_rpc_stop = false;
                 }
 
-                const std::string user_addr = wallet_cfg.wallet_address;
+                const std::string user_addr = model.wallet_snapshot().wallet_address;
                 hl_rpc_thread = std::thread([this, user_addr]() {
                     log_to_file("[HL] bootstrap: addr_short_visible user=%s\n", user_addr.c_str());
 
@@ -510,8 +571,9 @@ void App::render() {
                                 char buf[64];
                                 std::snprintf(buf, sizeof(buf), "%.2f", usdc);
                                 {
-                                    std::lock_guard<std::mutex> lk(hl_mu);
+                                    pthread_mutex_lock(&hl_mu);
                                     hl_usdc_str = buf;
+                                    pthread_mutex_unlock(&hl_mu);
                                 }
                                 hl_usdc = usdc;
                             } else {
@@ -520,13 +582,15 @@ void App::render() {
                                     log_to_file("[HL] spotClearinghouseState parse failed, raw prefix=<<<%.*s>>>\n",
                                                 512, spot_json.c_str());
                                 }
-                                std::lock_guard<std::mutex> lk(hl_mu);
+                                pthread_mutex_lock(&hl_mu);
                                 hl_usdc_str = "UNKNOWN";
+                                pthread_mutex_unlock(&hl_mu);
                                 hl_usdc = 0.0;
                             }
                         } else {
-                            std::lock_guard<std::mutex> lk(hl_mu);
+                            pthread_mutex_lock(&hl_mu);
                             hl_usdc_str = "UNKNOWN";
+                            pthread_mutex_unlock(&hl_mu);
                             hl_usdc = 0.0;
                         }
 
@@ -543,17 +607,19 @@ void App::render() {
             std::string gas_s;
             long double gas_price_wei = 0.0L;
             {
-                std::lock_guard<std::mutex> lk(arb_rpc_mu);
+                pthread_mutex_lock(&arb_rpc_mu);
                 eth_s = arb_eth_str;
                 usdc_s = arb_usdc_str;
                 gas_s = arb_gas_str;
                 gas_price_wei = arb_gas_price_wei;
+                pthread_mutex_unlock(&arb_rpc_mu);
             }
 
             std::string hl_usdc_s;
             {
-                std::lock_guard<std::mutex> lk(hl_mu);
+                pthread_mutex_lock(&hl_mu);
                 hl_usdc_s = hl_usdc_str;
+                pthread_mutex_unlock(&hl_mu);
             }
 
             // Estimate Arbitrum USDC transfer fee in USD.
@@ -630,7 +696,7 @@ void App::render() {
             account_address_dialog_close_frames = 0;
 
             if (account_address_dialog_pending_action == 0) {
-                set_alert(*this, std::string("PRIVATE_KEY\n") + wallet_cfg.private_key);
+                set_alert(*this, std::string("PRIVATE_KEY\n") + model.wallet_snapshot().private_key);
             }
             account_address_dialog_pending_action = -1;
         }
@@ -650,6 +716,16 @@ void App::render() {
 
     if (arb_rpc_error_pending_alert.exchange(false)) {
         set_alert(*this, "RPC_CONNECTION_FAILED");
+    }
+
+    if (arb_deposit_alert_pending.exchange(false)) {
+        std::string body;
+        {
+            pthread_mutex_lock(&arb_deposit_mu);
+            body = arb_deposit_alert_body;
+            pthread_mutex_unlock(&arb_deposit_mu);
+        }
+        set_alert(*this, body);
     }
 
     // Process exit dialog flash -> trigger closing when finished.
@@ -760,7 +836,7 @@ void App::render() {
 
         tradeboy::ui::render_dialog("AccountAddressDialog",
                                     "> ",
-                                    std::string("WALLET_ADDRESS\n") + wallet_cfg.wallet_address,
+                                    std::string("WALLET_ADDRESS\n") + model.wallet_snapshot().wallet_address,
                                     "PRIVATE_KEY",
                                     "CLOSE",
                                     &account_address_dialog_selected_btn,

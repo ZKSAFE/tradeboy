@@ -109,7 +109,7 @@ void render_account_screen(int focused_col,
             dl->AddLine(ImVec2(cx + innerP, currY + 35), ImVec2(cx + innerP + innerW, currY + 35), IM_COL32(0, 50, 0, 255), 1.0f);
             
             // Label: text-3xl -> 30px
-            dl->AddText(font_reg, 26.0f, ImVec2(cx + innerP, currY), MatrixTheme::DIM, "USDC");
+            dl->AddText(font_reg, 26.0f, ImVec2(cx + innerP, currY), MatrixTheme::DIM, "USDC(SPOT)");
             
             // Value: text-3xl -> 30px
             const char* v = (hl_usdc && hl_usdc[0]) ? hl_usdc : "UNKNOWN";

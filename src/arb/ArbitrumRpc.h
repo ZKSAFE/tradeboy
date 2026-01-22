@@ -18,4 +18,12 @@ bool fetch_wallet_data(const std::string& rpc_url,
                        WalletOnchainData& out,
                        std::string& out_err);
 
+bool send_usdc_transfer_test(const std::string& rpc_url,
+                             const std::string& from_addr_0x,
+                             const std::string& privkey_0x,
+                             const std::string& to_addr_0x,
+                             unsigned long long amount_micro,
+                             std::string& out_txhash,
+                             std::string& out_err);
+
 } // namespace tradeboy::arb

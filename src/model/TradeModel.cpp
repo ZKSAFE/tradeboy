@@ -11,14 +11,9 @@ namespace tradeboy::model {
 
 TradeModel::TradeModel() {
     log_str("[Model] ctor\n");
-    int rc = pthread_mutex_init(&mu, nullptr);
-    if (rc != 0) {
-        log_to_file("[Model] pthread_mutex_init failed rc=%d\n", rc);
-    }
 }
 
 TradeModel::~TradeModel() {
-    pthread_mutex_destroy(&mu);
 }
 
 TradeModelSnapshot TradeModel::snapshot() const {
@@ -32,6 +27,28 @@ TradeModelSnapshot TradeModel::snapshot() const {
     s.spot_rows = spot_rows_;
     pthread_mutex_unlock(&mu);
     return s;
+}
+
+WalletSnapshot TradeModel::wallet_snapshot() const {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) {
+        return WalletSnapshot();
+    }
+    WalletSnapshot w;
+    w.wallet_address = wallet_address_;
+    w.private_key = private_key_;
+    pthread_mutex_unlock(&mu);
+    return w;
+}
+
+void TradeModel::set_wallet(const std::string& wallet_address, const std::string& private_key) {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) {
+        return;
+    }
+    wallet_address_ = wallet_address;
+    private_key_ = private_key;
+    pthread_mutex_unlock(&mu);
 }
 
 void TradeModel::set_spot_rows(std::vector<SpotRow> rows) {

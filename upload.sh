@@ -113,10 +113,6 @@ echo -e "${GREEN}✅ SSH连接成功${NC}"
 echo "📁 创建应用目录..."
 retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mkdir -p /mnt/mmc/Roms/APPS" 2>/dev/null
 
-# Kill existing process
-echo "🛑 停止现有进程..."
-retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "killall -9 tradeboy-armhf" 2>/dev/null || true
-
 # 上传文件
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
     echo "📤 上传TradeBoy可执行文件..."

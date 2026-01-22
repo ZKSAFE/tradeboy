@@ -538,7 +538,19 @@ void HyperliquidWsDataSource::run() {
         reconnect_backoff_ms = 1000;
         log_every = 0;
 
+        long long last_ping_ms = 0;
+
         while (!stop_.load()) {
+            const long long now_ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                                         std::chrono::system_clock::now().time_since_epoch())
+                                         .count();
+
+            // Proactive ping heartbeat (keepalive). The server may also send pings; we respond with pong.
+            if (last_ping_ms == 0 || (now_ms - last_ping_ms) > 20000) {
+                (void)ws_write_frame(p.in, 0x9, nullptr, 0, (unsigned int)std::rand());
+                last_ping_ms = now_ms;
+            }
+
             unsigned char opcode = 0;
             std::vector<unsigned char> payload;
             if (!ws_read_frame_timeout(p.out, opcode, payload, 2 * 1024 * 1024, 1000, &stop_)) {
@@ -565,10 +577,6 @@ void HyperliquidWsDataSource::run() {
             std::string mids_obj = extract_object_after_key(data_obj, "mids");
             if (mids_obj.empty()) mids_obj = extract_object_after_key(msg, "mids");
             if (mids_obj.empty() || mids_obj.find("\":\"") == std::string::npos) continue;
-
-            const long long now_ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
-                                         std::chrono::system_clock::now().time_since_epoch())
-                                         .count();
 
             {
                 std::lock_guard<std::mutex> lock(mu_);

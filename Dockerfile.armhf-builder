@@ -1,12 +1,15 @@
-FROM rg34xx-sdl2-builder:latest
+FROM ubuntu:22.04
 
 RUN dpkg --add-architecture armhf \
  && apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates \
+      make \
       gcc-arm-linux-gnueabihf \
       g++-arm-linux-gnueabihf \
       ccache \
       libsdl2-dev:armhf \
+      libssl-dev:armhf \
  && rm -rf /var/lib/apt/lists/*
 
 ENV CCACHE_DIR=/ccache \
