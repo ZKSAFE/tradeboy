@@ -368,17 +368,17 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
             return;
         }
 
+        // Account: left/right cycles the 3 bottom buttons.
         if (tradeboy::utils::pressed(in.left, edges.prev.left)) {
-            account_focused_col = 0;
+            account_selected_btn = (account_selected_btn + 2) % 3;
         }
         if (tradeboy::utils::pressed(in.right, edges.prev.right)) {
-            account_focused_col = 1;
+            account_selected_btn = (account_selected_btn + 1) % 3;
         }
 
         if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
-            // Trigger action for focused column
             account_flash_timer = 18;
-            account_flash_btn = account_focused_col;
+            account_flash_btn = account_selected_btn;
         }
     }
 }
@@ -397,7 +397,7 @@ void App::render() {
     // Arbitrum deposit trigger: when flash completes, perform action.
     if (tab == Tab::Account && account_flash_timer > 0) {
         account_flash_timer--;
-        if (account_flash_timer == 0 && account_flash_btn == 1) {
+        if (account_flash_timer == 0 && account_flash_btn == 2) {
             if (!arb_deposit_inflight.exchange(true)) {
                 const tradeboy::model::WalletSnapshot w = model.wallet_snapshot();
                 const std::string rpc_url = wallet_cfg.arb_rpc_url;
@@ -487,6 +487,9 @@ void App::render() {
             const long double gas_price_wei = account.arb_gas_price_wei;
             const std::string hl_usdc_s = account.hl_usdc_str.empty() ? "UNKNOWN" : account.hl_usdc_str;
             const std::string hl_perp_usdc_s = account.hl_perp_usdc_str.empty() ? "UNKNOWN" : account.hl_perp_usdc_str;
+            const std::string hl_total_asset_s = account.hl_total_asset_str.empty() ? "UNKNOWN" : account.hl_total_asset_str;
+            const std::string hl_pnl_24h_s = account.hl_pnl_24h_str.empty() ? "UNKNOWN" : account.hl_pnl_24h_str;
+            const std::string hl_pnl_24h_pct_s = account.hl_pnl_24h_pct_str.empty() ? "UNKNOWN" : account.hl_pnl_24h_pct_str;
 
             // Estimate Arbitrum USDC transfer fee in USD.
             // Gas limit reference: 75,586
@@ -514,12 +517,15 @@ void App::render() {
             arb_tx_fee_str = fee_s;
 
             tradeboy::account::render_account_screen(
-                account_focused_col,
+                account_selected_btn,
                 account_flash_btn,
                 account_flash_timer,
                 font_bold,
                 hl_usdc_s.c_str(),
                 hl_perp_usdc_s.c_str(),
+                hl_total_asset_s.c_str(),
+                hl_pnl_24h_s.c_str(),
+                hl_pnl_24h_pct_s.c_str(),
                 wallet_address_short.c_str(),
                 eth_s.c_str(),
                 usdc_s.c_str(),

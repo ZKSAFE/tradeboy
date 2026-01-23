@@ -47,9 +47,9 @@ struct App {
     bool spot_action_focus = false;
 
     // Account state
-    int account_focused_col = 0; // 0=Hyperliquid, 1=Arbitrum
+    int account_selected_btn = 0; // 0=S<>P, 1=Withdraw, 2=Deposit
     int account_flash_timer = 0;
-    int account_flash_btn = -1; // 0=Withdraw, 1=Deposit (based on col)
+    int account_flash_btn = -1; // 0=S<>P, 1=Withdraw, 2=Deposit
 
     bool account_address_dialog_open = false;
     int account_address_dialog_selected_btn = 1;

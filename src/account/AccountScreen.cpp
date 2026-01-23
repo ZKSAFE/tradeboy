@@ -2,6 +2,7 @@
 #include "ui/MatrixTheme.h"
 #include "utils/Flash.h"
 #include <algorithm>
+#include <cstdlib>
 #include <cstdio>
 #include <string>
 
@@ -10,12 +11,38 @@ namespace tradeboy::account {
 // Mock data to match design
 static const char* MOCK_HL_TOTAL_ASSET = "$42,904.32";
 
-void render_account_screen(int focused_col,
+static bool try_parse_double(const char* s, double* out) {
+    if (!s || !s[0]) return false;
+    char* end = nullptr;
+    const double v = std::strtod(s, &end);
+    if (end == s) return false;
+    *out = v;
+    return true;
+}
+
+static bool try_parse_percent_double(const char* s, double* out) {
+    if (!s || !s[0]) return false;
+    char buf[64];
+    size_t j = 0;
+    for (size_t i = 0; s[i] && j + 1 < sizeof(buf); ++i) {
+        const char c = s[i];
+        if ((c >= '0' && c <= '9') || c == '.' || c == '-' || c == '+') {
+            buf[j++] = c;
+        }
+    }
+    buf[j] = '\0';
+    return try_parse_double(buf, out);
+}
+
+void render_account_screen(int selected_btn,
                            int flash_btn,
                            int flash_timer,
                            ImFont* font_bold,
                            const char* hl_usdc,
                            const char* hl_perp_usdc,
+                           const char* hl_total_asset,
+                           const char* hl_pnl_24h,
+                           const char* hl_pnl_24h_pct,
                            const char* arb_address_short,
                            const char* arb_eth,
                            const char* arb_usdc,
@@ -49,7 +76,7 @@ void render_account_screen(int focused_col,
     
     // Column 1: HYPER_LIQUID
     {
-        bool isFocused = (focused_col == 0);
+        bool isFocused = (selected_btn != 2);
         float cx = col1X;
         float cy = y;
         
@@ -80,7 +107,8 @@ void render_account_screen(int focused_col,
         currY += 24.0f;
         
         // Value
-        dl->AddText(font_reg, 40.0f, ImVec2(cx + innerP, currY), MatrixTheme::TEXT, MOCK_HL_TOTAL_ASSET);
+        const char* total_v = (hl_total_asset && hl_total_asset[0]) ? hl_total_asset : MOCK_HL_TOTAL_ASSET;
+        dl->AddText(font_reg, 40.0f, ImVec2(cx + innerP, currY), MatrixTheme::TEXT, total_v);
         currY += 60.0f;
 
         // 24h PnL Flux Box
@@ -99,8 +127,28 @@ void render_account_screen(int focused_col,
             float blockY = currY + (boxH - blockH) * 0.5f;
 
             dl->AddText(font_reg, lblSz, ImVec2(bx, blockY), MatrixTheme::DIM, "24H_PNL_FLUX");
-            dl->AddText(font_reg, vSz, ImVec2(bx, blockY + lblSz + gap), MatrixTheme::TEXT, "+$1,240.50");
-            dl->AddText(font_reg, vSz, ImVec2(bx, blockY + lblSz + gap + vSz + gap), MatrixTheme::TEXT, "(+2.8%)");
+            const char* pnl_v = (hl_pnl_24h && hl_pnl_24h[0]) ? hl_pnl_24h : "UNKNOWN";
+            const char* pct_v = (hl_pnl_24h_pct && hl_pnl_24h_pct[0]) ? hl_pnl_24h_pct : "UNKNOWN";
+            char pnl_buf[64];
+            char pct_buf[64];
+            bool pnl_ok = false;
+            bool pct_ok = false;
+            double pnl = 0.0;
+            double pct = 0.0;
+            if (try_parse_double(pnl_v, &pnl)) {
+                std::snprintf(pnl_buf, sizeof(pnl_buf), "%+.2f", pnl);
+                pnl_v = pnl_buf;
+                pnl_ok = true;
+            }
+            if (try_parse_percent_double(pct_v, &pct)) {
+                std::snprintf(pct_buf, sizeof(pct_buf), "(%+.2f%%)", pct);
+                pct_v = pct_buf;
+                pct_ok = true;
+            }
+            (void)pnl_ok;
+            (void)pct_ok;
+            dl->AddText(font_reg, vSz, ImVec2(bx, blockY + lblSz + gap), MatrixTheme::TEXT, pnl_v);
+            dl->AddText(font_reg, vSz, ImVec2(bx, blockY + lblSz + gap + vSz + gap), MatrixTheme::TEXT, pct_v);
             
             currY += boxH + 20.0f;
         }
@@ -129,40 +177,52 @@ void render_account_screen(int focused_col,
 
         currY += 30.0f;
 
-        // Bottom Button: WITHDRAW USDC ->
+        // Bottom Buttons (S<>P + WITHDRAW ->)
         {
             float btnH = 50.0f;
             float btnY = cy + contentH - innerP - btnH;
             
-            ImU32 btnBg = isFocused ? MatrixTheme::TEXT : IM_COL32(0,0,0,0);
-            ImU32 btnFg = isFocused ? MatrixTheme::BLACK : MatrixTheme::DIM;
-            ImU32 btnBorder = isFocused ? MatrixTheme::TEXT : MatrixTheme::DIM;
+            const float gap = 10.0f;
+            const float w_sp = innerW * 0.33f;
+            const float w_wd = innerW - gap - w_sp;
+            const float x_sp = cx + innerP;
+            const float x_wd = x_sp + w_sp + gap;
 
-            bool flashing = (flash_btn == 0 && flash_timer > 0);
-            if (flashing && tradeboy::utils::blink_on(flash_timer, 6, 3)) {
-                btnBg = IM_COL32(0,0,0,0);
-                btnFg = MatrixTheme::TEXT;
-                btnBorder = MatrixTheme::TEXT;
+            // i=0 => S<>P, i=1 => WITHDRAW
+            for (int i = 0; i < 2; ++i) {
+                const int btn_idx = i; // 0 or 1
+                const float bw = (i == 0) ? w_sp : w_wd;
+                const float bx = (i == 0) ? x_sp : x_wd;
+                const char* lbl = (i == 0) ? "S<>P" : "WITHDRAW ->";
+
+                const bool selected = (selected_btn == btn_idx);
+                ImU32 btnBg = selected ? MatrixTheme::TEXT : IM_COL32(0,0,0,0);
+                ImU32 btnFg = selected ? MatrixTheme::BLACK : MatrixTheme::DIM;
+                ImU32 btnBorder = selected ? MatrixTheme::TEXT : MatrixTheme::DIM;
+
+                bool flashing = (flash_btn == btn_idx && flash_timer > 0);
+                if (flashing && tradeboy::utils::blink_on(flash_timer, 6, 3)) {
+                    btnBg = IM_COL32(0,0,0,0);
+                    btnFg = MatrixTheme::TEXT;
+                    btnBorder = MatrixTheme::TEXT;
+                }
+
+                dl->AddRectFilled(ImVec2(bx, btnY), ImVec2(bx + bw, btnY + btnH), btnBg, 0.0f);
+                dl->AddRect(ImVec2(bx, btnY), ImVec2(bx + bw, btnY + btnH), btnBorder, 0.0f, 0, 2.0f);
+
+                ImVec2 sz = font_bold ? font_bold->CalcTextSizeA(20.0f, FLT_MAX, 0.0f, lbl)
+                                      : (font_reg ? font_reg->CalcTextSizeA(20.0f, FLT_MAX, 0.0f, lbl) : ImGui::CalcTextSize(lbl));
+                float tx = bx + (bw - sz.x) * 0.5f;
+                float ty = btnY + (btnH - sz.y) * 0.5f;
+                if (font_bold) dl->AddText(font_bold, 20.0f, ImVec2(tx, ty), btnFg, lbl);
+                else dl->AddText(font_reg, 20.0f, ImVec2(tx, ty), btnFg, lbl);
             }
-
-            dl->AddRectFilled(ImVec2(cx + innerP, btnY), ImVec2(cx + innerP + innerW, btnY + btnH), btnBg, 0.0f);
-            dl->AddRect(ImVec2(cx + innerP, btnY), ImVec2(cx + innerP + innerW, btnY + btnH), btnBorder, 0.0f, 0, 2.0f);
-            
-            const char* lbl = "WITHDRAW USDC ->";
-            // Button Text (only button uses bold-italic font)
-            ImVec2 sz = font_bold ? font_bold->CalcTextSizeA(20.0f, FLT_MAX, 0.0f, lbl)
-                                  : (font_reg ? font_reg->CalcTextSizeA(20.0f, FLT_MAX, 0.0f, lbl) : ImGui::CalcTextSize(lbl));
-            
-            float tx = cx + innerP + (innerW - sz.x) * 0.5f;
-            float ty = btnY + (btnH - sz.y) * 0.5f;
-            if (font_bold) dl->AddText(font_bold, 20.0f, ImVec2(tx, ty), btnFg, lbl);
-            else dl->AddText(font_reg, 20.0f, ImVec2(tx, ty), btnFg, lbl);
         }
     }
 
     // Column 2: ARBITRUM L2
     {
-        bool isFocused = (focused_col == 1);
+        bool isFocused = (selected_btn == 2);
         float cx = col2X;
         float cy = y;
         
@@ -251,7 +311,7 @@ void render_account_screen(int focused_col,
             ImU32 btnFg = isFocused ? MatrixTheme::BLACK : MatrixTheme::DIM;
             ImU32 btnBorder = isFocused ? MatrixTheme::TEXT : MatrixTheme::DIM;
 
-            bool flashing = (flash_btn == 1 && flash_timer > 0);
+            bool flashing = (flash_btn == 2 && flash_timer > 0);
             if (flashing && tradeboy::utils::blink_on(flash_timer, 6, 3)) {
                 btnBg = IM_COL32(0,0,0,0);
                 btnFg = MatrixTheme::TEXT;

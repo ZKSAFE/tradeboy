@@ -316,3 +316,23 @@ make tradeboy-ui-demo-armhf-docker
 ```sh
 ssh root@192.168.1.7 'rm -f /mnt/mmc/Roms/APPS/sdl2demo-armhf /mnt/mmc/Roms/APPS/sdl2demo-log.txt'
 ```
+
+## 坑：改了 `TradeModel.h` / `App` 布局后，增量编译未重编导致掌机随机崩溃（ABI/对象大小不一致）
+
+现象：
+
+- 修改 `TradeModel.h`（例如给 `AccountSnapshot`/`TradeModel` 增加字段）后，**本地编译可能“看起来成功”**，但上传到掌机会出现启动阶段 `SIGSEGV` 或渲染阶段 `SIGABRT`。
+- backtrace 往往很浅，地址落在 `App::startup()` / `App::render()` 附近，像是业务代码崩了。
+
+根因（结论）：
+
+- 当前 Makefile 依赖跟踪不完整：改动头文件后，某些 TU（如 `src/main.cpp` / `src/app/App.cpp`）可能**没有被重新编译**。
+- 在 RG34XX 上这会变成“硬崩溃”：
+  - 旧的 `main.o` 可能按旧的 `sizeof(App)` 去 `new App`，分配内存偏小，随后 `startup()` 写成员时越界 -> `SIGSEGV`。
+  - 或者旧的调用方按旧的 `AccountSnapshot` 布局读写，产生未定义行为 -> `SIGABRT`。
+
+解决办法：
+
+- **推荐**：做一次全量构建（例如清理 `build/armhf` 或等价 clean），确保所有依赖头文件的目标重新编译。
+- **诊断/临时 workaround**：在疑似没被重编的 TU 里加一个 no-op 改动（例如在 `main()` 或 `App::render()` 顶部加一个 `static const int GUARD=1; (void)GUARD;`），强制该文件重新编译。
+- 验证：重新上传后如果崩溃消失，基本可确认是“增量编译导致 ABI/布局不一致”。
