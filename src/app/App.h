@@ -18,6 +18,7 @@
 #include "../arb/ArbitrumRpcService.h"
 
 #include "../wallet/Wallet.h"
+#include "../ui/DialogState.h"
 
 namespace tradeboy::spot { struct SpotUiEvent; }
 
@@ -51,20 +52,13 @@ struct App {
     int account_flash_timer = 0;
     int account_flash_btn = -1; // 0=S<>P, 1=Withdraw, 2=Deposit
 
-    bool account_address_dialog_open = false;
-    int account_address_dialog_selected_btn = 1;
-    int account_address_dialog_open_frames = 0;
-    int account_address_dialog_flash_frames = 0;
-    int account_address_dialog_pending_action = -1; // 0=confirm, 1=cancel
-    bool account_address_dialog_closing = false;
-    int account_address_dialog_close_frames = 0;
+    // Unified dialog states
+    tradeboy::ui::DialogState exit_dialog;
+    tradeboy::ui::DialogState alert_dialog;
+    tradeboy::ui::DialogState account_address_dialog;
 
-    bool alert_dialog_open = false;
-    int alert_dialog_open_frames = 0;
-    int alert_dialog_flash_frames = 0;
-    bool alert_dialog_closing = false;
-    int alert_dialog_close_frames = 0;
-    std::string alert_dialog_body;
+    // Exit dialog specific state
+    bool exit_dialog_quit_after_close = false;
 
     // UI feedback state
     bool action_btn_held = false; // A button held
@@ -76,16 +70,7 @@ struct App {
 
     tradeboy::spotOrder::SpotOrderState spot_order;
 
-    bool exit_modal_open = false;
     bool quit_requested = false;
-
-    int exit_dialog_selected_btn = 1;
-    int exit_dialog_open_frames = 0;
-    int exit_dialog_flash_frames = 0;
-    int exit_dialog_pending_action = -1; // 0=confirm, 1=cancel
-    bool exit_dialog_closing = false;
-    int exit_dialog_close_frames = 0;
-    bool exit_dialog_quit_after_close = false;
 
     bool exit_poweroff_anim_active = false;
     int exit_poweroff_anim_frames = 0;
@@ -131,6 +116,8 @@ struct App {
     void handle_input_edges(const tradeboy::app::InputState& in, const tradeboy::app::EdgeState& edges);
 
     void render();
+
+    void set_alert(const std::string& body);
 };
 
 } // namespace tradeboy::app

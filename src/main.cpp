@@ -19,14 +19,12 @@
 #include "app/Input.h"
 #include "filters/CrtFilter.h"
 #include "utils/Log.h"
+#include "core/Logger.h"
 
 // NOTE: log_to_file is intentionally removed. Use log_str instead.
+// Now delegates to the Logger singleton for better performance.
 void log_str(const char* s) {
-    if (!s) return;
-    FILE* f = fopen("log.txt", "a");
-    if (!f) return;
-    fputs(s, f);
-    fclose(f);
+    tradeboy::core::logger_log(s);
 }
 
 static void crash_signal_handler(int sig) {
@@ -76,12 +74,8 @@ int main(int argc, char** argv) {
     signal(SIGFPE, crash_signal_handler);
     signal(SIGILL, crash_signal_handler);
 
-    // Clear log file on startup
-    FILE* f = fopen("log.txt", "w");
-    if (f) {
-        fprintf(f, "--- TradeBoy Log Start V6 ---\n");
-        fclose(f);
-    }
+    // Initialize logger (clears log file on startup)
+    tradeboy::core::logger_init("log.txt");
 
     (void)argc;
     (void)argv;
@@ -375,6 +369,8 @@ int main(int argc, char** argv) {
     log_str("[Main] SDL_Quit\n");
     SDL_Quit();
     log_str("[Main] SDL_Quit done\n");
+
+    tradeboy::core::logger_shutdown();
 
     return 0;
 }

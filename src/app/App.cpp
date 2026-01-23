@@ -55,13 +55,8 @@ static std::string make_address_short(const std::string& addr_0x) {
     return std::string("0x") + a + "..." + b;
 }
 
-static void set_alert(tradeboy::app::App& app, const std::string& body) {
-    app.alert_dialog_open = true;
-    app.alert_dialog_open_frames = 0;
-    app.alert_dialog_flash_frames = 0;
-    app.alert_dialog_closing = false;
-    app.alert_dialog_close_frames = 0;
-    app.alert_dialog_body = body;
+void App::set_alert(const std::string& body) {
+    alert_dialog.open_dialog(body, 1);
 }
 
 static void set_deposit_alert(tradeboy::app::App& app, const std::string& body) {
@@ -69,6 +64,10 @@ static void set_deposit_alert(tradeboy::app::App& app, const std::string& body) 
     app.arb_deposit_alert_body = body;
     pthread_mutex_unlock(&app.arb_deposit_mu);
     app.arb_deposit_alert_pending.store(true);
+}
+
+static void set_alert_static(tradeboy::app::App& app, const std::string& body) {
+    app.set_alert(body);
 }
 
 void App::init_demo_data() {
@@ -125,12 +124,12 @@ void App::startup() {
     bool created = false;
     std::string err;
     if (!tradeboy::wallet::load_or_create_config("./tradeboy.cfg", wallet_cfg, created, err)) {
-        set_alert(*this, std::string("RPC_CONFIG_ERROR\n") + err);
+        set_alert(std::string("RPC_CONFIG_ERROR\n") + err);
     } else {
         model.set_wallet(wallet_cfg.wallet_address, wallet_cfg.private_key);
         wallet_address_short = make_address_short(wallet_cfg.wallet_address);
         if (created) {
-            set_alert(*this, std::string("NEW_WALLET_CREATED\n") + wallet_cfg.wallet_address);
+            set_alert(std::string("NEW_WALLET_CREATED\n") + wallet_cfg.wallet_address);
         }
     }
 
@@ -229,41 +228,37 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
         return;
     }
 
-    if (alert_dialog_open) {
-        if (alert_dialog_closing) {
+    if (alert_dialog.open) {
+        if (alert_dialog.closing) {
             return;
         }
-        if (alert_dialog_flash_frames <= 0) {
+        if (alert_dialog.flash_frames <= 0) {
             if (tradeboy::utils::pressed(in.a, edges.prev.a) || tradeboy::utils::pressed(in.b, edges.prev.b)) {
-                alert_dialog_flash_frames = 18;
+                alert_dialog.start_flash(1);
             }
         }
         return;
     }
 
     // Exit modal has highest priority.
-    if (exit_modal_open) {
-        if (exit_dialog_closing) {
+    if (exit_dialog.open) {
+        if (exit_dialog.closing) {
             return;
         }
 
         // Always allow B to close/cancel, even while flashing.
         if (tradeboy::utils::pressed(in.b, edges.prev.b)) {
-            exit_dialog_closing = true;
-            exit_dialog_close_frames = 0;
+            exit_dialog.start_close();
             exit_dialog_quit_after_close = false;
-            exit_dialog_flash_frames = 0;
-            exit_dialog_pending_action = -1;
             return;
         }
 
-        if (exit_dialog_flash_frames <= 0) {
+        if (exit_dialog.flash_frames <= 0) {
             if (tradeboy::utils::pressed(in.left, edges.prev.left) || tradeboy::utils::pressed(in.right, edges.prev.right)) {
-                exit_dialog_selected_btn = 1 - exit_dialog_selected_btn;
+                exit_dialog.selected_btn = 1 - exit_dialog.selected_btn;
             }
             if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
-                exit_dialog_pending_action = exit_dialog_selected_btn;
-                exit_dialog_flash_frames = 18;
+                exit_dialog.start_flash(exit_dialog.selected_btn);
             }
         }
         return;
@@ -272,20 +267,9 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
     // Global M: open exit modal (even if other modals are open).
     if (tradeboy::utils::pressed(in.m, edges.prev.m)) {
         // Close any lower-priority modals to avoid state conflicts under the exit dialog.
-        account_address_dialog_open = false;
-        account_address_dialog_closing = false;
-        account_address_dialog_open_frames = 0;
-        account_address_dialog_close_frames = 0;
-        account_address_dialog_flash_frames = 0;
-        account_address_dialog_pending_action = -1;
+        account_address_dialog.reset();
 
-        exit_modal_open = true;
-        exit_dialog_selected_btn = 1;
-        exit_dialog_open_frames = 0;
-        exit_dialog_flash_frames = 0;
-        exit_dialog_pending_action = -1;
-        exit_dialog_closing = false;
-        exit_dialog_close_frames = 0;
+        exit_dialog.open_dialog("", 1);
         exit_dialog_quit_after_close = false;
         return;
     }
@@ -295,25 +279,21 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
     }
 
     // Account address dialog (common Dialog) has priority over page inputs.
-    if (account_address_dialog_open) {
-        if (account_address_dialog_closing) {
+    if (account_address_dialog.open) {
+        if (account_address_dialog.closing) {
             return;
         }
 
-        if (account_address_dialog_flash_frames <= 0) {
+        if (account_address_dialog.flash_frames <= 0) {
             if (tradeboy::utils::pressed(in.left, edges.prev.left) || tradeboy::utils::pressed(in.right, edges.prev.right)) {
-                account_address_dialog_selected_btn = 1 - account_address_dialog_selected_btn;
+                account_address_dialog.selected_btn = 1 - account_address_dialog.selected_btn;
             }
             if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
                 // 0=PRIVATE_KEY, 1=CLOSE
-                account_address_dialog_pending_action = account_address_dialog_selected_btn;
-                account_address_dialog_flash_frames = 18;
+                account_address_dialog.start_flash(account_address_dialog.selected_btn);
             }
             if (tradeboy::utils::pressed(in.b, edges.prev.b)) {
-                account_address_dialog_closing = true;
-                account_address_dialog_close_frames = 0;
-                account_address_dialog_flash_frames = 0;
-                account_address_dialog_pending_action = -1;
+                account_address_dialog.start_close();
             }
         }
         return;
@@ -358,13 +338,7 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
         apply_spot_ui_events(ev);
     } else if (tab == Tab::Account) {
         if (tradeboy::utils::pressed(in.x, edges.prev.x)) {
-            account_address_dialog_open = true;
-            account_address_dialog_selected_btn = 1;
-            account_address_dialog_open_frames = 0;
-            account_address_dialog_flash_frames = 0;
-            account_address_dialog_pending_action = -1;
-            account_address_dialog_closing = false;
-            account_address_dialog_close_frames = 0;
+            account_address_dialog.open_dialog("", 1);
             return;
         }
 
@@ -402,7 +376,7 @@ void App::render() {
                 const tradeboy::model::WalletSnapshot w = model.wallet_snapshot();
                 const std::string rpc_url = wallet_cfg.arb_rpc_url;
                 if (rpc_url.empty() || w.wallet_address.empty() || w.private_key.empty()) {
-                    set_alert(*this, "DEPOSIT_FAILED\nMISSING_WALLET");
+                    set_alert_static(*this, "DEPOSIT_FAILED\nMISSING_WALLET");
                     arb_deposit_inflight.store(false);
                 } else {
                     if (arb_deposit_thread.joinable()) {
@@ -542,55 +516,42 @@ void App::render() {
     tradeboy::spotOrder::render(spot_order, font_bold);
 
     // Process alert dialog flash -> trigger closing when finished.
-    if (alert_dialog_open && !alert_dialog_closing && alert_dialog_flash_frames > 0) {
-        alert_dialog_flash_frames--;
-        if (alert_dialog_flash_frames == 0) {
-            alert_dialog_closing = true;
-            alert_dialog_close_frames = 0;
+    if (alert_dialog.open && !alert_dialog.closing) {
+        if (alert_dialog.tick_flash()) {
+            alert_dialog.start_close();
         }
     }
 
     // Process account address dialog flash -> trigger closing when finished.
-    if (account_address_dialog_open && !account_address_dialog_closing && account_address_dialog_flash_frames > 0) {
-        account_address_dialog_flash_frames--;
-        if (account_address_dialog_flash_frames == 0 && account_address_dialog_pending_action >= 0) {
-            account_address_dialog_closing = true;
-            account_address_dialog_close_frames = 0;
+    if (account_address_dialog.open && !account_address_dialog.closing) {
+        if (account_address_dialog.tick_flash()) {
+            account_address_dialog.start_close();
         }
     }
 
     // Account dialog close animation
-    if (account_address_dialog_open && account_address_dialog_closing) {
-        const int close_dur = 18;
-        account_address_dialog_close_frames++;
-        if (account_address_dialog_close_frames >= close_dur) {
-            account_address_dialog_open = false;
-            account_address_dialog_closing = false;
-            account_address_dialog_close_frames = 0;
+    if (account_address_dialog.open && account_address_dialog.closing) {
+        if (account_address_dialog.tick_close_anim()) {
+            int action = account_address_dialog.pending_action;
+            account_address_dialog.reset();
 
-            if (account_address_dialog_pending_action == 0) {
-                set_alert(*this, std::string("PRIVATE_KEY\n") + model.wallet_snapshot().private_key);
+            if (action == 0) {
+                set_alert(std::string("PRIVATE_KEY\n") + model.wallet_snapshot().private_key);
             }
-            account_address_dialog_pending_action = -1;
         }
     }
 
     // Alert dialog close animation
-    if (alert_dialog_open && alert_dialog_closing) {
-        const int close_dur = 18;
-        alert_dialog_close_frames++;
-        if (alert_dialog_close_frames >= close_dur) {
-            alert_dialog_open = false;
-            alert_dialog_closing = false;
-            alert_dialog_close_frames = 0;
-            alert_dialog_open_frames = 0;
+    if (alert_dialog.open && alert_dialog.closing) {
+        if (alert_dialog.tick_close_anim()) {
+            alert_dialog.reset();
         }
     }
 
     {
         const bool now_ok = model.account_snapshot().arb_rpc_ok;
         if (!now_ok && arb_rpc_last_ok) {
-            set_alert(*this, "RPC_CONNECTION_FAILED");
+            set_alert("RPC_CONNECTION_FAILED");
         }
         arb_rpc_last_ok = now_ok;
     }
@@ -602,28 +563,21 @@ void App::render() {
             body = arb_deposit_alert_body;
             pthread_mutex_unlock(&arb_deposit_mu);
         }
-        set_alert(*this, body);
+        set_alert(body);
     }
 
     // Process exit dialog flash -> trigger closing when finished.
-    if (exit_modal_open && !exit_dialog_closing && exit_dialog_flash_frames > 0) {
-        exit_dialog_flash_frames--;
-        if (exit_dialog_flash_frames == 0 && exit_dialog_pending_action >= 0) {
-            exit_dialog_closing = true;
-            exit_dialog_close_frames = 0;
-            exit_dialog_quit_after_close = (exit_dialog_pending_action == 0);
-            exit_dialog_pending_action = -1;
+    if (exit_dialog.open && !exit_dialog.closing) {
+        if (exit_dialog.tick_flash()) {
+            exit_dialog_quit_after_close = (exit_dialog.pending_action == 0);
+            exit_dialog.start_close();
         }
     }
 
     // Close animation
-    if (exit_modal_open && exit_dialog_closing) {
-        const int close_dur = 18;
-        exit_dialog_close_frames++;
-        if (exit_dialog_close_frames >= close_dur) {
-            exit_modal_open = false;
-            exit_dialog_closing = false;
-            exit_dialog_close_frames = 0;
+    if (exit_dialog.open && exit_dialog.closing) {
+        if (exit_dialog.tick_close_anim()) {
+            exit_dialog.reset();
             if (exit_dialog_quit_after_close) {
                 exit_poweroff_anim_active = true;
                 exit_poweroff_anim_frames = 0;
@@ -656,68 +610,50 @@ void App::render() {
         }
     }
 
-    if (exit_modal_open) {
-        float open_t = 1.0f;
-        if (!exit_dialog_closing) {
-            if (exit_dialog_open_frames < 18) exit_dialog_open_frames++;
-            open_t = (float)exit_dialog_open_frames / 18.0f;
-        } else {
-            const int close_dur = 18;
-            open_t = 1.0f - (float)exit_dialog_close_frames / (float)close_dur;
-        }
+    if (exit_dialog.open) {
+        exit_dialog.tick_open_anim();
+        float open_t = exit_dialog.get_open_t();
 
         tradeboy::ui::render_dialog("ExitDialog",
                                     "> ",
                                     "Exit TradeBoy?\n\nDEVICE INFO\n- Model: RG34XX\n- OS: Ubuntu 22.04\n- Arch: armhf\n- Build: tradeboy-armhf\n- Display: 720x480\n- Renderer: SDL2 + OpenGL\n- Storage: /mnt/mmc\n- AppDir: /mnt/mmc/Roms/APPS\n- RPC: Arbitrum JSON-RPC\n- HL: Hyperliquid\n\nNETWORK\n- SSH: root@<device-ip>\n- WLAN: <ssid>\n- IP: <ip>\n\nWALLET\n- Address: <0x...>\n- USDC: <balance>\n- ETH: <balance>\n- GAS: <gwei>\n\nNOTES\nThis is a long diagnostic message used to test:\n1) auto-wrap across dialog width\n2) dialog height auto-grow up to 450px\n3) truncation when max height reached\n4) last visible line replaced with '...'\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\n\nMore lines:\n- Line A\n- Line B\n- Line C\n- Line D\n- Line E\n- Line F\n- Line G\n- Line H\n- Line I\n- Line J\n- Line K\n- Line L\n- Line M\n- Line N\n- Line O\n- Line P\n- Line Q\n- Line R\n- Line S\n- Line T\n- Line U\n- Line V\n- Line W\n- Line X\n- Line Y\n- Line Z",
                                     "EXIT",
                                     "CANCEL",
-                                    &exit_dialog_selected_btn,
-                                    exit_dialog_flash_frames,
+                                    &exit_dialog.selected_btn,
+                                    exit_dialog.flash_frames,
                                     open_t,
                                     font_bold,
                                     nullptr);
     }
 
-    if (alert_dialog_open) {
-        float open_t = 1.0f;
-        if (!alert_dialog_closing) {
-            if (alert_dialog_open_frames < 18) alert_dialog_open_frames++;
-            open_t = (float)alert_dialog_open_frames / 18.0f;
-        } else {
-            const int close_dur = 18;
-            open_t = 1.0f - (float)alert_dialog_close_frames / (float)close_dur;
-        }
+    if (alert_dialog.open) {
+        alert_dialog.tick_open_anim();
+        float open_t = alert_dialog.get_open_t();
 
         int sel = 1;
         tradeboy::ui::render_dialog("AlertDialog",
                                     "> ",
-                                    alert_dialog_body,
+                                    alert_dialog.body,
                                     "",
                                     "OK",
                                     &sel,
-                                    alert_dialog_flash_frames,
+                                    alert_dialog.flash_frames,
                                     open_t,
                                     font_bold,
                                     nullptr);
     }
 
-    if (account_address_dialog_open) {
-        float open_t = 1.0f;
-        if (!account_address_dialog_closing) {
-            if (account_address_dialog_open_frames < 18) account_address_dialog_open_frames++;
-            open_t = (float)account_address_dialog_open_frames / 18.0f;
-        } else {
-            const int close_dur = 18;
-            open_t = 1.0f - (float)account_address_dialog_close_frames / (float)close_dur;
-        }
+    if (account_address_dialog.open) {
+        account_address_dialog.tick_open_anim();
+        float open_t = account_address_dialog.get_open_t();
 
         tradeboy::ui::render_dialog("AccountAddressDialog",
                                     "> ",
                                     std::string("WALLET_ADDRESS\n") + model.wallet_snapshot().wallet_address,
                                     "PRIVATE_KEY",
                                     "CLOSE",
-                                    &account_address_dialog_selected_btn,
-                                    account_address_dialog_flash_frames,
+                                    &account_address_dialog.selected_btn,
+                                    account_address_dialog.flash_frames,
                                     open_t,
                                     font_bold,
                                     nullptr);

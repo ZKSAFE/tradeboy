@@ -24,6 +24,8 @@ DEMO_SOURCES = src/demos/sdl2demo.c
 IMGUI_DEMO_SOURCES = src/demos/imgui-demo.cpp
 TRADEBOY_SOURCES = \
 	src/main.cpp \
+	src/core/Logger.cpp \
+	src/core/WebSocketClient.cpp \
 	src/filters/CrtFilter.cpp \
 	src/ui/MatrixBackground.cpp \
 	src/ui/Dialog.cpp \

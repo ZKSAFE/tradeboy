@@ -1,9 +1,10 @@
 #pragma once
 
 #include <atomic>
-#include <mutex>
 #include <string>
 #include <thread>
+
+#include <pthread.h>
 
 #include "IMarketDataSource.h"
 
@@ -25,7 +26,7 @@ private:
     std::atomic<bool> stop_{false};
     std::thread th_;
 
-    std::mutex mu_;
+    mutable pthread_mutex_t mu_;
     std::string latest_mids_json_;
     long long latest_mids_ms_ = 0;
 
