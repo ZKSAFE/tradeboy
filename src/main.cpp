@@ -60,6 +60,9 @@ static bool dir_exists(const char* path) {
 }
 
 int main(int argc, char** argv) {
+    static const int APP_ABI_GUARD = 1;
+    (void)APP_ABI_GUARD;
+
     // On device, the app may be launched with CWD=/, but our assets live under
     // /mnt/mmc/Roms/APPS. If that directory exists, switch CWD so relative
     // asset paths work (fonts, log file).

@@ -397,6 +397,7 @@ void MarketDataService::run() {
                         double total_asset = std::strtod(v.c_str(), nullptr);
                         double pnl24 = 0.0;
                         double pct = 0.0;
+                        bool ok = true;
 
                         // 24H_PNL_FLUX from pnlHistory
                         std::vector<HistoryPoint> pnl_pts;
@@ -414,9 +415,28 @@ void MarketDataService::run() {
                                 }
                             } else {
                                 log_str("[HL] 24H_PNL_FLUX compute failed\n");
+                                ok = false;
                             }
                         } else {
                             log_str("[HL] pnlHistory parse failed\n");
+                            ok = false;
+                        }
+
+                        {
+                            char total_buf[64];
+                            char pnl_buf[64];
+                            char pct_buf[64];
+                            std::snprintf(total_buf, sizeof(total_buf), "$%.2f", total_asset);
+                            std::snprintf(pnl_buf, sizeof(pnl_buf), "%+.6f", pnl24);
+                            std::snprintf(pct_buf, sizeof(pct_buf), "(%+.4f%%)", pct);
+                            model.set_hl_portfolio(total_asset,
+                                                   total_buf,
+                                                   pnl24,
+                                                   pnl_buf,
+                                                   pct,
+                                                   pct_buf,
+                                                   ok);
+                            log_str("[Model] hl_portfolio updated\n");
                         }
 
                         logged_portfolio_once = true;

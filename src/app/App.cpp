@@ -437,6 +437,9 @@ void App::render() {
     bool buy_flash = tradeboy::utils::blink_on(buy_trigger_frames, 6, 3);
     bool sell_flash = tradeboy::utils::blink_on(sell_trigger_frames, 6, 3);
 
+    static const int TRADEMODEL_SNAPSHOT_ABI_GUARD = 1;
+    (void)TRADEMODEL_SNAPSHOT_ABI_GUARD;
+
     // Header L1/R1 is one-shot: highlight once, like SpotOrderScreen.
     bool l1_flash = (l1_flash_frames > 0);
     bool r1_flash = (r1_flash_frames > 0);

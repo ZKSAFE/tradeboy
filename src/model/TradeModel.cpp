@@ -50,6 +50,12 @@ AccountSnapshot TradeModel::account_snapshot() const {
     a.hl_usdc = hl_usdc_;
     a.hl_perp_usdc_str = hl_perp_usdc_str_;
     a.hl_perp_usdc = hl_perp_usdc_;
+    a.hl_total_asset_str = hl_total_asset_str_;
+    a.hl_total_asset = hl_total_asset_;
+    a.hl_pnl_24h_str = hl_pnl_24h_str_;
+    a.hl_pnl_24h = hl_pnl_24h_;
+    a.hl_pnl_24h_pct_str = hl_pnl_24h_pct_str_;
+    a.hl_pnl_24h_pct = hl_pnl_24h_pct_;
     a.arb_eth_str = arb_eth_str_;
     a.arb_usdc_str = arb_usdc_str_;
     a.arb_gas_str = arb_gas_str_;
@@ -66,6 +72,26 @@ void TradeModel::set_wallet(const std::string& wallet_address, const std::string
     }
     wallet_address_ = wallet_address;
     private_key_ = private_key;
+    pthread_mutex_unlock(&mu);
+}
+
+void TradeModel::set_hl_portfolio(double total_asset,
+                                  const std::string& total_asset_str,
+                                  double pnl_24h,
+                                  const std::string& pnl_24h_str,
+                                  double pnl_24h_pct,
+                                  const std::string& pnl_24h_pct_str,
+                                  bool ok) {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) {
+        return;
+    }
+    hl_total_asset_ = ok ? total_asset : 0.0;
+    hl_total_asset_str_ = ok ? total_asset_str : std::string("UNKNOWN");
+    hl_pnl_24h_ = ok ? pnl_24h : 0.0;
+    hl_pnl_24h_str_ = ok ? pnl_24h_str : std::string("UNKNOWN");
+    hl_pnl_24h_pct_ = ok ? pnl_24h_pct : 0.0;
+    hl_pnl_24h_pct_str_ = ok ? pnl_24h_pct_str : std::string("UNKNOWN");
     pthread_mutex_unlock(&mu);
 }
 

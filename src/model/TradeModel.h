@@ -36,6 +36,13 @@ struct AccountSnapshot {
     std::string hl_perp_usdc_str;
     double hl_perp_usdc = 0.0;
 
+    std::string hl_total_asset_str;
+    double hl_total_asset = 0.0;
+    std::string hl_pnl_24h_str;
+    double hl_pnl_24h = 0.0;
+    std::string hl_pnl_24h_pct_str;
+    double hl_pnl_24h_pct = 0.0;
+
     std::string arb_eth_str;
     std::string arb_usdc_str;
     std::string arb_gas_str;
@@ -65,6 +72,13 @@ struct TradeModel {
 
     void set_hl_usdc(double usdc, const std::string& usdc_str, bool ok);
     void set_hl_perp_usdc(double usdc, const std::string& usdc_str, bool ok);
+    void set_hl_portfolio(double total_asset,
+                          const std::string& total_asset_str,
+                          double pnl_24h,
+                          const std::string& pnl_24h_str,
+                          double pnl_24h_pct,
+                          const std::string& pnl_24h_pct_str,
+                          bool ok);
     void set_arb_wallet_data(const std::string& eth_str,
                              const std::string& usdc_str,
                              const std::string& gas_str,
@@ -86,6 +100,13 @@ private:
 
     std::string hl_perp_usdc_str_;
     double hl_perp_usdc_ = 0.0;
+
+    std::string hl_total_asset_str_;
+    double hl_total_asset_ = 0.0;
+    std::string hl_pnl_24h_str_;
+    double hl_pnl_24h_ = 0.0;
+    std::string hl_pnl_24h_pct_str_;
+    double hl_pnl_24h_pct_ = 0.0;
 
     std::string arb_eth_str_;
     std::string arb_usdc_str_;
