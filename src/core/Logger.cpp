@@ -34,6 +34,7 @@ void Logger::log(const char* s) {
     if (!s) return;
     if (f_) {
         fputs(s, (FILE*)f_);
+        fflush((FILE*)f_);  // Flush immediately for crash safety
     }
 }
 

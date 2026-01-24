@@ -1,3 +1,13 @@
+/**
+ * @file HyperliquidWsDataSource.h
+ * @brief WebSocket-based market data source for Hyperliquid.
+ * 
+ * ARCHITECTURE CRITICAL - DO NOT MODIFY WITHOUT UNDERSTANDING:
+ * 1. Uses pthread_mutex_t instead of std::mutex (RG34XX ABI compatibility)
+ * 2. WebSocket via openssl s_client subprocess (no libwebsockets dependency)
+ * 3. Background thread manages connection, reconnection, and data caching
+ * 4. Thread-safe getters return cached data to MarketDataService
+ */
 #pragma once
 
 #include <atomic>

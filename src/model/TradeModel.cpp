@@ -141,64 +141,37 @@ void TradeModel::set_arb_wallet_data(const std::string& eth_str,
 }
 
 void TradeModel::set_spot_rows(std::vector<SpotRow> rows) {
-    log_str("[Model] set_spot_rows enter\n");
-    log_str("[Model] set_spot_rows about to lock\n");
     int rc = pthread_mutex_lock(&mu);
-    if (rc != 0) {
-        log_str("[Model] set_spot_rows mutex_lock failed\n");
-        return;
-    }
-    log_str("[Model] set_spot_rows locked\n");
-    // NOTE: On RG34XX we've seen SIGSEGV in std::vector move-assignment here.
-    // Use copy assignment as a conservative workaround.
+    if (rc != 0) return;
+    // CRITICAL: Use swap instead of move-assignment. RG34XX armhf has SIGSEGV with std::vector move.
     spot_rows_.swap(rows);
-    log_str("[Model] set_spot_rows swapped\n");
     if (spot_row_idx_ < 0) spot_row_idx_ = 0;
     if (!spot_rows_.empty() && spot_row_idx_ >= (int)spot_rows_.size()) spot_row_idx_ = (int)spot_rows_.size() - 1;
-    log_str("[Model] set_spot_rows exit\n");
     pthread_mutex_unlock(&mu);
-    log_str("[Model] set_spot_rows unlocked\n");
 }
 
 void TradeModel::set_spot_row_idx(int idx) {
-    (void)idx;
-    log_str("[Model] set_spot_row_idx enter\n");
-    log_str("[Model] set_spot_row_idx about to lock\n");
     int rc = pthread_mutex_lock(&mu);
-    if (rc != 0) {
-        log_str("[Model] set_spot_row_idx mutex_lock failed\n");
-        return;
-    }
-    log_str("[Model] set_spot_row_idx locked\n");
+    if (rc != 0) return;
     if (spot_rows_.empty()) {
         spot_row_idx_ = 0;
-        log_str("[Model] set_spot_row_idx exit empty\n");
         pthread_mutex_unlock(&mu);
         return;
     }
     spot_row_idx_ = std::max(0, std::min((int)spot_rows_.size() - 1, idx));
-    log_str("[Model] set_spot_row_idx exit\n");
     pthread_mutex_unlock(&mu);
 }
 
 void TradeModel::update_mid_prices_from_allmids_json(const std::string& all_mids_json) {
     int rc = pthread_mutex_lock(&mu);
-    if (rc != 0) {
-        log_str("[Model] allMids mutex_lock failed\n");
-        return;
-    }
-    int updated = 0;
+    if (rc != 0) return;
     for (auto& r : spot_rows_) {
         double p = 0.0;
         if (tradeboy::market::parse_mid_price(all_mids_json, r.sym, p)) {
             r.prev_price = r.price;
             r.price = p;
-            updated++;
         }
     }
-    (void)updated;
-    (void)all_mids_json;
-    log_str("[Model] allMids updated\n");
     pthread_mutex_unlock(&mu);
 }
 

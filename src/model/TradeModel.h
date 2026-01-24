@@ -1,3 +1,13 @@
+/**
+ * @file TradeModel.h
+ * @brief Central state management for TradeBoy application.
+ * 
+ * ARCHITECTURE CRITICAL - DO NOT MODIFY WITHOUT UNDERSTANDING:
+ * 1. Uses pthread_mutex_t instead of std::mutex (RG34XX ABI compatibility)
+ * 2. Uses swap() instead of move-assignment for std::vector (SIGSEGV workaround)
+ * 3. All public methods are thread-safe via mutex
+ * 4. Snapshot pattern: UI reads snapshots, data layer writes via setters
+ */
 #pragma once
 
 #include <pthread.h>
