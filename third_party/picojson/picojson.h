@@ -353,10 +353,12 @@ GET(object, *u_.object_)
 GET(int64_t, u_.int64_)
 #endif
 #undef GET
-template <> inline double value::get<double>() const {
+template <> inline const double &value::get<double>() const {
 #ifdef PICOJSON_USE_INT64
   if (type_ == int64_type) {
-    return static_cast<double>(u_.int64_);
+    static double tmp;
+    tmp = static_cast<double>(u_.int64_);
+    return tmp;
   }
 #endif
   return u_.number_;

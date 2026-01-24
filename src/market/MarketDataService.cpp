@@ -5,128 +5,116 @@
 #include <cstdio>
 #include <vector>
 
+#include "../../third_party/picojson/picojson.h"
+
 #include "../model/TradeModel.h"
 #include "Hyperliquid.h"
 #include "utils/Log.h"
 
 namespace tradeboy::market {
 
-static bool parse_number_field_str_any(const std::string& s, const char* key, std::string& out) {
-    out.clear();
-    if (!key || !key[0]) return false;
-    std::string needle = std::string("\"") + key + "\"";
-    size_t p = s.find(needle);
-    if (p == std::string::npos) return false;
-    p = s.find(':', p);
-    if (p == std::string::npos) return false;
-    p++;
-    while (p < s.size() && (s[p] == ' ' || s[p] == '\n' || s[p] == '\r' || s[p] == '\t')) p++;
-    if (p >= s.size()) return false;
-
-    // value can be quoted string or JSON number
-    if (s[p] == '"') {
-        size_t start = p + 1;
-        size_t end = start;
-        while (end < s.size() && s[end] != '"') end++;
-        if (end >= s.size()) return false;
-        out.assign(s.begin() + start, s.begin() + end);
-        return !out.empty();
-    }
-
-    size_t start = p;
-    size_t end = start;
-    while (end < s.size()) {
-        char c = s[end];
-        if ((c >= '0' && c <= '9') || c == '.' || c == '-' || c == '+') {
-            end++;
-            continue;
-        }
-        break;
-    }
-    if (end == start) return false;
-    out.assign(s.begin() + start, s.begin() + end);
-    return !out.empty();
-}
-
 struct HistoryPoint {
     long long ts_ms = 0;
     double v = 0.0;
 };
 
-static bool extract_array_window_after_key(const std::string& s, const char* key_quoted, std::string& out_win) {
-    out_win.clear();
-    if (!key_quoted || !key_quoted[0]) return false;
-    size_t p = s.find(key_quoted);
-    if (p == std::string::npos) return false;
-    size_t a = s.find('[', p);
-    if (a == std::string::npos) return false;
+static bool pj_get_number_like(const picojson::value& v, double& out_num, std::string& out_str) {
+    out_str.clear();
+    if (v.is<double>()) {
+        out_num = v.get<double>();
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.17g", out_num);
+        out_str = buf;
+        return true;
+    }
+    if (v.is<std::string>()) {
+        out_str = v.get<std::string>();
+        out_num = std::strtod(out_str.c_str(), nullptr);
+        return true;
+    }
+    return false;
+}
 
-    int depth = 0;
-    size_t b = a;
-    for (; b < s.size(); b++) {
-        char c = s[b];
-        if (c == '[') depth++;
-        else if (c == ']') {
-            depth--;
-            if (depth == 0) {
-                b++;
-                break;
+static const picojson::object* pj_get_obj(const picojson::value& v) {
+    if (!v.is<picojson::object>()) return nullptr;
+    return &v.get<picojson::object>();
+}
+
+static const picojson::array* pj_get_arr(const picojson::value& v) {
+    if (!v.is<picojson::array>()) return nullptr;
+    return &v.get<picojson::array>();
+}
+
+static const picojson::value* pj_find(const picojson::object& obj, const char* key) {
+    picojson::object::const_iterator it = obj.find(key);
+    if (it == obj.end()) return nullptr;
+    return &it->second;
+}
+
+static bool pj_parse_portfolio_root_obj(const std::string& s, picojson::object& out_obj) {
+    out_obj.clear();
+    picojson::value root;
+    std::string err = picojson::parse(root, s);
+    if (!err.empty()) return false;
+
+    if (root.is<picojson::object>()) {
+        out_obj = root.get<picojson::object>();
+        return true;
+    }
+    if (root.is<picojson::array>()) {
+        const picojson::array& a = root.get<picojson::array>();
+        // Observed schemas:
+        // - ["day", { ... }]
+        // - [["day", { ... }], ...]
+        if (!a.empty() && a[0].is<picojson::array>()) {
+            const picojson::array& row = a[0].get<picojson::array>();
+            if (row.size() >= 2 && row[1].is<picojson::object>()) {
+                out_obj = row[1].get<picojson::object>();
+                return true;
             }
         }
+        if (a.size() >= 2 && a[1].is<picojson::object>()) {
+            out_obj = a[1].get<picojson::object>();
+            return true;
+        }
     }
-    if (b <= a || b > s.size()) return false;
-    out_win = s.substr(a, b - a);
-    return true;
+    return false;
+}
+
+static bool pj_parse_history_points_from_obj(const picojson::object& obj, const char* key, std::vector<HistoryPoint>& out) {
+    out.clear();
+    const picojson::value* hv = pj_find(obj, key);
+    if (!hv) return false;
+    const picojson::array* arr = pj_get_arr(*hv);
+    if (!arr) return false;
+
+    for (size_t i = 0; i < arr->size(); i++) {
+        const picojson::array* row = pj_get_arr((*arr)[i]);
+        if (!row || row->size() < 2) continue;
+
+        long long ts = 0;
+        if ((*row)[0].is<double>()) ts = (long long)(*row)[0].get<double>();
+        else if ((*row)[0].is<std::string>()) ts = std::strtoll((*row)[0].get<std::string>().c_str(), nullptr, 10);
+        else continue;
+
+        double num = 0.0;
+        std::string str;
+        if (!pj_get_number_like((*row)[1], num, str)) continue;
+
+        HistoryPoint hp;
+        hp.ts_ms = ts;
+        hp.v = num;
+        out.push_back(hp);
+    }
+
+    return !out.empty();
 }
 
 static bool parse_history_points(const std::string& s, const char* key, std::vector<HistoryPoint>& out) {
     out.clear();
-    std::string win;
-    std::string keyq = std::string("\"") + key + "\"";
-    if (!extract_array_window_after_key(s, keyq.c_str(), win)) return false;
-
-    // Parse pattern: [ [ts,"val"], [ts,"val"], ... ]
-    size_t i = 0;
-    while (i < win.size()) {
-        size_t lb = win.find('[', i);
-        if (lb == std::string::npos) break;
-        size_t j = lb + 1;
-        while (j < win.size() && (win[j] == ' ' || win[j] == '\n' || win[j] == '\r' || win[j] == '\t')) j++;
-        // timestamp
-        size_t ts_start = j;
-        while (j < win.size() && (win[j] >= '0' && win[j] <= '9')) j++;
-        if (j == ts_start) {
-            i = lb + 1;
-            continue;
-        }
-        long long ts = std::strtoll(win.substr(ts_start, j - ts_start).c_str(), nullptr, 10);
-        // comma
-        size_t comma = win.find(',', j);
-        if (comma == std::string::npos) {
-            i = lb + 1;
-            continue;
-        }
-        j = comma + 1;
-        while (j < win.size() && (win[j] == ' ' || win[j] == '\n' || win[j] == '\r' || win[j] == '\t')) j++;
-        if (j >= win.size() || win[j] != '"') {
-            i = lb + 1;
-            continue;
-        }
-        size_t val_start = j + 1;
-        size_t val_end = win.find('"', val_start);
-        if (val_end == std::string::npos) {
-            i = lb + 1;
-            continue;
-        }
-        std::string vs = win.substr(val_start, val_end - val_start);
-        double v = std::strtod(vs.c_str(), nullptr);
-        HistoryPoint hp;
-        hp.ts_ms = ts;
-        hp.v = v;
-        out.push_back(hp);
-        i = val_end + 1;
-    }
-    return !out.empty();
+    picojson::object obj;
+    if (!pj_parse_portfolio_root_obj(s, obj)) return false;
+    return pj_parse_history_points_from_obj(obj, key, out);
 }
 
 static bool compute_24h_pnl_from_history(const std::vector<HistoryPoint>& pts,
@@ -154,65 +142,39 @@ static bool compute_24h_pnl_from_history(const std::vector<HistoryPoint>& pts,
 }
 
 static bool parse_account_value_str(const std::string& s, std::string& out) {
-    // The docs mention portfolio, but schema can vary; try several likely keys.
-    if (parse_number_field_str_any(s, "accountValue", out)) return true;
-    if (parse_number_field_str_any(s, "totalValue", out)) return true;
-    if (parse_number_field_str_any(s, "equity", out)) return true;
-    if (parse_number_field_str_any(s, "totalEquity", out)) return true;
+    out.clear();
+    picojson::object obj;
+    if (!pj_parse_portfolio_root_obj(s, obj)) return false;
 
-    // Observed schema on device:
-    // ["day", {"accountValueHistory":[[ts,"6.0"],...], ...}]
-    const char* hk = "\"accountValueHistory\"";
-    size_t p = s.find(hk);
-    if (p != std::string::npos) {
-        // Find the array bounds for accountValueHistory: "accountValueHistory" : [ ... ]
-        size_t a = s.find('[', p);
-        if (a != std::string::npos) {
-            int depth = 0;
-            size_t b = a;
-            for (; b < s.size(); b++) {
-                char c = s[b];
-                if (c == '[') depth++;
-                else if (c == ']') {
-                    depth--;
-                    if (depth == 0) {
-                        b++; // include closing bracket
-                        break;
-                    }
-                }
-            }
-            if (b > a && b <= s.size()) {
-                std::string win = s.substr(a, b - a);
-                std::string last_num;
-                size_t cur = 0;
-                while (true) {
-                    size_t q = win.find(",\"", cur);
-                    if (q == std::string::npos) break;
-                    size_t val_start = q + 2;
-                    size_t val_end = win.find('"', val_start);
-                    if (val_end == std::string::npos) break;
-                    if (val_end > val_start) {
-                        std::string cand = win.substr(val_start, val_end - val_start);
-                        bool ok = true;
-                        for (size_t i = 0; i < cand.size(); i++) {
-                            char cc = cand[i];
-                            if ((cc >= '0' && cc <= '9') || cc == '.' || cc == '-' || cc == '+') continue;
-                            ok = false;
-                            break;
-                        }
-                        if (ok && !cand.empty()) {
-                            last_num = cand;
-                        }
-                    }
-                    cur = val_end + 1;
-                }
-                if (!last_num.empty()) {
-                    out = last_num;
-                    return true;
-                }
-            }
+    const char* keys[] = {"accountValue", "totalValue", "equity", "totalEquity"};
+    for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
+        const picojson::value* v = pj_find(obj, keys[i]);
+        if (!v) continue;
+        double num = 0.0;
+        std::string str;
+        if (pj_get_number_like(*v, num, str) && !str.empty()) {
+            out = str;
+            return true;
         }
     }
+
+    const picojson::value* hv = pj_find(obj, "accountValueHistory");
+    if (!hv) return false;
+    const picojson::array* h = pj_get_arr(*hv);
+    if (!h || h->empty()) return false;
+
+    // History format: [[ts,"val"], ...]
+    for (size_t i = h->size(); i > 0; i--) {
+        const picojson::array* row = pj_get_arr((*h)[i - 1]);
+        if (!row || row->size() < 2) continue;
+        double num = 0.0;
+        std::string str;
+        if (pj_get_number_like((*row)[1], num, str) && !str.empty()) {
+            out = str;
+            return true;
+        }
+    }
+
     return false;
 }
 

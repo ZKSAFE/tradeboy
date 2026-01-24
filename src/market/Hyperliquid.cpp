@@ -7,6 +7,8 @@
 #include <fstream>
 #include <sstream>
 
+#include "../../third_party/picojson/picojson.h"
+
 #include "utils/Log.h"
 
 namespace tradeboy::market {
@@ -15,6 +17,47 @@ static bool write_file(const char* path, const std::string& s) {
     std::ofstream f(path, std::ios::out | std::ios::trunc);
     if (!f.good()) return false;
     f << s;
+    return true;
+}
+
+static const picojson::object* pj_get_obj(const picojson::value& v) {
+    if (!v.is<picojson::object>()) return nullptr;
+    return &v.get<picojson::object>();
+}
+
+static const picojson::array* pj_get_arr(const picojson::value& v) {
+    if (!v.is<picojson::array>()) return nullptr;
+    return &v.get<picojson::array>();
+}
+
+static const picojson::value* pj_find(const picojson::object& obj, const char* key) {
+    picojson::object::const_iterator it = obj.find(key);
+    if (it == obj.end()) return nullptr;
+    return &it->second;
+}
+
+static bool pj_get_string_like(const picojson::value& v, std::string& out) {
+    out.clear();
+    if (v.is<std::string>()) {
+        out = v.get<std::string>();
+        return true;
+    }
+    if (v.is<double>()) {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.17g", v.get<double>());
+        out = buf;
+        return true;
+    }
+    return false;
+}
+
+static bool pj_parse_root_object(const std::string& s, picojson::object& out_obj) {
+    out_obj.clear();
+    picojson::value root;
+    std::string err = picojson::parse(root, s);
+    if (!err.empty()) return false;
+    if (!root.is<picojson::object>()) return false;
+    out_obj = root.get<picojson::object>();
     return true;
 }
 
@@ -135,10 +178,26 @@ static bool parse_json_number_string_field(const std::string& s, const std::stri
 }
 
 bool parse_usdc_deposit_address(const std::string& user_role_json, std::string& out_addr) {
-    if (parse_json_string_field(user_role_json, "usdcDepositAddress", out_addr)) return true;
-    if (parse_json_string_field(user_role_json, "depositAddress", out_addr)) return true;
-    if (parse_json_string_field(user_role_json, "usdc_deposit_address", out_addr)) return true;
-    if (parse_json_string_field(user_role_json, "deposit_address", out_addr)) return true;
+    out_addr.clear();
+    picojson::object obj;
+    if (!pj_parse_root_object(user_role_json, obj)) {
+        if (parse_json_string_field(user_role_json, "usdcDepositAddress", out_addr)) return true;
+        if (parse_json_string_field(user_role_json, "depositAddress", out_addr)) return true;
+        if (parse_json_string_field(user_role_json, "usdc_deposit_address", out_addr)) return true;
+        if (parse_json_string_field(user_role_json, "deposit_address", out_addr)) return true;
+        return false;
+    }
+
+    const char* keys[] = {"usdcDepositAddress", "depositAddress", "usdc_deposit_address", "deposit_address"};
+    for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
+        const picojson::value* v = pj_find(obj, keys[i]);
+        if (!v) continue;
+        std::string s;
+        if (pj_get_string_like(*v, s) && !s.empty()) {
+            out_addr = s;
+            return true;
+        }
+    }
     return false;
 }
 
@@ -179,6 +238,51 @@ bool parse_spot_usdc_balance(const std::string& spot_state_json, double& out_usd
     if (spot_state_json.find("\"balances\":[ ][]") != std::string::npos) return true;
     if (spot_state_json.find("\"balances\":[]") != std::string::npos) return true;
     if (spot_state_json.find("\"balances\": []") != std::string::npos) return true;
+
+    picojson::object obj;
+    if (pj_parse_root_object(spot_state_json, obj)) {
+        const picojson::value* bv = pj_find(obj, "balances");
+        const picojson::array* balances = bv ? pj_get_arr(*bv) : nullptr;
+        if (balances) {
+            if (balances->empty()) {
+                out_usdc = 0.0;
+                return true;
+            }
+            for (size_t i = 0; i < balances->size(); i++) {
+                const picojson::object* bobj = pj_get_obj((*balances)[i]);
+                if (!bobj) continue;
+
+                std::string coin;
+                const picojson::value* coin_v = pj_find(*bobj, "coin");
+                if (coin_v && coin_v->is<std::string>()) coin = coin_v->get<std::string>();
+
+                bool is_usdc = (coin == "USDC");
+                if (!is_usdc) {
+                    const picojson::value* tok = pj_find(*bobj, "token");
+                    if (tok && tok->is<double>() && (int)tok->get<double>() == 0) is_usdc = true;
+                }
+                if (!is_usdc) continue;
+
+                std::string val_s;
+                const picojson::value* tv = pj_find(*bobj, "total");
+                if (tv && pj_get_string_like(*tv, val_s) && !val_s.empty()) {
+                    out_usdc = std::strtod(val_s.c_str(), nullptr);
+                    return true;
+                }
+                const picojson::value* av = pj_find(*bobj, "available");
+                if (av && pj_get_string_like(*av, val_s) && !val_s.empty()) {
+                    out_usdc = std::strtod(val_s.c_str(), nullptr);
+                    return true;
+                }
+                const picojson::value* bv2 = pj_find(*bobj, "balance");
+                if (bv2 && pj_get_string_like(*bv2, val_s) && !val_s.empty()) {
+                    out_usdc = std::strtod(val_s.c_str(), nullptr);
+                    return true;
+                }
+            }
+        }
+    }
+
     if (parse_spot_usdc_balance_coin_total(spot_state_json, out_usdc)) return true;
     if (parse_spot_usdc_balance_token0(spot_state_json, out_usdc)) return true;
     return false;
@@ -186,6 +290,18 @@ bool parse_spot_usdc_balance(const std::string& spot_state_json, double& out_usd
 
 bool parse_perp_usdc_balance(const std::string& perp_state_json, double& out_usdc) {
     out_usdc = 0.0;
+    picojson::object obj;
+    if (pj_parse_root_object(perp_state_json, obj)) {
+        const picojson::value* v = pj_find(obj, "accountValue");
+        if (v) {
+            std::string s;
+            if (pj_get_string_like(*v, s) && !s.empty()) {
+                out_usdc = std::strtod(s.c_str(), nullptr);
+                return true;
+            }
+        }
+    }
+
     std::string v;
     if (parse_json_number_string_field(perp_state_json, "accountValue", v)) {
         out_usdc = std::strtod(v.c_str(), nullptr);
@@ -195,6 +311,33 @@ bool parse_perp_usdc_balance(const std::string& perp_state_json, double& out_usd
 }
 
 bool parse_mid_price(const std::string& all_mids_json, const std::string& coin, double& out_price) {
+    picojson::object obj;
+    if (pj_parse_root_object(all_mids_json, obj)) {
+        const picojson::value* mids_v = pj_find(obj, "mids");
+        const picojson::object* mids = mids_v ? pj_get_obj(*mids_v) : nullptr;
+
+        if (mids) {
+            const picojson::value* pv = pj_find(*mids, coin.c_str());
+            if (pv) {
+                std::string s;
+                if (pj_get_string_like(*pv, s) && !s.empty()) {
+                    out_price = std::strtod(s.c_str(), nullptr);
+                    return out_price > 0.0;
+                }
+            }
+        }
+
+        const picojson::value* pv2 = pj_find(obj, coin.c_str());
+        if (pv2) {
+            std::string s;
+            if (pj_get_string_like(*pv2, s) && !s.empty()) {
+                out_price = std::strtod(s.c_str(), nullptr);
+                return out_price > 0.0;
+            }
+        }
+    }
+
+    // Fallback: substring scan.
     // allMids response includes "<COIN>":"<price>" somewhere.
     std::string needle = "\"" + coin + "\":";
     size_t p = all_mids_json.find(needle);
