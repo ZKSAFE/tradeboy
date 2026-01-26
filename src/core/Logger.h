@@ -18,7 +18,7 @@ private:
     Logger(const Logger&) = delete;
     Logger& operator=(const Logger&) = delete;
 
-    void* f_ = nullptr;
+    int fd_ = -1;
 };
 
 void logger_init(const char* filename);

@@ -1,3 +1,10 @@
+/**
+ * @file SpotOrderScreen.h
+ * @brief Spot order entry using NumberInputModal.
+ * 
+ * This is a thin wrapper around NumberInputModal for spot trading.
+ * The actual input UI is provided by NumberInputModal.
+ */
 #pragma once
 
 #include <string>
@@ -6,6 +13,7 @@
 
 #include "../app/Input.h"
 #include "../model/TradeModel.h"
+#include "../ui/NumberInputModal.h"
 
 namespace tradeboy::spotOrder {
 
@@ -15,30 +23,20 @@ enum class Side {
 };
 
 struct SpotOrderState {
-    bool open = false;
-
+    tradeboy::ui::NumberInputState input_state;
+    
     Side side = Side::Buy;
     std::string sym;
     double price = 0.0;
-    double max_possible = 0.0;
-
-    std::string input = "0";
-
-    int grid_r = 0;
-    int grid_c = 1;
-
-    int footer_idx = -1;
-
-    int flash_timer = 0;
-    int flash_btn_idx = -1;
-
-    int l1_flash_timer = 0;
-    int r1_flash_timer = 0;
-
-    int b_flash_timer = 0;
-
+    
+    bool open() const { return input_state.open; }
+    
     void open_with(const tradeboy::model::SpotRow& row, Side in_side, double in_max_possible);
     void close();
+    
+    tradeboy::ui::NumberInputResult get_result() const { return input_state.result; }
+    double get_result_value() const { return input_state.result_value; }
+    void clear_result() { input_state.result = tradeboy::ui::NumberInputResult::None; }
 };
 
 bool handle_input(SpotOrderState& st, const tradeboy::app::InputState& in, const tradeboy::app::EdgeState& edges);

@@ -72,16 +72,18 @@ static void set_alert_static(tradeboy::app::App& app, const std::string& body) {
 
 void App::init_demo_data() {
     log_str("[App] init_demo_data enter\n");
-    std::vector<tradeboy::model::SpotRow> rows = {
-        {"BTC", 87482.75, 87482.75, 0.0, 87482.75},
-        {"ETH", 2962.41, 2962.41, 0.0, 2962.41},
-        {"SOL", 124.15, 124.15, 0.0, 124.15},
-        {"BNB", 842.00, 842.00, 0.0, 842.00},
-        {"XRP", 1.86, 1.86, 0.0, 1.86},
-        {"TRX", 0.2843, 0.2843, 0.0, 0.2843},
-        {"DOGE", 0.12907, 0.12907, 0.0, 0.12907},
-        {"ADA", 0.3599, 0.3599, 0.0, 0.3599},
-    };
+
+    std::vector<tradeboy::model::SpotRow> rows;
+    rows.reserve(8);
+
+    rows.emplace_back("BTC", 87482.75, 87482.75, 0.0, 87482.75);
+    rows.emplace_back("ETH", 2962.41, 2962.41, 0.0, 2962.41);
+    rows.emplace_back("SOL", 124.15, 124.15, 0.0, 124.15);
+    rows.emplace_back("BNB", 842.00, 842.00, 0.0, 842.00);
+    rows.emplace_back("XRP", 1.86, 1.86, 0.0, 1.86);
+    rows.emplace_back("TRX", 0.2843, 0.2843, 0.0, 0.2843);
+    rows.emplace_back("DOGE", 0.12907, 0.12907, 0.0, 0.12907);
+    rows.emplace_back("ADA", 0.3599, 0.3599, 0.0, 0.3599);
 
     log_str("[App] init_demo_data rows ready\n");
 
@@ -182,6 +184,16 @@ void App::open_spot_order(bool buy) {
     if (spot_row_idx < 0 || spot_row_idx >= (int)snap.spot_rows.size()) return;
     const auto& row = snap.spot_rows[(size_t)spot_row_idx];
     const tradeboy::model::AccountSnapshot account = model.account_snapshot();
+
+    if (buy) {
+        const bool has_usdc = (!account.hl_usdc_str.empty() && account.hl_usdc_str != "UNKNOWN" && account.hl_usdc > 0.0);
+        const bool has_price = (row.price > 0.0);
+        if (!has_usdc || !has_price) {
+            set_alert("Loading user data\nPlease wait...");
+            return;
+        }
+    }
+
     double maxv = 0.0;
     if (buy) {
         maxv = (row.price > 0.0) ? (account.hl_usdc / row.price) : 0.0;
@@ -300,7 +312,7 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
     }
 
     // Global tab switching (only when not inside order modal)
-    if (!spot_order.open) {
+    if (!spot_order.open()) {
         if (tradeboy::utils::pressed(in.l1, edges.prev.l1)) {
             l1_flash_frames = 6;
             if (tab == Tab::Spot) tab = Tab::Account;
@@ -433,14 +445,14 @@ void App::render() {
     }
 
     // Main header for top-level tabs (Spot/Perp/Account)
-    if (!spot_order.open) {
+    if (!spot_order.open()) {
         tradeboy::ui::render_main_header(tab, l1_flash, r1_flash, font_bold);
     }
 
     // Spot page now uses the new UI demo layout. Data layer is intentionally
     // not connected yet (render uses mock data only).
     // Hide Spot page while order page is open to avoid overlap.
-    if (!spot_order.open) {
+    if (!spot_order.open()) {
         if (tab == Tab::Spot) {
             tradeboy::spot::render_spot_screen(
                 spot_row_idx,
@@ -514,6 +526,22 @@ void App::render() {
     dec_frame_counter(l1_flash_frames);
     dec_frame_counter(r1_flash_frames);
     tradeboy::spotOrder::render(spot_order, font_bold);
+
+    // Handle spot order result
+    if (spot_order.get_result() != tradeboy::ui::NumberInputResult::None) {
+        tradeboy::ui::NumberInputResult res = spot_order.get_result();
+        double val = spot_order.get_result_value();
+        spot_order.clear_result();
+        
+        if (res == tradeboy::ui::NumberInputResult::Confirmed) {
+            // TODO: Execute order
+            char msg[128];
+            std::snprintf(msg, sizeof(msg), "ORDER_SUBMITTED\n%s %.4f %s", 
+                spot_order.side == tradeboy::spotOrder::Side::Buy ? "BUY" : "SELL",
+                val, spot_order.sym.c_str());
+            set_alert(msg);
+        }
+    }
 
     // Process alert dialog flash -> trigger closing when finished.
     if (alert_dialog.open && !alert_dialog.closing) {

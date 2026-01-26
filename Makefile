@@ -30,6 +30,7 @@ TRADEBOY_SOURCES = \
 	src/ui/MatrixBackground.cpp \
 	src/ui/Dialog.cpp \
 	src/ui/MainUI.cpp \
+	src/ui/NumberInputModal.cpp \
 	src/app/App.cpp \
 	src/app/Input.cpp \
 	src/perp/PerpScreen.cpp \

@@ -273,6 +273,24 @@ make tradeboy-ui-demo-armhf-docker
 - 运行时 CWD：如果存在 `/mnt/mmc/Roms/APPS`，先 `chdir("/mnt/mmc/Roms/APPS")`，避免字体路径找不到
 - Window 创建：优先使用 `SDL_WINDOWPOS_UNDEFINED_DISPLAY(0)` + `SDL_WINDOW_FULLSCREEN_DESKTOP`（与 RG34XX 的 mali-fbdev 更兼容）
 
+### 坑：掌机 SDL2 缺少 `SDL_OpenURL` 导致启动闪退（undefined symbol）
+
+现象：
+
+- 在掌机上运行时立即退出。
+- 通过 SSH 直接运行二进制可看到：`undefined symbol: SDL_OpenURL`。
+
+原因：
+
+- 编译时使用的 SDL2 headers/版本较新（例如 ImGui 的 `imgui_impl_sdl2.cpp` 会调用 `SDL_OpenURL`）。
+- 掌机运行时的 SDL2 库较旧，不包含该符号，动态链接失败。
+
+修复：
+
+- 在可执行文件里提供一个兼容 stub（旧 SDL2 上返回失败即可），保证动态链接阶段符号可解析。
+- TradeBoy 采用的修复方式：在 `src/main.cpp` 提供：
+  - `extern "C" int SDL_OpenURL(const char* url) { (void)url; return -1; }`
+
 ### 坑 7：RG34XX 启动期 SIGSEGV（`std::mutex` / 变参日志 / `std::string`）
 
 现象：

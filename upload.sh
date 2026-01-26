@@ -210,7 +210,12 @@ echo -e "${GREEN}安装脚本执行完成！${NC}"
 
 echo ""
 echo -e "${YELLOW}请在掌机上手动启动 TradeBoy（从 APPS 里运行 tradeboy-armhf）。${NC}"
-read -r -p "你已经手动启动了吗？(y/N): " STARTED
+STARTED=""
+if [ -t 0 ]; then
+    read -r -p "你已经手动启动了吗？(y/N): " STARTED
+else
+    STARTED="N"
+fi
 if [[ "$STARTED" != "y" && "$STARTED" != "Y" ]]; then
     echo "未确认启动，脚本结束。你启动后可以重新运行本脚本并输入 y 以抓取日志。"
     exit 0

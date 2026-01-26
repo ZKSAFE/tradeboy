@@ -1,6 +1,8 @@
 #include "Logger.h"
 
-#include <cstdio>
+#include <fcntl.h>
+#include <unistd.h>
+#include <cstring>
 
 namespace tradeboy::core {
 
@@ -9,7 +11,7 @@ Logger& Logger::instance() {
     return inst;
 }
 
-Logger::Logger() : f_(nullptr) {
+Logger::Logger() : fd_(-1) {
 }
 
 Logger::~Logger() {
@@ -17,37 +19,32 @@ Logger::~Logger() {
 }
 
 void Logger::init(const char* filename) {
-    if (f_) {
-        fclose((FILE*)f_);
-        f_ = nullptr;
+    if (fd_ >= 0) {
+        close(fd_);
+        fd_ = -1;
     }
-    if (filename) {
-        f_ = fopen(filename, "w");
-        if (f_) {
-            fputs("--- TradeBoy Log Start V7 ---\n", (FILE*)f_);
-            fflush((FILE*)f_);
-        }
+    if (!filename) return;
+    fd_ = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (fd_ >= 0) {
+        static const char* hdr = "--- TradeBoy Log Start V7 ---\n";
+        (void)write(fd_, hdr, std::strlen(hdr));
     }
 }
 
 void Logger::log(const char* s) {
     if (!s) return;
-    if (f_) {
-        fputs(s, (FILE*)f_);
-        fflush((FILE*)f_);  // Flush immediately for crash safety
-    }
+    if (fd_ < 0) return;
+    (void)write(fd_, s, std::strlen(s));
 }
 
 void Logger::flush() {
-    if (f_) {
-        fflush((FILE*)f_);
-    }
+    // Intentionally a no-op. On RG34XX, fflush/fsync may block for a long time.
 }
 
 void Logger::shutdown() {
-    if (f_) {
-        fclose((FILE*)f_);
-        f_ = nullptr;
+    if (fd_ >= 0) {
+        close(fd_);
+        fd_ = -1;
     }
 }
 

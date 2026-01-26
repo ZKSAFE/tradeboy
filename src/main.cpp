@@ -21,6 +21,11 @@
 #include "utils/Log.h"
 #include "core/Logger.h"
 
+extern "C" int SDL_OpenURL(const char* url) {
+    (void)url;
+    return -1;
+}
+
 // NOTE: log_to_file is intentionally removed. Use log_str instead.
 // Now delegates to the Logger singleton for better performance.
 void log_str(const char* s) {
@@ -276,18 +281,10 @@ int main(int argc, char** argv) {
             running = false;
         }
 
-        if (frame_counter == 0) {
-            log_str("[Main] first frame\n");
-        }
         frame_counter++;
 
-        if (frame_counter <= 5) log_str("[Frame] begin\n");
-
-        if (frame_counter <= 5) log_str("[Frame] ImGui_ImplOpenGL3_NewFrame\n");
         ImGui_ImplOpenGL3_NewFrame();
-        if (frame_counter <= 5) log_str("[Frame] ImGui_ImplSDL2_NewFrame\n");
         ImGui_ImplSDL2_NewFrame();
-        if (frame_counter <= 5) log_str("[Frame] ImGui::NewFrame\n");
         ImGui::NewFrame();
 
         ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
@@ -297,23 +294,16 @@ int main(int argc, char** argv) {
                                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings |
                                  ImGuiWindowFlags_NoBackground;
         ImGui::Begin("Spot", nullptr, wflags);
-        if (frame_counter <= 5) log_str("[Frame] app.render begin\n");
         app.render();
-        if (frame_counter <= 5) log_str("[Frame] app.render end\n");
         ImGui::End();
-
-        if (frame_counter <= 5) log_str("[Frame] ImGui::Render\n");
         ImGui::Render();
 
         if (crt.is_ready()) {
-            if (frame_counter <= 5) log_str("[Frame] crt.begin\n");
             crt.begin();
-            if (frame_counter <= 5) log_str("[Frame] ImGui_ImplOpenGL3_RenderDrawData\n");
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
             crt.set_overlay_rect_uv(app.overlay_rect_uv, app.overlay_rect_active);
             crt.set_poweroff(app.exit_poweroff_anim_t, app.exit_poweroff_anim_active);
             crt.set_boot(app.boot_anim_t, app.boot_anim_active && !app.exit_poweroff_anim_active);
-            if (frame_counter <= 5) log_str("[Frame] crt.end\n");
             crt.end((float)ImGui::GetTime());
         } else {
             glViewport(0, 0, mode.w, mode.h);
@@ -322,10 +312,7 @@ int main(int argc, char** argv) {
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         }
 
-        if (frame_counter <= 5) log_str("[Frame] SDL_GL_SwapWindow\n");
         SDL_GL_SwapWindow(window);
-
-        if (frame_counter <= 5) log_str("[Frame] end\n");
     }
 
     log_str("[Main] main loop exit -> begin shutdown\n");
