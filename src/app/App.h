@@ -57,6 +57,8 @@ struct App {
     tradeboy::ui::DialogState alert_dialog;
     tradeboy::ui::DialogState account_address_dialog;
 
+    tradeboy::ui::DialogState internal_transfer_dialog;
+
     // Exit dialog specific state
     bool exit_dialog_quit_after_close = false;
 

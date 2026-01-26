@@ -327,6 +327,24 @@ make tradeboy-ui-demo-armhf-docker
 
 - 看到卡在 `set_spot_row_idx about to lock`：通常是之前为诊断跳过了 `unlock` 导致死锁，并非性能问题。
 
+### 坑 8：RG34XX 启动期卡死在 `App::init_demo_data()`（`std::vector` 堆分配）
+
+现象：
+
+- 日志停在 `[App] init_demo_data enter` 或 `rows.reserve/emplace_back` 之后不再推进。
+- 设备端表现为“启动挂住”，没有崩溃 backtrace。
+
+可能原因（经验结论）：
+
+- RG34XX 的 armhf 用户态环境下，启动早期进行较多堆分配（例如 `std::vector::reserve` / `emplace_back` 触发 malloc）在某些情况下会出现不可预期的卡死。
+
+建议策略：
+
+- 启动阶段尽量避免大量堆分配与复杂容器操作（尤其是一次性构造多条 `std::string`/row 数据）。
+- 如果需要 demo 数据：
+  - 先保证进入 main loop（渲染/输入正常），再异步或分帧填充。
+  - 或者用静态数组/固定容量结构替代动态扩容。
+
 ## 清理掌机端测试文件
 
 只清理 demo 相关文件（不影响系统菜单）：
@@ -342,6 +360,8 @@ ssh root@192.168.1.7 'rm -f /mnt/mmc/Roms/APPS/sdl2demo-armhf /mnt/mmc/Roms/APPS
 - 修改 `TradeModel.h`（例如给 `AccountSnapshot`/`TradeModel` 增加字段）后，**本地编译可能“看起来成功”**，但上传到掌机会出现启动阶段 `SIGSEGV` 或渲染阶段 `SIGABRT`。
 - backtrace 往往很浅，地址落在 `App::startup()` / `App::render()` 附近，像是业务代码崩了。
 
+补充：一次典型表现是崩在 ImGui 渲染阶段（例如字体相关调用），看起来像 `font_bold` 空指针/野指针，但本质仍然是“对象布局错位”导致成员被写坏。
+
 根因（结论）：
 
 - 当前 Makefile 依赖跟踪不完整：改动头文件后，某些 TU（如 `src/main.cpp` / `src/app/App.cpp`）可能**没有被重新编译**。
@@ -354,3 +374,8 @@ ssh root@192.168.1.7 'rm -f /mnt/mmc/Roms/APPS/sdl2demo-armhf /mnt/mmc/Roms/APPS
 - **推荐**：做一次全量构建（例如清理 `build/armhf` 或等价 clean），确保所有依赖头文件的目标重新编译。
 - **诊断/临时 workaround**：在疑似没被重编的 TU 里加一个 no-op 改动（例如在 `main()` 或 `App::render()` 顶部加一个 `static const int GUARD=1; (void)GUARD;`），强制该文件重新编译。
 - 验证：重新上传后如果崩溃消失，基本可确认是“增量编译导致 ABI/布局不一致”。
+
+最终修复（推荐落地到构建系统）：
+
+- Makefile 为每个编译单元开启头文件依赖生成：`-MMD -MP`
+- 并在 Makefile 中 `-include` 生成的 `.d` 文件，保证头文件改动必然触发重编

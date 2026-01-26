@@ -276,10 +276,33 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
         return;
     }
 
+    if (internal_transfer_dialog.open) {
+        if (internal_transfer_dialog.closing) {
+            return;
+        }
+
+        // Always allow B to go back (close) even while flashing.
+        if (tradeboy::utils::pressed(in.b, edges.prev.b)) {
+            internal_transfer_dialog.start_close();
+            return;
+        }
+
+        if (internal_transfer_dialog.flash_frames <= 0) {
+            if (tradeboy::utils::pressed(in.left, edges.prev.left) || tradeboy::utils::pressed(in.right, edges.prev.right)) {
+                internal_transfer_dialog.selected_btn = 1 - internal_transfer_dialog.selected_btn;
+            }
+            if (tradeboy::utils::pressed(in.a, edges.prev.a)) {
+                internal_transfer_dialog.start_flash(internal_transfer_dialog.selected_btn);
+            }
+        }
+        return;
+    }
+
     // Global M: open exit modal (even if other modals are open).
     if (tradeboy::utils::pressed(in.m, edges.prev.m)) {
         // Close any lower-priority modals to avoid state conflicts under the exit dialog.
         account_address_dialog.reset();
+        internal_transfer_dialog.reset();
 
         exit_dialog.open_dialog("", 1);
         exit_dialog_quit_after_close = false;
@@ -383,6 +406,10 @@ void App::render() {
     // Arbitrum deposit trigger: when flash completes, perform action.
     if (tab == Tab::Account && account_flash_timer > 0) {
         account_flash_timer--;
+        if (account_flash_timer == 0 && account_flash_btn == 0) {
+            internal_transfer_dialog.open_dialog("Select internal transfer\nPress B to go back", 0);
+            account_flash_btn = -1;
+        }
         if (account_flash_timer == 0 && account_flash_btn == 2) {
             if (!arb_deposit_inflight.exchange(true)) {
                 const tradeboy::model::WalletSnapshot w = model.wallet_snapshot();
@@ -415,6 +442,12 @@ void App::render() {
                     });
                 }
             }
+        }
+    }
+
+    if (internal_transfer_dialog.open && internal_transfer_dialog.closing) {
+        if (internal_transfer_dialog.tick_close_anim()) {
+            internal_transfer_dialog.reset();
         }
     }
 
@@ -557,6 +590,12 @@ void App::render() {
         }
     }
 
+    if (internal_transfer_dialog.open && !internal_transfer_dialog.closing) {
+        if (internal_transfer_dialog.tick_flash()) {
+            internal_transfer_dialog.start_close();
+        }
+    }
+
     // Account dialog close animation
     if (account_address_dialog.open && account_address_dialog.closing) {
         if (account_address_dialog.tick_close_anim()) {
@@ -649,6 +688,22 @@ void App::render() {
                                     "CANCEL",
                                     &exit_dialog.selected_btn,
                                     exit_dialog.flash_frames,
+                                    open_t,
+                                    font_bold,
+                                    nullptr);
+    }
+
+    if (internal_transfer_dialog.open) {
+        internal_transfer_dialog.tick_open_anim();
+        float open_t = internal_transfer_dialog.get_open_t();
+
+        tradeboy::ui::render_dialog("InternalTransferDialog",
+                                    "> ",
+                                    "Select internal transfer\nPress B to go back",
+                                    "SPOT to PERP",
+                                    "PERP to SPOT",
+                                    &internal_transfer_dialog.selected_btn,
+                                    internal_transfer_dialog.flash_frames,
                                     open_t,
                                     font_bold,
                                     nullptr);

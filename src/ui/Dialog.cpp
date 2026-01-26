@@ -1,7 +1,6 @@
 #include "ui/Dialog.h"
 
 #include <cstdio>
-#include <unordered_map>
 
 #include "ui/MatrixTheme.h"
 #include "utils/Flash.h"
@@ -41,17 +40,22 @@ DialogResult render_dialog(const char* id,
         float last_open_t = 0.0f;
         int last_frame = -1;
         bool started_when_open = false;
-        bool has_last = false;
         bool frozen = false;
         std::string frozen_text;
+        const char* last_id = nullptr;
     };
-    static std::unordered_map<std::string, DialogTwEntry> tw_map;
+    static DialogTwEntry ent;
 
     const char* key_c = id ? id : "Dialog";
-    DialogTwEntry& ent = tw_map[std::string(key_c)];
-    if (!ent.has_last) {
-        ent.has_last = true;
+    if (ent.last_id != key_c) {
+        ent.last_id = key_c;
+        ent.frozen = false;
+        ent.frozen_text.clear();
+        ent.started_when_open = false;
+        ent.tw.last_text.clear();
+        ent.tw.start_time = ImGui::GetTime();
         ent.last_open_t = open_anim_t;
+        ent.last_frame = -1;
     }
 
     // Treat "wasn't rendered last frame" as a new open cycle.
