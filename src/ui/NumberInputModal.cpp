@@ -22,6 +22,26 @@ static double parse_amount(const std::string& s) {
     }
 }
 
+static int count_decimals(const std::string& s) {
+    size_t dot = s.find('.');
+    if (dot == std::string::npos) return 0;
+    if (dot + 1 >= s.size()) return 0;
+    return (int)(s.size() - (dot + 1));
+}
+
+static int allowed_decimals_from_min(double min_value) {
+    if (!(std::isfinite(min_value)) || min_value <= 0.0) return 0;
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.8f", min_value);
+    std::string s = buf;
+    while (s.size() > 1 && s.back() == '0') s.pop_back();
+    if (!s.empty() && s.back() == '.') s.pop_back();
+    size_t dot = s.find('.');
+    if (dot == std::string::npos) return 0;
+    if (dot + 1 >= s.size()) return 0;
+    return (int)(s.size() - (dot + 1));
+}
+
 static void del_char(std::string& s) {
     if (s.size() <= 1) {
         s = "0";
@@ -174,7 +194,17 @@ bool handle_input(NumberInputState& st, const tradeboy::app::InputState& in, con
             double value = st.get_input_value();
             if (st.flash_btn_idx == 0) {
                 // CONFIRM
-                if (value < st.config.min_value || value > st.config.max_value) {
+                int allowed_decimals = allowed_decimals_from_min(st.config.min_value);
+                int input_decimals = count_decimals(st.input);
+                if (allowed_decimals >= 0 && input_decimals > allowed_decimals) {
+                    char msg[192];
+                    std::snprintf(msg, sizeof(msg), "TOO_MANY_DECIMALS\nMAX: %d", allowed_decimals);
+                    st.out_of_range_dialog.open_dialog(msg, 1);
+                } else if (value < st.config.min_value) {
+                    char msg[192];
+                    std::snprintf(msg, sizeof(msg), "BELOW_MIN\nMIN: %.8f %s", st.config.min_value, st.config.available_label.c_str());
+                    st.out_of_range_dialog.open_dialog(msg, 1);
+                } else if (value > st.config.max_value) {
                     char msg[192];
                     std::snprintf(msg, sizeof(msg), "OUT_OF_RANGE\nMAX: %.8f %s", st.config.max_value, st.config.available_label.c_str());
                     st.out_of_range_dialog.open_dialog(msg, 1);

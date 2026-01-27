@@ -1,10 +1,9 @@
 #include "app/App.h"
 
 #include <algorithm>
-#include <sstream>
-#include <chrono>
-
-#include <SDL.h>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
 
 #include "imgui.h"
 
@@ -83,8 +82,23 @@ static void set_deposit_alert(tradeboy::app::App& app, const std::string& body) 
     app.arb_deposit_alert_pending.store(true);
 }
 
-static void set_alert_static(tradeboy::app::App& app, const std::string& body) {
-    app.set_alert(body);
+static std::string trunc_2dp(double v) {
+    if (!std::isfinite(v)) return std::string("UNKNOWN");
+    if (v < 0.0) v = 0.0;
+    double t = std::floor(v * 100.0 + 1e-12) / 100.0;
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.2f", t);
+    return std::string(buf);
+}
+
+static double trunc_2dp_value(double v) {
+    if (!std::isfinite(v)) return 0.0;
+    if (v < 0.0) v = 0.0;
+    return std::floor(v * 100.0 + 1e-12) / 100.0;
+}
+
+static void set_alert_static(tradeboy::app::App& app, const char* msg) {
+    app.set_alert(msg);
 }
 
 void App::init_demo_data() {
@@ -493,14 +507,14 @@ void App::render() {
                 } else {
                     double maxv = 0.0;
                     if (internal_transfer_pending_dir == 0) {
-                        maxv = account.hl_usdc;
+                        maxv = trunc_2dp_value(account.hl_usdc);
                     } else {
-                        maxv = account.hl_perp_usdc;
+                        maxv = trunc_2dp_value(account.hl_perp_usdc);
                     }
 
                     tradeboy::ui::NumberInputConfig cfg;
                     cfg.title = (internal_transfer_pending_dir == 0) ? "SPOT to PERP" : "PERP to SPOT";
-                    cfg.min_value = 0.000001;
+                    cfg.min_value = 0.01;
                     cfg.max_value = maxv;
                     cfg.available_label = "USDC";
                     cfg.show_available_panel = true;
@@ -563,8 +577,8 @@ void App::render() {
             const std::string usdc_s = account.arb_usdc_str.empty() ? "UNKNOWN" : account.arb_usdc_str;
             const std::string gas_s = account.arb_gas_str.empty() ? "GAS: UNKNOWN" : account.arb_gas_str;
             const long double gas_price_wei = account.arb_gas_price_wei;
-            const std::string hl_usdc_s = account.hl_usdc_str.empty() ? "UNKNOWN" : account.hl_usdc_str;
-            const std::string hl_perp_usdc_s = account.hl_perp_usdc_str.empty() ? "UNKNOWN" : account.hl_perp_usdc_str;
+            const std::string hl_usdc_s = account.hl_usdc_str.empty() ? "UNKNOWN" : trunc_2dp(account.hl_usdc);
+            const std::string hl_perp_usdc_s = account.hl_perp_usdc_str.empty() ? "UNKNOWN" : trunc_2dp(account.hl_perp_usdc);
             const std::string hl_total_asset_s = account.hl_total_asset_str.empty() ? "UNKNOWN" : account.hl_total_asset_str;
             const std::string hl_pnl_24h_s = account.hl_pnl_24h_str.empty() ? "UNKNOWN" : account.hl_pnl_24h_str;
             const std::string hl_pnl_24h_pct_s = account.hl_pnl_24h_pct_str.empty() ? "UNKNOWN" : account.hl_pnl_24h_pct_str;
