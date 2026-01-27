@@ -33,7 +33,7 @@ void log_str(const char* s) {
 }
 
 static void crash_signal_handler(int sig) {
-    FILE* f = fopen("log.txt", "a");
+    FILE* f = fopen("crash.txt", "a");
     if (f) {
         fprintf(f, "[CRASH] signal=%d\n", sig);
         // Best-effort backtrace for post-mortem debugging (core dumps are disabled on device).

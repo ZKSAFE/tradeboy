@@ -137,6 +137,31 @@
 
 ---
 
+## 问题 7：Hyperliquid `/exchange` 的签名错误会导致“随机 user 地址 / 偶发成功失败”
+
+### 现象
+
+- 内部划转（`usdClassTransfer`）有时成功，有时失败。
+- 失败时返回：
+  - `Must deposit before performing actions. User: 0x...`
+- `User: 0x...` 的地址和本地钱包地址不一致，并且会随着输入（甚至同样输入的不同尝试）变化。
+
+### 根因
+
+- Hyperliquid 的 user-signed action 使用 EIP-712 typed-data。
+- 任何签名细节错误（domain/types/字段顺序/数值字符串格式/地址大小写等）都会导致服务端 recover 出不同的 signer。
+- 即使本地用某种方式 recover 出“看起来正确”的地址，也不能证明服务端 recover 使用的 payload 与本地一致。
+- 另外，ECDSA 的签名过程会导致 recovery id 的选择存在分支；如果 recovery 参数处理不一致（尤其是 low-s 规范下的 parity 翻转），会表现为“偶发”。
+
+### 解决办法
+
+- 严格对照官方文档与 Python SDK：
+  - `sign_user_signed_action` / `encode_typed_data` 的 domain/types/message 必须一字不差。
+  - 地址字段统一使用小写。
+  - 数字字段作为 string 时避免多余尾零/科学计数法。
+- 在 C++ 侧实现时，确保签名与 recover 的 recovery 参数一致（low-s parity 翻转要纳入 recid 选择）。
+- 为了定位此类问题，可临时加入对照日志：digest、recover 出来的地址集合、最终选用的 v/r/s、resp_prefix；确认稳定后再移除。
+
 ## 部署/脚本相关
 
 ### upload.sh：避免自动 kill 进程

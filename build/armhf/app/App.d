@@ -36,7 +36,8 @@ build/armhf/app/App.o: src/app/App.cpp src/app/App.h \
  src/app/../market/HyperliquidWgetDataSource.h \
  src/app/../market/HyperliquidWsDataSource.h src/app/../perp/PerpScreen.h \
  src/app/../account/AccountScreen.h src/utils/File.h src/utils/Flash.h \
- src/utils/Typewriter.h src/arb/ArbitrumRpc.h src/utils/Log.h \
+ src/utils/Typewriter.h src/arb/ArbitrumRpc.h \
+ src/market/HyperliquidExchange.h src/utils/Format.h src/utils/Log.h \
  src/app/../ui/MatrixBackground.h src/app/../ui/MatrixTheme.h \
  src/app/../ui/MainUI.h src/app/../ui/Dialog.h
 src/app/App.h:
@@ -110,6 +111,8 @@ src/utils/File.h:
 src/utils/Flash.h:
 src/utils/Typewriter.h:
 src/arb/ArbitrumRpc.h:
+src/market/HyperliquidExchange.h:
+src/utils/Format.h:
 src/utils/Log.h:
 src/app/../ui/MatrixBackground.h:
 src/app/../ui/MatrixTheme.h:

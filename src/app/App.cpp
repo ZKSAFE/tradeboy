@@ -23,6 +23,9 @@
 #include "wallet/Wallet.h"
 #include "arb/ArbitrumRpc.h"
 #include "market/Hyperliquid.h"
+#include "market/HyperliquidExchange.h"
+
+#include "utils/Format.h"
 
 #include "utils/Log.h"
 
@@ -39,10 +42,24 @@ namespace tradeboy::app {
 
 App::App() {
     pthread_mutex_init(&arb_deposit_mu, nullptr);
+    pthread_mutex_init(&hl_transfer_mu, nullptr);
 }
 
 App::~App() {
     pthread_mutex_destroy(&arb_deposit_mu);
+    pthread_mutex_destroy(&hl_transfer_mu);
+}
+
+static void set_hl_transfer_alert(tradeboy::app::App& app, const std::string& body) {
+    pthread_mutex_lock(&app.hl_transfer_mu);
+    app.hl_transfer_alert_body = body;
+    pthread_mutex_unlock(&app.hl_transfer_mu);
+    app.hl_transfer_alert_pending.store(true);
+}
+
+static std::string truncate_for_alert(const std::string& s, size_t max_len) {
+    if (s.size() <= max_len) return s;
+    return s.substr(0, max_len);
 }
 
 static std::string make_address_short(const std::string& addr_0x) {
@@ -162,6 +179,9 @@ void App::shutdown() {
     log_str("[App] shutdown()\n");
     if (arb_deposit_thread.joinable()) {
         arb_deposit_thread.join();
+    }
+    if (hl_transfer_thread.joinable()) {
+        hl_transfer_thread.join();
     }
     if (arb_rpc_service) {
         arb_rpc_service->stop();
@@ -607,9 +627,55 @@ void App::render() {
         internal_transfer_amount.result_value = 0.0;
 
         if (res == tradeboy::ui::NumberInputResult::Confirmed) {
-            char msg[128];
-            std::snprintf(msg, sizeof(msg), "TRANSFER_REQUESTED\n%.4f USDC", val);
-            set_alert(msg);
+            if (internal_transfer_pending_dir != 0 && internal_transfer_pending_dir != 1) {
+                set_alert("TRANSFER_FAILED\nUNKNOWN_DIRECTION");
+            } else if (val < 0.000001) {
+                set_alert("TRANSFER_FAILED\nAMOUNT_TOO_SMALL");
+            } else if (hl_transfer_inflight.exchange(true)) {
+                set_alert("TRANSFER_BUSY\nPLEASE_WAIT");
+            } else {
+                const bool to_perp = (internal_transfer_pending_dir == 0);
+                const tradeboy::model::WalletSnapshot w = model.wallet_snapshot();
+                const unsigned long long nonce_ms = (unsigned long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                        std::chrono::system_clock::now().time_since_epoch())
+                                                        .count();
+                const std::string amt_s = tradeboy::utils::format_fixed_trunc_sig(val, 10, 6);
+
+                set_alert("TRANSFER_SUBMITTED\nPlease wait...");
+
+                if (hl_transfer_thread.joinable()) {
+                    hl_transfer_thread.join();
+                }
+
+                hl_transfer_thread = std::thread([this, w, to_perp, amt_s, nonce_ms]() {
+                    std::string resp;
+                    std::string err;
+                    bool ok = tradeboy::market::exchange_usd_class_transfer(
+                        w.wallet_address,
+                        w.private_key,
+                        to_perp,
+                        amt_s,
+                        nonce_ms,
+                        true,
+                        resp,
+                        err);
+
+                    if (ok) {
+                        hl_transfer_refresh_requested.store(true);
+                        set_hl_transfer_alert(*this, std::string("TRANSFER_OK\n") + truncate_for_alert(resp, 220));
+                    } else {
+                        std::string body = "TRANSFER_FAILED\n";
+                        if (!err.empty()) body += err;
+                        else body += "UNKNOWN";
+                        if (!resp.empty()) {
+                            body += "\n";
+                            body += truncate_for_alert(resp, 220);
+                        }
+                        set_hl_transfer_alert(*this, body);
+                    }
+                    hl_transfer_inflight.store(false);
+                });
+            }
         }
     }
 
@@ -685,6 +751,26 @@ void App::render() {
             pthread_mutex_unlock(&arb_deposit_mu);
         }
         set_alert(body);
+    }
+
+    if (hl_transfer_alert_pending.exchange(false)) {
+        std::string body;
+        {
+            pthread_mutex_lock(&hl_transfer_mu);
+            body = hl_transfer_alert_body;
+            pthread_mutex_unlock(&hl_transfer_mu);
+        }
+        set_alert(body);
+    }
+
+    if (hl_transfer_refresh_requested.exchange(false)) {
+        if (market_src && !wallet_cfg.wallet_address.empty()) {
+            market_src->set_user_address(wallet_cfg.wallet_address);
+        }
+        if (market_service) {
+            market_service->stop();
+            market_service->start();
+        }
     }
 
     // Process exit dialog flash -> trigger closing when finished.

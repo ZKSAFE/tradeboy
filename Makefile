@@ -37,6 +37,7 @@ TRADEBOY_SOURCES = \
 	src/perp/PerpScreen.cpp \
 	src/account/AccountScreen.cpp \
 	src/market/Hyperliquid.cpp \
+	src/market/HyperliquidExchange.cpp \
 	src/market/HyperliquidWgetDataSource.cpp \
 	src/market/HyperliquidWsDataSource.cpp \
 	src/market/MarketDataService.cpp \

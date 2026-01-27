@@ -103,6 +103,14 @@ struct App {
 
     std::thread arb_deposit_thread;
 
+    std::atomic<bool> hl_transfer_inflight{false};
+    std::atomic<bool> hl_transfer_alert_pending{false};
+    std::atomic<bool> hl_transfer_refresh_requested{false};
+    mutable pthread_mutex_t hl_transfer_mu;
+    std::string hl_transfer_alert_body;
+
+    std::thread hl_transfer_thread;
+
     tradeboy::model::TradeModel model;
     std::unique_ptr<tradeboy::market::IMarketDataSource> market_src;
     std::unique_ptr<tradeboy::market::MarketDataService> market_service;
