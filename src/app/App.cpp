@@ -303,9 +303,15 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
         // Close any lower-priority modals to avoid state conflicts under the exit dialog.
         account_address_dialog.reset();
         internal_transfer_dialog.reset();
+        internal_transfer_amount.close_with_result(tradeboy::ui::NumberInputResult::Cancelled, 0.0);
+        internal_transfer_pending_dir = -1;
 
         exit_dialog.open_dialog("", 1);
         exit_dialog_quit_after_close = false;
+        return;
+    }
+
+    if (tradeboy::ui::handle_input(internal_transfer_amount, in, edges)) {
         return;
     }
 
@@ -407,7 +413,15 @@ void App::render() {
     if (tab == Tab::Account && account_flash_timer > 0) {
         account_flash_timer--;
         if (account_flash_timer == 0 && account_flash_btn == 0) {
-            internal_transfer_dialog.open_dialog("Select internal transfer\nPress B to go back", 0);
+            const tradeboy::model::AccountSnapshot account = model.account_snapshot();
+            const bool spot_ready = (!account.hl_usdc_str.empty() && account.hl_usdc_str != "UNKNOWN");
+            const bool perp_ready = (!account.hl_perp_usdc_str.empty() && account.hl_perp_usdc_str != "UNKNOWN");
+            if (!spot_ready || !perp_ready) {
+                set_alert("Loading user data\nPlease wait...");
+            } else {
+                internal_transfer_pending_dir = -1;
+                internal_transfer_dialog.open_dialog("Select internal transfer\nPress B to go back", 0);
+            }
             account_flash_btn = -1;
         }
         if (account_flash_timer == 0 && account_flash_btn == 2) {
@@ -448,6 +462,31 @@ void App::render() {
     if (internal_transfer_dialog.open && internal_transfer_dialog.closing) {
         if (internal_transfer_dialog.tick_close_anim()) {
             internal_transfer_dialog.reset();
+
+            if (internal_transfer_pending_dir >= 0) {
+                const tradeboy::model::AccountSnapshot account = model.account_snapshot();
+                const bool spot_ready = (!account.hl_usdc_str.empty() && account.hl_usdc_str != "UNKNOWN");
+                const bool perp_ready = (!account.hl_perp_usdc_str.empty() && account.hl_perp_usdc_str != "UNKNOWN");
+                if (!spot_ready || !perp_ready) {
+                    internal_transfer_pending_dir = -1;
+                    set_alert("Loading user data\nPlease wait...");
+                } else {
+                    double maxv = 0.0;
+                    if (internal_transfer_pending_dir == 0) {
+                        maxv = account.hl_usdc;
+                    } else {
+                        maxv = account.hl_perp_usdc;
+                    }
+
+                    tradeboy::ui::NumberInputConfig cfg;
+                    cfg.title = (internal_transfer_pending_dir == 0) ? "SPOT to PERP" : "PERP to SPOT";
+                    cfg.min_value = 0.000001;
+                    cfg.max_value = maxv;
+                    cfg.available_label = "USDC";
+                    cfg.show_available_panel = true;
+                    internal_transfer_amount.open_with(cfg);
+                }
+            }
         }
     }
 
@@ -478,14 +517,14 @@ void App::render() {
     }
 
     // Main header for top-level tabs (Spot/Perp/Account)
-    if (!spot_order.open()) {
+    if (!spot_order.open() && !internal_transfer_amount.open) {
         tradeboy::ui::render_main_header(tab, l1_flash, r1_flash, font_bold);
     }
 
     // Spot page now uses the new UI demo layout. Data layer is intentionally
     // not connected yet (render uses mock data only).
     // Hide Spot page while order page is open to avoid overlap.
-    if (!spot_order.open()) {
+    if (!spot_order.open() && !internal_transfer_amount.open) {
         if (tab == Tab::Spot) {
             tradeboy::spot::render_spot_screen(
                 spot_row_idx,
@@ -558,7 +597,21 @@ void App::render() {
     dec_frame_counter(sell_press_frames);
     dec_frame_counter(l1_flash_frames);
     dec_frame_counter(r1_flash_frames);
+    tradeboy::ui::render(internal_transfer_amount, font_bold);
     tradeboy::spotOrder::render(spot_order, font_bold);
+
+    if (internal_transfer_amount.result != tradeboy::ui::NumberInputResult::None) {
+        tradeboy::ui::NumberInputResult res = internal_transfer_amount.result;
+        double val = internal_transfer_amount.result_value;
+        internal_transfer_amount.result = tradeboy::ui::NumberInputResult::None;
+        internal_transfer_amount.result_value = 0.0;
+
+        if (res == tradeboy::ui::NumberInputResult::Confirmed) {
+            char msg[128];
+            std::snprintf(msg, sizeof(msg), "TRANSFER_REQUESTED\n%.4f USDC", val);
+            set_alert(msg);
+        }
+    }
 
     // Handle spot order result
     if (spot_order.get_result() != tradeboy::ui::NumberInputResult::None) {
@@ -592,6 +645,7 @@ void App::render() {
 
     if (internal_transfer_dialog.open && !internal_transfer_dialog.closing) {
         if (internal_transfer_dialog.tick_flash()) {
+            internal_transfer_pending_dir = internal_transfer_dialog.pending_action;
             internal_transfer_dialog.start_close();
         }
     }

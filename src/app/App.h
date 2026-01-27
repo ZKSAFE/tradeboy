@@ -19,6 +19,7 @@
 
 #include "../wallet/Wallet.h"
 #include "../ui/DialogState.h"
+#include "../ui/NumberInputModal.h"
 
 namespace tradeboy::spot { struct SpotUiEvent; }
 
@@ -58,6 +59,10 @@ struct App {
     tradeboy::ui::DialogState account_address_dialog;
 
     tradeboy::ui::DialogState internal_transfer_dialog;
+
+    tradeboy::ui::NumberInputState internal_transfer_amount;
+
+    int internal_transfer_pending_dir = -1; // 0=SPOT->PERP, 1=PERP->SPOT
 
     // Exit dialog specific state
     bool exit_dialog_quit_after_close = false;
