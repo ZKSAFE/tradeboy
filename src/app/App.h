@@ -64,6 +64,8 @@ struct App {
 
     tradeboy::ui::NumberInputState withdraw_amount;
 
+    tradeboy::ui::NumberInputState deposit_amount;
+
     int internal_transfer_pending_dir = -1; // 0=SPOT->PERP, 1=PERP->SPOT
 
     // Exit dialog specific state

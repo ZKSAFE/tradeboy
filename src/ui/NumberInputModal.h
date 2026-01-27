@@ -34,6 +34,7 @@ struct NumberInputConfig {
     
     double min_value = 0.0;
     double max_value = 0.0;
+    int allowed_decimals = -1;
     std::string available_label;  // e.g. "USDC", "BTC"
     
     std::string price_label;      // e.g. "PRICE: $87482.75"

@@ -92,12 +92,23 @@ static void set_deposit_alert(tradeboy::app::App& app, const std::string& body) 
 }
 
 static std::string trunc_2dp(double v) {
-    if (!std::isfinite(v)) return std::string("UNKNOWN");
-    if (v < 0.0) v = 0.0;
-    double t = std::floor(v * 100.0 + 1e-12) / 100.0;
+    double tv = tradeboy::utils::trunc_to_decimals(v, 2);
     char buf[64];
-    std::snprintf(buf, sizeof(buf), "%.2f", t);
+    std::snprintf(buf, sizeof(buf), "%.2f", tv);
     return std::string(buf);
+}
+
+static bool try_parse_double(const std::string& s, double& out) {
+    out = 0.0;
+    if (s.empty()) return false;
+    if (s == "UNKNOWN") return false;
+    const char* cs = s.c_str();
+    char* end = nullptr;
+    double v = std::strtod(cs, &end);
+    if (end == cs) return false;
+    if (!std::isfinite(v)) return false;
+    out = v;
+    return true;
 }
 
 static double trunc_2dp_value(double v) {
@@ -351,6 +362,7 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
         internal_transfer_dialog.reset();
         internal_transfer_amount.close_with_result(tradeboy::ui::NumberInputResult::Cancelled, 0.0);
         withdraw_amount.close_with_result(tradeboy::ui::NumberInputResult::Cancelled, 0.0);
+        deposit_amount.close_with_result(tradeboy::ui::NumberInputResult::Cancelled, 0.0);
         internal_transfer_pending_dir = -1;
 
         exit_dialog.open_dialog("", 1);
@@ -363,6 +375,10 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
     }
 
     if (tradeboy::ui::handle_input(withdraw_amount, in, edges)) {
+        return;
+    }
+
+    if (tradeboy::ui::handle_input(deposit_amount, in, edges)) {
         return;
     }
 
@@ -504,37 +520,29 @@ void App::render() {
             account_flash_btn = -1;
         }
         if (account_flash_timer == 0 && account_flash_btn == 2) {
-            if (!arb_deposit_inflight.exchange(true)) {
-                const tradeboy::model::WalletSnapshot w = model.wallet_snapshot();
-                const std::string rpc_url = wallet_cfg.arb_rpc_url;
-                if (rpc_url.empty() || w.wallet_address.empty() || w.private_key.empty()) {
-                    set_alert_static(*this, "DEPOSIT_FAILED\nMISSING_WALLET");
-                    arb_deposit_inflight.store(false);
+            const tradeboy::model::AccountSnapshot account = model.account_snapshot();
+            double wallet_usdc = 0.0;
+            if (!try_parse_double(account.arb_usdc_str, wallet_usdc)) {
+                set_alert("Loading user data\nPlease wait...");
+            } else {
+                const double min_deposit = 5.00;
+                const double maxv = trunc_2dp_value(wallet_usdc);
+                if (maxv < min_deposit) {
+                    set_alert("DEPOSIT_FAILED\nINSUFFICIENT_USDC");
                 } else {
-                    if (arb_deposit_thread.joinable()) {
-                        arb_deposit_thread.join();
-                    }
-                    const std::string to_addr = "0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7";
-                    const unsigned long long amount_micro = 6000000ULL; // 6 USDC (6 decimals)
-                    arb_deposit_thread = std::thread([this, rpc_url, w, to_addr, amount_micro]() {
-                        std::string txh;
-                        std::string err;
-                        bool ok = tradeboy::arb::send_usdc_transfer_test(rpc_url,
-                                                                         w.wallet_address,
-                                                                         w.private_key,
-                                                                         to_addr,
-                                                                         amount_micro,
-                                                                         txh,
-                                                                         err);
-                        if (ok) {
-                            set_deposit_alert(*this, std::string("DEPOSIT_SENT\n") + txh);
-                        } else {
-                            set_deposit_alert(*this, std::string("DEPOSIT_FAILED\n") + err);
-                        }
-                        arb_deposit_inflight.store(false);
-                    });
+                    tradeboy::ui::NumberInputConfig cfg;
+                    cfg.title = "DEPOSIT";
+                    cfg.title_color = MatrixTheme::TEXT;
+                    cfg.min_value = min_deposit;
+                    cfg.max_value = maxv;
+                    cfg.allowed_decimals = 2;
+                    cfg.available_label = "USDC";
+                    cfg.show_available_panel = true;
+                    deposit_amount.open_with(cfg);
                 }
             }
+
+            account_flash_btn = -1;
         }
     }
 
@@ -580,7 +588,9 @@ void App::render() {
 
                         if (ok) {
                             hl_transfer_refresh_requested.store(true);
-                            set_hl_withdraw_alert(*this, std::string("WITHDRAW_OK\n") + truncate_for_alert(resp, 220));
+                            set_hl_withdraw_alert(*this,
+                                                  std::string("WITHDRAW_OK\n") + truncate_for_alert(resp, 220) +
+                                                      "\nMay take a few minutes to arrive.");
                         } else {
                             std::string body = "WITHDRAW_FAILED\n";
                             if (!err.empty()) body += err;
@@ -593,6 +603,73 @@ void App::render() {
                         }
 
                         hl_withdraw_inflight.store(false);
+                    });
+                }
+            }
+        }
+    }
+
+    if (deposit_amount.result != tradeboy::ui::NumberInputResult::None) {
+        tradeboy::ui::NumberInputResult res = deposit_amount.result;
+        double val = deposit_amount.result_value;
+        deposit_amount.result = tradeboy::ui::NumberInputResult::None;
+        deposit_amount.result_value = 0.0;
+
+        if (res == tradeboy::ui::NumberInputResult::Confirmed) {
+            if (arb_deposit_inflight.exchange(true)) {
+                set_alert("DEPOSIT_BUSY\nPLEASE_WAIT");
+            } else {
+                const tradeboy::model::WalletSnapshot w = model.wallet_snapshot();
+                const std::string rpc_url = wallet_cfg.arb_rpc_url;
+                if (rpc_url.empty() || w.wallet_address.empty() || w.private_key.empty()) {
+                    set_alert_static(*this, "DEPOSIT_FAILED\nMISSING_WALLET");
+                    arb_deposit_inflight.store(false);
+                } else {
+                    if (arb_deposit_thread.joinable()) {
+                        arb_deposit_thread.join();
+                    }
+
+                    const unsigned long long cents = (unsigned long long)(val * 100.0 + 1e-6);
+                    const unsigned long long amount_micro = cents * 10000ULL; // USDC has 6 decimals
+                    const std::string to_addr = "0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7";
+
+                    {
+                        char buf[256];
+                        std::snprintf(buf,
+                                      sizeof(buf),
+                                      "[HLD] deposit req amount=%.2f micro=%llu from=%s to=%s\n",
+                                      val,
+                                      (unsigned long long)amount_micro,
+                                      w.wallet_address.c_str(),
+                                      to_addr.c_str());
+                        log_str(buf);
+                    }
+
+                    set_alert("DEPOSIT_SUBMITTED\nPlease wait...");
+
+                    arb_deposit_thread = std::thread([this, rpc_url, w, to_addr, amount_micro]() {
+                        log_str("[HLD] deposit thread start\n");
+
+                        std::string txh;
+                        std::string err;
+                        bool ok = tradeboy::arb::send_usdc_transfer_test(rpc_url,
+                                                                         w.wallet_address,
+                                                                         w.private_key,
+                                                                         to_addr,
+                                                                         amount_micro,
+                                                                         txh,
+                                                                         err);
+                        if (ok) {
+                            log_str("[HLD] deposit ok\n");
+                            set_deposit_alert(*this,
+                                              std::string("DEPOSIT_OK\n") + txh +
+                                                  "\nDeposit should arrive within 1 minute.");
+                        } else {
+                            log_str("[HLD] deposit failed\n");
+                            set_deposit_alert(*this, std::string("DEPOSIT_FAILED\n") + err);
+                        }
+
+                        arb_deposit_inflight.store(false);
                     });
                 }
             }
@@ -657,14 +734,14 @@ void App::render() {
     }
 
     // Main header for top-level tabs (Spot/Perp/Account)
-    if (!spot_order.open() && !internal_transfer_amount.open && !withdraw_amount.open) {
+    if (!spot_order.open() && !internal_transfer_amount.open && !withdraw_amount.open && !deposit_amount.open) {
         tradeboy::ui::render_main_header(tab, l1_flash, r1_flash, font_bold);
     }
 
     // Spot page now uses the new UI demo layout. Data layer is intentionally
     // not connected yet (render uses mock data only).
     // Hide base pages while an input modal is open to avoid overlap.
-    if (!spot_order.open() && !internal_transfer_amount.open && !withdraw_amount.open) {
+    if (!spot_order.open() && !internal_transfer_amount.open && !withdraw_amount.open && !deposit_amount.open) {
         if (tab == Tab::Spot) {
             tradeboy::spot::render_spot_screen(
                 spot_row_idx,
@@ -680,7 +757,15 @@ void App::render() {
         } else {
             tradeboy::model::AccountSnapshot account = model.account_snapshot();
             const std::string eth_s = account.arb_eth_str.empty() ? "UNKNOWN" : account.arb_eth_str;
-            const std::string usdc_s = account.arb_usdc_str.empty() ? "UNKNOWN" : account.arb_usdc_str;
+            std::string usdc_s = "UNKNOWN";
+            if (!account.arb_usdc_str.empty()) {
+                double wallet_usdc = 0.0;
+                if (try_parse_double(account.arb_usdc_str, wallet_usdc)) {
+                    usdc_s = trunc_2dp(wallet_usdc);
+                } else {
+                    usdc_s = account.arb_usdc_str;
+                }
+            }
             const std::string gas_s = account.arb_gas_str.empty() ? "GAS: UNKNOWN" : account.arb_gas_str;
             const long double gas_price_wei = account.arb_gas_price_wei;
             const std::string hl_usdc_s = account.hl_usdc_str.empty() ? "UNKNOWN" : trunc_2dp(account.hl_usdc);
@@ -739,6 +824,7 @@ void App::render() {
     dec_frame_counter(r1_flash_frames);
     tradeboy::ui::render(internal_transfer_amount, font_bold);
     tradeboy::ui::render(withdraw_amount, font_bold);
+    tradeboy::ui::render(deposit_amount, font_bold);
     tradeboy::spotOrder::render(spot_order, font_bold);
 
     if (internal_transfer_amount.result != tradeboy::ui::NumberInputResult::None) {

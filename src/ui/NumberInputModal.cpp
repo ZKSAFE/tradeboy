@@ -194,7 +194,9 @@ bool handle_input(NumberInputState& st, const tradeboy::app::InputState& in, con
             double value = st.get_input_value();
             if (st.flash_btn_idx == 0) {
                 // CONFIRM
-                int allowed_decimals = allowed_decimals_from_min(st.config.min_value);
+                int allowed_decimals = (st.config.allowed_decimals >= 0)
+                                           ? st.config.allowed_decimals
+                                           : allowed_decimals_from_min(st.config.min_value);
                 int input_decimals = count_decimals(st.input);
                 if (allowed_decimals >= 0 && input_decimals > allowed_decimals) {
                     char msg[192];
