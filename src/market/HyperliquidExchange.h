@@ -13,4 +13,13 @@ bool exchange_usd_class_transfer(const std::string& wallet_address_0x,
                                 std::string& out_resp,
                                 std::string& out_err);
 
+bool exchange_withdraw3(const std::string& wallet_address_0x,
+                        const std::string& private_key_hex,
+                        const std::string& destination_addr_0x,
+                        const std::string& amount_str,
+                        unsigned long long nonce_ms,
+                        bool is_mainnet,
+                        std::string& out_resp,
+                        std::string& out_err);
+
 } // namespace tradeboy::market

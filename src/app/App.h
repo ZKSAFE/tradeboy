@@ -62,6 +62,8 @@ struct App {
 
     tradeboy::ui::NumberInputState internal_transfer_amount;
 
+    tradeboy::ui::NumberInputState withdraw_amount;
+
     int internal_transfer_pending_dir = -1; // 0=SPOT->PERP, 1=PERP->SPOT
 
     // Exit dialog specific state
@@ -110,6 +112,13 @@ struct App {
     std::string hl_transfer_alert_body;
 
     std::thread hl_transfer_thread;
+
+    std::atomic<bool> hl_withdraw_inflight{false};
+    std::atomic<bool> hl_withdraw_alert_pending{false};
+    mutable pthread_mutex_t hl_withdraw_mu;
+    std::string hl_withdraw_alert_body;
+
+    std::thread hl_withdraw_thread;
 
     tradeboy::model::TradeModel model;
     std::unique_ptr<tradeboy::market::IMarketDataSource> market_src;

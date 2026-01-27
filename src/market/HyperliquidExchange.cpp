@@ -762,6 +762,71 @@ static void eip712_hash_usd_class_transfer(const std::string& signature_chain_id
     tradeboy::utils::keccak_256(dig.data(), dig.size(), out_digest32);
 }
 
+static void eip712_hash_withdraw3(const std::string& signature_chain_id_hex,
+                                  const std::string& hyperliquid_chain,
+                                  const std::string& destination_addr_0x,
+                                  const std::string& amount_str,
+                                  unsigned long long time_ms,
+                                  unsigned char out_digest32[32]) {
+    unsigned char typehash_domain[32];
+    {
+        const char* t = "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)";
+        keccak_256_str(t, typehash_domain);
+    }
+
+    unsigned char name_hash[32];
+    unsigned char version_hash[32];
+    keccak_256_str("HyperliquidSignTransaction", name_hash);
+    keccak_256_str("1", version_hash);
+
+    unsigned char chain_id_u256[32];
+    store_u256_be(parse_hex_u64(signature_chain_id_hex), chain_id_u256);
+
+    unsigned char verifying_contract[32];
+    std::memset(verifying_contract, 0, 32);
+
+    unsigned char domain_sep[32];
+    {
+        std::vector<unsigned char> enc = cat4_32(typehash_domain, name_hash, version_hash, chain_id_u256);
+        enc.insert(enc.end(), verifying_contract, verifying_contract + 32);
+        tradeboy::utils::keccak_256(enc.data(), enc.size(), domain_sep);
+    }
+
+    unsigned char typehash_msg[32];
+    {
+        const char* t = "HyperliquidTransaction:Withdraw(string hyperliquidChain,string destination,string amount,uint64 time)";
+        keccak_256_str(t, typehash_msg);
+    }
+
+    unsigned char chain_hash[32];
+    unsigned char dest_hash[32];
+    unsigned char amount_hash[32];
+    keccak_256_str(hyperliquid_chain, chain_hash);
+
+    std::string dest_norm = std::string("0x") + addr_to_40hex_lower_no0x(destination_addr_0x);
+    keccak_256_str(dest_norm, dest_hash);
+    keccak_256_str(amount_str, amount_hash);
+
+    unsigned char time_u256[32];
+    store_u256_be(time_ms, time_u256);
+
+    unsigned char msg_hash[32];
+    {
+        std::vector<unsigned char> enc = cat4_32(typehash_msg, chain_hash, dest_hash, amount_hash);
+        enc.insert(enc.end(), time_u256, time_u256 + 32);
+        tradeboy::utils::keccak_256(enc.data(), enc.size(), msg_hash);
+    }
+
+    unsigned char prefix[2] = {0x19, 0x01};
+    std::vector<unsigned char> dig;
+    dig.reserve(2 + 32 + 32);
+    dig.push_back(prefix[0]);
+    dig.push_back(prefix[1]);
+    dig.insert(dig.end(), domain_sep, domain_sep + 32);
+    dig.insert(dig.end(), msg_hash, msg_hash + 32);
+    tradeboy::utils::keccak_256(dig.data(), dig.size(), out_digest32);
+}
+
 static bool sign_digest_eth(const unsigned char digest32[32],
                             const std::vector<unsigned char>& priv32,
                             const std::string& expected_wallet_addr_0x,
@@ -935,6 +1000,109 @@ bool exchange_usd_class_transfer(const std::string& wallet_address_0x,
         std::string prefix = resp.substr(0, std::min<size_t>(256, resp.size()));
         std::string line = std::string("[HLX] exchange_error resp_prefix=") + prefix + "\n";
         log_str(line.c_str());
+        return false;
+    }
+
+    return true;
+}
+
+bool exchange_withdraw3(const std::string& wallet_address_0x,
+                        const std::string& private_key_hex,
+                        const std::string& destination_addr_0x,
+                        const std::string& amount_str,
+                        unsigned long long nonce_ms,
+                        bool is_mainnet,
+                        std::string& out_resp,
+                        std::string& out_err) {
+    out_resp.clear();
+    out_err.clear();
+
+    std::vector<unsigned char> priv;
+    if (!tradeboy::utils::hex_to_bytes(private_key_hex, priv) || priv.size() != 32) {
+        out_err = "invalid_private_key";
+        return false;
+    }
+
+    const std::string signature_chain_id = "0x66eee";
+    const std::string hl_chain = is_mainnet ? "Mainnet" : "Testnet";
+
+    {
+        std::string dest_norm = std::string("0x") + addr_to_40hex_lower_no0x(destination_addr_0x);
+        std::string line = std::string("[HLW] withdraw3 req amount=") + amount_str +
+                           " dest=" + dest_norm +
+                           " time=" + std::to_string(nonce_ms) + "\n";
+        log_str(line.c_str());
+    }
+
+    unsigned char digest[32];
+    eip712_hash_withdraw3(signature_chain_id, hl_chain, destination_addr_0x, amount_str, nonce_ms, digest);
+    {
+        std::string dig_0x = tradeboy::utils::bytes_to_hex_lower(digest, 32, true);
+        std::string line = std::string("[HLW] digest=") + dig_0x + "\n";
+        log_str(line.c_str());
+    }
+
+    std::string r_0x, s_0x;
+    int v = 0;
+    std::string sign_err;
+    if (!sign_digest_eth(digest, priv, wallet_address_0x, r_0x, s_0x, v, sign_err)) {
+        out_err = std::string("sign_failed:") + sign_err;
+        log_str("[HLW] sign_failed\n");
+        return false;
+    }
+
+    {
+        std::string r_p = r_0x.substr(0, std::min<size_t>(12, r_0x.size()));
+        std::string s_p = s_0x.substr(0, std::min<size_t>(12, s_0x.size()));
+        std::string line = std::string("[HLW] sig v=") + std::to_string(v) + " r=" + r_p + " s=" + s_p + "\n";
+        log_str(line.c_str());
+    }
+
+    std::string dest_norm = std::string("0x") + addr_to_40hex_lower_no0x(destination_addr_0x);
+    std::string action_json = std::string("{") +
+                              "\"type\":\"withdraw3\"," +
+                              "\"hyperliquidChain\":\"" + hl_chain + "\"," +
+                              "\"signatureChainId\":\"" + signature_chain_id + "\"," +
+                              "\"amount\":\"" + json_escape(amount_str) + "\"," +
+                              "\"time\":" + std::to_string(nonce_ms) + "," +
+                              "\"destination\":\"" + json_escape(dest_norm) + "\"" +
+                              "}";
+
+    std::string payload = std::string("{") +
+                          "\"action\":" + action_json + "," +
+                          "\"nonce\":" + std::to_string(nonce_ms) + "," +
+                          "\"signature\":{" +
+                          "\"r\":\"" + r_0x + "\"," +
+                          "\"s\":\"" + s_0x + "\"," +
+                          "\"v\":" + std::to_string(v) +
+                          "}" +
+                          "}\n";
+
+    const char* path = "/tmp/hl_withdraw_req.json";
+    if (!write_file(path, payload)) {
+        out_err = "write_req_failed";
+        log_str("[HLW] write_req_failed\n");
+        return false;
+    }
+
+    const char* url = is_mainnet ? "https://api.hyperliquid.xyz/exchange" : "https://api.hyperliquid-testnet.xyz/exchange";
+    std::string resp;
+    if (!http_post_json_wget(url, path, resp)) {
+        out_err = "http_post_failed";
+        out_resp = resp;
+        log_str("[HLW] http_post_failed\n");
+        return false;
+    }
+
+    {
+        std::string prefix = resp.substr(0, std::min<size_t>(512, resp.size()));
+        std::string line = std::string("[HLW] resp_prefix=") + prefix + "\n";
+        log_str(line.c_str());
+    }
+
+    out_resp = resp;
+    if (resp.find("\"error\"") != std::string::npos) {
+        out_err = "exchange_error";
         return false;
     }
 

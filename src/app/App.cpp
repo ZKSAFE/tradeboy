@@ -42,11 +42,13 @@ namespace tradeboy::app {
 App::App() {
     pthread_mutex_init(&arb_deposit_mu, nullptr);
     pthread_mutex_init(&hl_transfer_mu, nullptr);
+    pthread_mutex_init(&hl_withdraw_mu, nullptr);
 }
 
 App::~App() {
     pthread_mutex_destroy(&arb_deposit_mu);
     pthread_mutex_destroy(&hl_transfer_mu);
+    pthread_mutex_destroy(&hl_withdraw_mu);
 }
 
 static void set_hl_transfer_alert(tradeboy::app::App& app, const std::string& body) {
@@ -54,6 +56,13 @@ static void set_hl_transfer_alert(tradeboy::app::App& app, const std::string& bo
     app.hl_transfer_alert_body = body;
     pthread_mutex_unlock(&app.hl_transfer_mu);
     app.hl_transfer_alert_pending.store(true);
+}
+
+static void set_hl_withdraw_alert(tradeboy::app::App& app, const std::string& body) {
+    pthread_mutex_lock(&app.hl_withdraw_mu);
+    app.hl_withdraw_alert_body = body;
+    pthread_mutex_unlock(&app.hl_withdraw_mu);
+    app.hl_withdraw_alert_pending.store(true);
 }
 
 static std::string truncate_for_alert(const std::string& s, size_t max_len) {
@@ -197,6 +206,9 @@ void App::shutdown() {
     if (hl_transfer_thread.joinable()) {
         hl_transfer_thread.join();
     }
+    if (hl_withdraw_thread.joinable()) {
+        hl_withdraw_thread.join();
+    }
     if (arb_rpc_service) {
         arb_rpc_service->stop();
         arb_rpc_service.reset();
@@ -338,6 +350,7 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
         account_address_dialog.reset();
         internal_transfer_dialog.reset();
         internal_transfer_amount.close_with_result(tradeboy::ui::NumberInputResult::Cancelled, 0.0);
+        withdraw_amount.close_with_result(tradeboy::ui::NumberInputResult::Cancelled, 0.0);
         internal_transfer_pending_dir = -1;
 
         exit_dialog.open_dialog("", 1);
@@ -346,6 +359,10 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
     }
 
     if (tradeboy::ui::handle_input(internal_transfer_amount, in, edges)) {
+        return;
+    }
+
+    if (tradeboy::ui::handle_input(withdraw_amount, in, edges)) {
         return;
     }
 
@@ -458,6 +475,34 @@ void App::render() {
             }
             account_flash_btn = -1;
         }
+
+        if (account_flash_timer == 0 && account_flash_btn == 1) {
+            const tradeboy::model::AccountSnapshot account = model.account_snapshot();
+            const bool spot_ready = (!account.hl_usdc_str.empty() && account.hl_usdc_str != "UNKNOWN");
+            const bool perp_ready = (!account.hl_perp_usdc_str.empty() && account.hl_perp_usdc_str != "UNKNOWN");
+            if (!spot_ready || !perp_ready) {
+                set_alert("Loading user data\nPlease wait...");
+            } else {
+                const double fee = 1.0;
+                const double min_withdraw = fee + 0.01;
+                const double perp_trunc = trunc_2dp_value(account.hl_perp_usdc);
+                const double maxv = perp_trunc;
+                if (maxv < min_withdraw) {
+                    set_alert("WITHDRAW_FAILED\nINSUFFICIENT_USDC_FOR_FEE");
+                } else {
+                    log_str("[HLW] open withdraw modal\n");
+                    tradeboy::ui::NumberInputConfig cfg;
+                    cfg.title = "WITHDRAW";
+                    cfg.title_color = MatrixTheme::ALERT;
+                    cfg.min_value = min_withdraw;
+                    cfg.max_value = maxv;
+                    cfg.available_label = "USDC";
+                    cfg.show_available_panel = true;
+                    withdraw_amount.open_with(cfg);
+                }
+            }
+            account_flash_btn = -1;
+        }
         if (account_flash_timer == 0 && account_flash_btn == 2) {
             if (!arb_deposit_inflight.exchange(true)) {
                 const tradeboy::model::WalletSnapshot w = model.wallet_snapshot();
@@ -487,6 +532,67 @@ void App::render() {
                             set_deposit_alert(*this, std::string("DEPOSIT_FAILED\n") + err);
                         }
                         arb_deposit_inflight.store(false);
+                    });
+                }
+            }
+        }
+    }
+
+    if (withdraw_amount.result != tradeboy::ui::NumberInputResult::None) {
+        tradeboy::ui::NumberInputResult res = withdraw_amount.result;
+        double val = withdraw_amount.result_value;
+        withdraw_amount.result = tradeboy::ui::NumberInputResult::None;
+        withdraw_amount.result_value = 0.0;
+
+        if (res == tradeboy::ui::NumberInputResult::Confirmed) {
+            if (hl_withdraw_inflight.exchange(true)) {
+                set_alert("WITHDRAW_BUSY\nPLEASE_WAIT");
+            } else {
+                const tradeboy::model::WalletSnapshot w = model.wallet_snapshot();
+                if (w.wallet_address.empty() || w.private_key.empty()) {
+                    hl_withdraw_inflight.store(false);
+                    set_alert("WITHDRAW_FAILED\nMISSING_WALLET");
+                } else {
+                    const unsigned long long nonce_ms = (unsigned long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                            std::chrono::system_clock::now().time_since_epoch())
+                                                            .count();
+                    const std::string amt_s = tradeboy::utils::format_fixed_trunc_sig(val, 10, 6);
+                    const std::string dest = w.wallet_address;
+
+                    set_alert("WITHDRAW_SUBMITTED\nPlease wait...");
+
+                    if (hl_withdraw_thread.joinable()) {
+                        hl_withdraw_thread.join();
+                    }
+
+                    hl_withdraw_thread = std::thread([this, w, dest, amt_s, nonce_ms]() {
+                        std::string resp;
+                        std::string err;
+                        bool ok = tradeboy::market::exchange_withdraw3(
+                            w.wallet_address,
+                            w.private_key,
+                            dest,
+                            amt_s,
+                            nonce_ms,
+                            true,
+                            resp,
+                            err);
+
+                        if (ok) {
+                            hl_transfer_refresh_requested.store(true);
+                            set_hl_withdraw_alert(*this, std::string("WITHDRAW_OK\n") + truncate_for_alert(resp, 220));
+                        } else {
+                            std::string body = "WITHDRAW_FAILED\n";
+                            if (!err.empty()) body += err;
+                            else body += "UNKNOWN";
+                            if (!resp.empty()) {
+                                body += "\n";
+                                body += truncate_for_alert(resp, 220);
+                            }
+                            set_hl_withdraw_alert(*this, body);
+                        }
+
+                        hl_withdraw_inflight.store(false);
                     });
                 }
             }
@@ -551,14 +657,14 @@ void App::render() {
     }
 
     // Main header for top-level tabs (Spot/Perp/Account)
-    if (!spot_order.open() && !internal_transfer_amount.open) {
+    if (!spot_order.open() && !internal_transfer_amount.open && !withdraw_amount.open) {
         tradeboy::ui::render_main_header(tab, l1_flash, r1_flash, font_bold);
     }
 
     // Spot page now uses the new UI demo layout. Data layer is intentionally
     // not connected yet (render uses mock data only).
-    // Hide Spot page while order page is open to avoid overlap.
-    if (!spot_order.open() && !internal_transfer_amount.open) {
+    // Hide base pages while an input modal is open to avoid overlap.
+    if (!spot_order.open() && !internal_transfer_amount.open && !withdraw_amount.open) {
         if (tab == Tab::Spot) {
             tradeboy::spot::render_spot_screen(
                 spot_row_idx,
@@ -632,6 +738,7 @@ void App::render() {
     dec_frame_counter(l1_flash_frames);
     dec_frame_counter(r1_flash_frames);
     tradeboy::ui::render(internal_transfer_amount, font_bold);
+    tradeboy::ui::render(withdraw_amount, font_bold);
     tradeboy::spotOrder::render(spot_order, font_bold);
 
     if (internal_transfer_amount.result != tradeboy::ui::NumberInputResult::None) {
@@ -773,6 +880,16 @@ void App::render() {
             pthread_mutex_lock(&hl_transfer_mu);
             body = hl_transfer_alert_body;
             pthread_mutex_unlock(&hl_transfer_mu);
+        }
+        set_alert(body);
+    }
+
+    if (hl_withdraw_alert_pending.exchange(false)) {
+        std::string body;
+        {
+            pthread_mutex_lock(&hl_withdraw_mu);
+            body = hl_withdraw_alert_body;
+            pthread_mutex_unlock(&hl_withdraw_mu);
         }
         set_alert(body);
     }
