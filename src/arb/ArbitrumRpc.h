@@ -26,4 +26,10 @@ bool send_usdc_transfer_test(const std::string& rpc_url,
                              std::string& out_txhash,
                              std::string& out_err);
 
+bool wait_tx_confirmations(const std::string& rpc_url,
+                           const std::string& txhash_0x,
+                           int min_confirmations,
+                           int timeout_ms,
+                           std::string& out_err);
+
 } // namespace tradeboy::arb

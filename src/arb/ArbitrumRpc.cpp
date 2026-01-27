@@ -220,6 +220,141 @@ static bool rpc_eth_gasPrice(const std::string& rpc_url, std::string& out_hex) {
     return parse_json_result_hex(resp, out_hex);
 }
 
+static bool rpc_eth_blockNumber(const std::string& rpc_url, std::string& out_hex) {
+    std::string body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}";
+    std::string resp;
+    if (!rpc_call(rpc_url, body, resp)) return false;
+    return parse_json_result_hex(resp, out_hex);
+}
+
+static bool json_find_hex_field(const std::string& json, const char* key, std::string& out_hex_0x) {
+    out_hex_0x.clear();
+    std::string needle = std::string("\"") + key + "\"";
+    size_t p = json.find(needle);
+    if (p == std::string::npos) return false;
+    p = json.find("0x", p);
+    if (p == std::string::npos) return false;
+    size_t q = p + 2;
+    while (q < json.size()) {
+        char c = json[q];
+        bool ishex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+        if (!ishex) break;
+        q++;
+    }
+    if (q <= p + 2) return false;
+    out_hex_0x = json.substr(p, q - p);
+    return true;
+}
+
+static bool rpc_eth_getTransactionReceipt_raw(const std::string& rpc_url,
+                                              const std::string& txhash_0x,
+                                              std::string& out_resp) {
+    out_resp.clear();
+    std::string body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_getTransactionReceipt\",\"params\":[\"" + txhash_0x + "\"]}";
+    return rpc_call(rpc_url, body, out_resp);
+}
+
+static bool rpc_receipt_is_null(const std::string& resp) {
+    // minimal detection of {"result":null}
+    size_t p = resp.find("\"result\"");
+    if (p == std::string::npos) return true;
+    size_t colon = resp.find(':', p);
+    if (colon == std::string::npos) return true;
+    size_t s = colon + 1;
+    while (s < resp.size() && (resp[s] == ' ' || resp[s] == '\n' || resp[s] == '\t' || resp[s] == '\r')) s++;
+    return (s + 4 <= resp.size() && resp.compare(s, 4, "null") == 0);
+}
+
+static bool rpc_receipt_parse_status_and_block(const std::string& resp, bool& out_success, unsigned long long& out_block) {
+    out_success = false;
+    out_block = 0ULL;
+    if (rpc_receipt_is_null(resp)) return false;
+
+    std::string status_hex;
+    std::string block_hex;
+    if (!json_find_hex_field(resp, "status", status_hex)) return false;
+    if (!json_find_hex_field(resp, "blockNumber", block_hex)) return false;
+
+    unsigned long long st = hex_quantity_to_ull(status_hex);
+    unsigned long long bn = hex_quantity_to_ull(block_hex);
+    out_success = (st == 1ULL);
+    out_block = bn;
+    return true;
+}
+
+bool wait_tx_confirmations(const std::string& rpc_url,
+                           const std::string& txhash_0x,
+                           int min_confirmations,
+                           int timeout_ms,
+                           std::string& out_err) {
+    out_err.clear();
+    if (rpc_url.empty() || txhash_0x.empty()) {
+        out_err = "missing_rpc_or_txhash";
+        return false;
+    }
+    if (min_confirmations < 0) min_confirmations = 0;
+
+    const auto start = std::chrono::steady_clock::now();
+    int last_conf = -1;
+    std::string last_soft_err;
+
+    while (true) {
+        const auto now = std::chrono::steady_clock::now();
+        int elapsed_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+        if (timeout_ms > 0 && elapsed_ms > timeout_ms) {
+            out_err = last_soft_err.empty() ? "confirm_timeout" : last_soft_err;
+            return false;
+        }
+
+        std::string receipt_resp;
+        if (!rpc_eth_getTransactionReceipt_raw(rpc_url, txhash_0x, receipt_resp)) {
+            last_soft_err = "receipt_rpc_failed";
+            std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+            continue;
+        }
+
+        if (rpc_receipt_is_null(receipt_resp)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+            continue;
+        }
+
+        bool success = false;
+        unsigned long long tx_block = 0ULL;
+        if (!rpc_receipt_parse_status_and_block(receipt_resp, success, tx_block)) {
+            last_soft_err = rpc_resp_summary(receipt_resp);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+            continue;
+        }
+        if (!success) {
+            out_err = "tx_reverted";
+            return false;
+        }
+
+        std::string head_hex;
+        if (!rpc_eth_blockNumber(rpc_url, head_hex)) {
+            last_soft_err = "blockNumber_rpc_failed";
+            std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+            continue;
+        }
+        unsigned long long head = hex_quantity_to_ull(head_hex);
+        unsigned long long conf_u = (head >= tx_block) ? (head - tx_block + 1ULL) : 0ULL;
+        int conf = (conf_u > (unsigned long long)0x7fffffffULL) ? 0x7fffffff : (int)conf_u;
+
+        if (conf != last_conf) {
+            char buf[96];
+            std::snprintf(buf, sizeof(buf), "[HLD] deposit confirmations=%d\n", conf);
+            log_str(buf);
+            last_conf = conf;
+        }
+
+        if (conf >= min_confirmations) {
+            return true;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+    }
+}
+
 static bool rpc_eth_gasPrice_raw(const std::string& rpc_url, std::string& out_hex, std::string& out_resp) {
     out_hex.clear();
     out_resp.clear();
@@ -249,6 +384,10 @@ static bool rpc_eth_sendRawTransaction(const std::string& rpc_url, const std::st
     std::string body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_sendRawTransaction\",\"params\":[\"" + rawtx_0x + "\"]}";
     if (!rpc_call(rpc_url, body, out_resp)) return false;
     return parse_json_result_hex(out_resp, out_txhash_0x);
+}
+
+static bool rpc_err_fee_too_low(const std::string& resp) {
+    return resp.find("max fee per gas less than block base fee") != std::string::npos;
 }
 
 static bool parse_json_base_fee_per_gas_hex(const std::string& json, std::string& out_hex_0x) {
@@ -955,7 +1094,6 @@ bool send_usdc_transfer_test(const std::string& rpc_url,
     }
 
     std::vector<unsigned char> nonce_be = hex_quantity_to_bytes_be(nonce_hex);
-    std::vector<unsigned char> gasprice_be = hex_quantity_to_bytes_be(gas_hex);
     unsigned long long gas_limit = 90000ULL;
 
     // Pre-check ETH balance for gas.
@@ -985,131 +1123,159 @@ bool send_usdc_transfer_test(const std::string& rpc_url,
     std::vector<unsigned char> to20 = addr_0x_to_20(usdc_contract);
     std::vector<unsigned char> data = build_erc20_transfer_data(to_addr_0x, amount_micro);
 
-    // RLP unsigned tx for EIP-155 signing: [nonce, gasPrice, gasLimit, to, value, data, chainId, 0, 0]
-    std::vector<unsigned char> payload;
-    rlp_append_item_bytes(rlp_u256_be(nonce_be), payload);
-    rlp_append_item_bytes(rlp_u256_be(gasprice_be), payload);
-    rlp_append_item_u64(gas_limit, payload);
-    rlp_append_item_bytes(to20, payload);
-    rlp_append_item_u64(0ULL, payload);
-    rlp_append_item_bytes(data, payload);
-    rlp_append_item_u64(chain_id, payload);
-    rlp_append_item_u64(0ULL, payload);
-    rlp_append_item_u64(0ULL, payload);
-    std::vector<unsigned char> rlp_unsigned;
-    rlp_encode_list(payload, rlp_unsigned);
+    auto try_send_with_gas = [&](const std::string& gas_hex_in, std::string& out_txh, std::string& out_resp) -> bool {
+        std::vector<unsigned char> gasprice_be = hex_quantity_to_bytes_be(gas_hex_in);
 
-    // keccak256
-    unsigned char h[32];
-    tradeboy::utils::keccak_256(rlp_unsigned.data(), rlp_unsigned.size(), h);
+        std::vector<unsigned char> payload;
+        rlp_append_item_bytes(rlp_u256_be(nonce_be), payload);
+        rlp_append_item_bytes(rlp_u256_be(gasprice_be), payload);
+        rlp_append_item_u64(gas_limit, payload);
+        rlp_append_item_bytes(to20, payload);
+        rlp_append_item_u64(0ULL, payload);
+        rlp_append_item_bytes(data, payload);
+        rlp_append_item_u64(chain_id, payload);
+        rlp_append_item_u64(0ULL, payload);
+        rlp_append_item_u64(0ULL, payload);
+        std::vector<unsigned char> rlp_unsigned;
+        rlp_encode_list(payload, rlp_unsigned);
 
-    BIGNUM* r = nullptr;
-    BIGNUM* s = nullptr;
-    std::string sign_err;
-    if (!secp256k1_sign_rs(h, priv, r, s, sign_err)) {
-        out_err = std::string("sign_failed:") + sign_err;
-        bn_freep(r);
-        bn_freep(s);
-        return false;
-    }
+        unsigned char h[32];
+        tradeboy::utils::keccak_256(rlp_unsigned.data(), rlp_unsigned.size(), h);
 
-    // Enforce low-s (EIP-2)
-    BN_CTX* ctx = BN_CTX_new();
-    if (!ctx) {
-        out_err = "BN_CTX_new_failed";
-        bn_freep(r);
-        bn_freep(s);
-        return false;
-    }
-    BN_CTX_start(ctx);
-    BIGNUM* n = BN_CTX_get(ctx);
-    BIGNUM* halfn = BN_CTX_get(ctx);
-    if (!halfn) {
-        BN_CTX_end(ctx);
-        BN_CTX_free(ctx);
-        out_err = "BN_CTX_get_failed";
-        bn_freep(r);
-        bn_freep(s);
-        return false;
-    }
-    EC_GROUP* group = EC_GROUP_new_by_curve_name(NID_secp256k1);
-    if (!group) {
-        BN_CTX_end(ctx);
-        BN_CTX_free(ctx);
-        out_err = "EC_GROUP_new_failed";
-        bn_freep(r);
-        bn_freep(s);
-        return false;
-    }
-    EC_GROUP_get_order(group, n, ctx);
-    BN_rshift1(halfn, n);
-    int s_was_high = 0;
-    if (BN_cmp(s, halfn) > 0) {
-        BIGNUM* s2 = BN_dup(s);
-        if (!s2) {
-            EC_GROUP_free(group);
-            BN_CTX_end(ctx);
-            BN_CTX_free(ctx);
-            out_err = "BN_dup_failed";
+        BIGNUM* r = nullptr;
+        BIGNUM* s = nullptr;
+        std::string sign_err;
+        if (!secp256k1_sign_rs(h, priv, r, s, sign_err)) {
+            out_resp = std::string("sign_failed:") + sign_err;
             bn_freep(r);
             bn_freep(s);
             return false;
         }
-        BN_sub(s2, n, s2);
-        BN_free(s);
-        s = s2;
-        s_was_high = 1;
-    }
-    EC_GROUP_free(group);
-    BN_CTX_end(ctx);
-    BN_CTX_free(ctx);
 
-    int recid = -1;
-    std::string rec_err;
-    if (!secp256k1_compute_recid(h, priv, r, s, recid, rec_err)) {
-        out_err = std::string("recid_failed:") + rec_err;
+        BN_CTX* ctx = BN_CTX_new();
+        if (!ctx) {
+            out_resp = "BN_CTX_new_failed";
+            bn_freep(r);
+            bn_freep(s);
+            return false;
+        }
+        BN_CTX_start(ctx);
+        BIGNUM* n = BN_CTX_get(ctx);
+        BIGNUM* halfn = BN_CTX_get(ctx);
+        if (!halfn) {
+            BN_CTX_end(ctx);
+            BN_CTX_free(ctx);
+            out_resp = "BN_CTX_get_failed";
+            bn_freep(r);
+            bn_freep(s);
+            return false;
+        }
+        EC_GROUP* group = EC_GROUP_new_by_curve_name(NID_secp256k1);
+        if (!group) {
+            BN_CTX_end(ctx);
+            BN_CTX_free(ctx);
+            out_resp = "EC_GROUP_new_failed";
+            bn_freep(r);
+            bn_freep(s);
+            return false;
+        }
+        EC_GROUP_get_order(group, n, ctx);
+        BN_rshift1(halfn, n);
+        int s_was_high = 0;
+        if (BN_cmp(s, halfn) > 0) {
+            BIGNUM* s2 = BN_dup(s);
+            if (!s2) {
+                EC_GROUP_free(group);
+                BN_CTX_end(ctx);
+                BN_CTX_free(ctx);
+                out_resp = "BN_dup_failed";
+                bn_freep(r);
+                bn_freep(s);
+                return false;
+            }
+            BN_sub(s2, n, s2);
+            BN_free(s);
+            s = s2;
+            s_was_high = 1;
+        }
+        EC_GROUP_free(group);
+        BN_CTX_end(ctx);
+        BN_CTX_free(ctx);
+
+        int recid = -1;
+        std::string rec_err;
+        if (!secp256k1_compute_recid(h, priv, r, s, recid, rec_err)) {
+            out_resp = std::string("recid_failed:") + rec_err;
+            bn_freep(r);
+            bn_freep(s);
+            return false;
+        }
+        if (s_was_high) {
+            recid ^= 1;
+        }
+
+        unsigned long long v = chain_id * 2ULL + 35ULL + (unsigned long long)recid;
+
+        std::vector<unsigned char> payload2;
+        rlp_append_item_bytes(rlp_u256_be(nonce_be), payload2);
+        rlp_append_item_bytes(rlp_u256_be(gasprice_be), payload2);
+        rlp_append_item_u64(gas_limit, payload2);
+        rlp_append_item_bytes(to20, payload2);
+        rlp_append_item_u64(0ULL, payload2);
+        rlp_append_item_bytes(data, payload2);
+        rlp_append_item_u64(v, payload2);
+        rlp_append_item_bn(r, payload2);
+        rlp_append_item_bn(s, payload2);
+        std::vector<unsigned char> raw;
+        rlp_encode_list(payload2, raw);
         bn_freep(r);
         bn_freep(s);
-        return false;
-    }
-    if (s_was_high) {
-        // If we flipped s, flip recid parity
-        recid ^= 1;
-    }
 
-    unsigned long long v = chain_id * 2ULL + 35ULL + (unsigned long long)recid;
-
-    // RLP signed tx: [nonce, gasPrice, gasLimit, to, value, data, v, r, s]
-    std::vector<unsigned char> payload2;
-    rlp_append_item_bytes(rlp_u256_be(nonce_be), payload2);
-    rlp_append_item_bytes(rlp_u256_be(gasprice_be), payload2);
-    rlp_append_item_u64(gas_limit, payload2);
-    rlp_append_item_bytes(to20, payload2);
-    rlp_append_item_u64(0ULL, payload2);
-    rlp_append_item_bytes(data, payload2);
-    rlp_append_item_u64(v, payload2);
-    rlp_append_item_bn(r, payload2);
-    rlp_append_item_bn(s, payload2);
-    std::vector<unsigned char> raw;
-    rlp_encode_list(payload2, raw);
-    bn_freep(r);
-    bn_freep(s);
-
-    std::string raw_0x = tradeboy::utils::bytes_to_hex_lower(raw.data(), raw.size(), true);
+        std::string raw_0x = tradeboy::utils::bytes_to_hex_lower(raw.data(), raw.size(), true);
+        return rpc_eth_sendRawTransaction(rpc_url, raw_0x, out_txh, out_resp);
+    };
 
     std::string resp;
     std::string txh;
-    if (!rpc_eth_sendRawTransaction(rpc_url, raw_0x, txh, resp)) {
+    if (try_send_with_gas(gas_hex, txh, resp)) {
+        out_txhash = txh;
+        return true;
+    }
+
+    if (rpc_err_fee_too_low(resp)) {
+        std::string p = resp.substr(0, 512);
+        std::string msg = std::string("[ARB] eth_sendRawTransaction fee too low, retrying resp_prefix=<<<") + p + ">>>\n";
+        log_str(msg.c_str());
+
+        std::string basefee_hex2;
+        std::string basefee_resp2;
+        if (rpc_eth_getBaseFeePerGas_raw(rpc_url, basefee_hex2, basefee_resp2)) {
+            unsigned long long bf2 = hex_quantity_to_ull(basefee_hex2);
+            unsigned long long bumped2 = bf2 * 2ULL + 1ULL;
+            std::ostringstream hx;
+            hx << std::hex << bumped2;
+            std::string hh = hx.str();
+            if ((hh.size() % 2) == 1) hh = std::string("0") + hh;
+            std::string gas_hex2 = std::string("0x") + hh;
+
+            std::string resp2;
+            std::string txh2;
+            if (try_send_with_gas(gas_hex2, txh2, resp2)) {
+                out_txhash = txh2;
+                return true;
+            }
+            resp = resp2;
+        }
+    }
+
+    {
         std::string p = resp.substr(0, 512);
         std::string summary = rpc_resp_summary(resp);
         std::string msg = std::string("[ARB] eth_sendRawTransaction failed ") + summary + " resp_prefix=<<<" + p + ">>>\n";
         log_str(msg.c_str());
         out_err = std::string("send_failed ") + summary + " resp_prefix=<<<" + p + ">>>";
-        return false;
     }
-
-    out_txhash = txh;
-    return true;
+    return false;
 }
 
 } // namespace tradeboy::arb

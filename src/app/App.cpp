@@ -660,10 +660,30 @@ void App::render() {
                                                                          txh,
                                                                          err);
                         if (ok) {
-                            log_str("[HLD] deposit ok\n");
-                            set_deposit_alert(*this,
-                                              std::string("DEPOSIT_OK\n") + txh +
-                                                  "\nDeposit should arrive within 1 minute.");
+                            log_str("[HLD] deposit broadcast ok\n");
+                            std::string cerr;
+                            bool conf_ok = tradeboy::arb::wait_tx_confirmations(rpc_url, txh, 1, 90000, cerr);
+                            if (conf_ok) {
+                                log_str("[HLD] deposit confirmed\n");
+                                set_deposit_alert(*this,
+                                                  std::string("DEPOSIT_OK\n") + txh +
+                                                      "\nDeposit should arrive within 1 minute.");
+                            } else {
+                                {
+                                    char buf[256];
+                                    std::snprintf(buf,
+                                                  sizeof(buf),
+                                                  "[HLD] deposit confirm failed err=%s tx=%s\n",
+                                                  cerr.empty() ? "" : cerr.c_str(),
+                                                  txh.c_str());
+                                    log_str(buf);
+                                }
+                                std::string body = "DEPOSIT_FAILED\n";
+                                body += (cerr.empty() ? "CONFIRM_FAILED" : cerr);
+                                body += "\n";
+                                body += txh;
+                                set_deposit_alert(*this, body);
+                            }
                         } else {
                             log_str("[HLD] deposit failed\n");
                             set_deposit_alert(*this, std::string("DEPOSIT_FAILED\n") + err);
@@ -945,7 +965,9 @@ void App::render() {
     {
         const bool now_ok = model.account_snapshot().arb_rpc_ok;
         if (!now_ok && arb_rpc_last_ok) {
-            set_alert("RPC_CONNECTION_FAILED");
+            if (!arb_deposit_inflight.load()) {
+                set_alert("RPC_CONNECTION_FAILED");
+            }
         }
         arb_rpc_last_ok = now_ok;
     }
