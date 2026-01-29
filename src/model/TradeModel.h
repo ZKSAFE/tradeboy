@@ -12,20 +12,31 @@
 
 #include <pthread.h>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace tradeboy::model {
 
 struct SpotRow {
+    std::string coin;
     std::string sym;
     double price = 0.0;
     double prev_price = 0.0;
+    double prev_day_px = 0.0;
+    double day_base_vlm = 0.0;
+    double day_ntl_vlm = 0.0;
+    int price_decimals = 2;
     double balance = 0.0;
     double entry_price = 0.0;
 
     SpotRow() = default;
-    SpotRow(std::string sym, double price, double prev_price, double balance, double entry_price)
-        : sym(std::move(sym)), price(price), prev_price(prev_price), balance(balance), entry_price(entry_price) {}
+    SpotRow(std::string coin, std::string sym, double price, double prev_price, double balance, double entry_price)
+        : coin(std::move(coin)),
+          sym(std::move(sym)),
+          price(price),
+          prev_price(prev_price),
+          balance(balance),
+          entry_price(entry_price) {}
 };
 
 struct TradeModelSnapshot {
@@ -95,7 +106,15 @@ struct TradeModel {
                              long double gas_price_wei,
                              bool ok);
 
+    void set_hl_perp_meta_json(const std::string& json, bool ok);
+    void set_hl_spot_meta_json(const std::string& json, bool ok);
+
+    std::string hl_perp_meta_json() const;
+    std::string hl_spot_meta_json() const;
+
     void update_mid_prices_from_allmids_json(const std::string& all_mids_json);
+    void update_spot_balances(const std::unordered_map<std::string, double>& balances_by_sym);
+    void sort_spot_rows();
 
 private:
     int spot_row_idx_ = 0;
@@ -123,6 +142,12 @@ private:
     std::string arb_gas_str_;
     long double arb_gas_price_wei_ = 0.0L;
     bool arb_rpc_ok_ = false;
+
+    std::string hl_perp_meta_json_;
+    bool hl_perp_meta_ok_ = false;
+
+    std::string hl_spot_meta_json_;
+    bool hl_spot_meta_ok_ = false;
 };
 
 } // namespace tradeboy::model

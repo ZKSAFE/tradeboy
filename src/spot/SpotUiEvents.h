@@ -16,6 +16,7 @@ struct SpotUiState {
 
 enum class SpotUiEventType {
     RowDelta,
+    PageDelta,
     EnterActionFocus,
     ExitActionFocus,
     SetActionIdx,
@@ -36,11 +37,45 @@ inline std::vector<SpotUiEvent> collect_spot_ui_events(const tradeboy::app::Inpu
                                                       const SpotUiState& ui) {
     std::vector<SpotUiEvent> ev;
 
+    // Key repeat for row navigation.
+    // - Fire once on initial press.
+    // - While held, after an initial delay, fire every interval frames.
+    static int up_hold = 0;
+    static int down_hold = 0;
+    const int initial_delay = 16;
+    const int repeat_interval = 3;
+
+    if (!in.up) up_hold = 0;
+    if (!in.down) down_hold = 0;
+
     if (tradeboy::utils::pressed(in.up, edges.prev.up)) {
         ev.push_back(SpotUiEvent(SpotUiEventType::RowDelta, -1, false));
+        up_hold = 1;
     }
     if (tradeboy::utils::pressed(in.down, edges.prev.down)) {
         ev.push_back(SpotUiEvent(SpotUiEventType::RowDelta, +1, false));
+        down_hold = 1;
+    }
+
+    if (in.up && !tradeboy::utils::pressed(in.up, edges.prev.up)) {
+        up_hold++;
+        if (up_hold >= initial_delay && ((up_hold - initial_delay) % repeat_interval) == 0) {
+            ev.push_back(SpotUiEvent(SpotUiEventType::RowDelta, -1, false));
+        }
+    }
+    if (in.down && !tradeboy::utils::pressed(in.down, edges.prev.down)) {
+        down_hold++;
+        if (down_hold >= initial_delay && ((down_hold - initial_delay) % repeat_interval) == 0) {
+            ev.push_back(SpotUiEvent(SpotUiEventType::RowDelta, +1, false));
+        }
+    }
+
+    // L2/R2 paging.
+    if (tradeboy::utils::pressed(in.l2, edges.prev.l2)) {
+        ev.push_back(SpotUiEvent(SpotUiEventType::PageDelta, -1, false));
+    }
+    if (tradeboy::utils::pressed(in.r2, edges.prev.r2)) {
+        ev.push_back(SpotUiEvent(SpotUiEventType::PageDelta, +1, false));
     }
 
     if (ui.spot_action_focus) {

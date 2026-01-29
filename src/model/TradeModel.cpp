@@ -65,6 +65,22 @@ AccountSnapshot TradeModel::account_snapshot() const {
     return a;
 }
 
+std::string TradeModel::hl_perp_meta_json() const {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) return std::string();
+    std::string s = hl_perp_meta_ok_ ? hl_perp_meta_json_ : std::string();
+    pthread_mutex_unlock(&mu);
+    return s;
+}
+
+std::string TradeModel::hl_spot_meta_json() const {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) return std::string();
+    std::string s = hl_spot_meta_ok_ ? hl_spot_meta_json_ : std::string();
+    pthread_mutex_unlock(&mu);
+    return s;
+}
+
 void TradeModel::set_wallet(const std::string& wallet_address, const std::string& private_key) {
     int rc = pthread_mutex_lock(&mu);
     if (rc != 0) {
@@ -72,6 +88,22 @@ void TradeModel::set_wallet(const std::string& wallet_address, const std::string
     }
     wallet_address_ = wallet_address;
     private_key_ = private_key;
+    pthread_mutex_unlock(&mu);
+}
+
+void TradeModel::set_hl_perp_meta_json(const std::string& json, bool ok) {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) return;
+    hl_perp_meta_ok_ = ok;
+    hl_perp_meta_json_ = ok ? json : std::string();
+    pthread_mutex_unlock(&mu);
+}
+
+void TradeModel::set_hl_spot_meta_json(const std::string& json, bool ok) {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) return;
+    hl_spot_meta_ok_ = ok;
+    hl_spot_meta_json_ = ok ? json : std::string();
     pthread_mutex_unlock(&mu);
 }
 
@@ -167,11 +199,71 @@ void TradeModel::update_mid_prices_from_allmids_json(const std::string& all_mids
     if (rc != 0) return;
     for (auto& r : spot_rows_) {
         double p = 0.0;
-        if (tradeboy::market::parse_mid_price(all_mids_json, r.sym, p)) {
+        if (tradeboy::market::parse_mid_price(all_mids_json, r.coin, p)) {
             r.prev_price = r.price;
             r.price = p;
         }
     }
+    pthread_mutex_unlock(&mu);
+}
+
+void TradeModel::update_spot_balances(const std::unordered_map<std::string, double>& balances_by_sym) {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) return;
+
+    for (auto& r : spot_rows_) {
+        auto it = balances_by_sym.find(r.sym);
+        if (it == balances_by_sym.end()) {
+            it = balances_by_sym.find(r.coin);
+        }
+        if (it != balances_by_sym.end()) {
+            r.balance = it->second;
+        }
+    }
+
+    pthread_mutex_unlock(&mu);
+}
+
+void TradeModel::sort_spot_rows() {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) return;
+    if (spot_rows_.empty()) {
+        spot_row_idx_ = 0;
+        pthread_mutex_unlock(&mu);
+        return;
+    }
+
+    std::string selected_coin;
+    if (spot_row_idx_ >= 0 && spot_row_idx_ < (int)spot_rows_.size()) {
+        selected_coin = spot_rows_[(size_t)spot_row_idx_].coin;
+    }
+
+    std::stable_sort(spot_rows_.begin(), spot_rows_.end(), [](const SpotRow& a, const SpotRow& b) {
+        const double aval = a.balance * a.price;
+        const double bval = b.balance * b.price;
+        const bool a_big = aval > 1.0;
+        const bool b_big = bval > 1.0;
+        if (a_big != b_big) return a_big > b_big;
+        if (a_big && b_big) {
+            if (aval != bval) return aval > bval;
+        }
+        if (a.day_ntl_vlm != b.day_ntl_vlm) return a.day_ntl_vlm > b.day_ntl_vlm;
+        return a.sym < b.sym;
+    });
+
+    if (!selected_coin.empty()) {
+        int new_idx = -1;
+        for (size_t i = 0; i < spot_rows_.size(); i++) {
+            if (spot_rows_[i].coin == selected_coin) {
+                new_idx = (int)i;
+                break;
+            }
+        }
+        if (new_idx >= 0) spot_row_idx_ = new_idx;
+    }
+    if (spot_row_idx_ < 0) spot_row_idx_ = 0;
+    if (spot_row_idx_ >= (int)spot_rows_.size()) spot_row_idx_ = (int)spot_rows_.size() - 1;
+
     pthread_mutex_unlock(&mu);
 }
 

@@ -45,6 +45,7 @@ struct App {
     int sell_trigger_frames = 0;
 
     int spot_row_idx = 0;
+    int spot_page_start_idx = 0;
     int spot_action_idx = 0; // 0=buy, 1=sell
     bool spot_action_focus = false;
 

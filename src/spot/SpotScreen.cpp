@@ -2,39 +2,46 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cmath>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#include "../model/TradeModel.h"
 #include "ui/MatrixTheme.h"
 #include "utils/Flash.h"
 #include "utils/Typewriter.h"
 
 namespace tradeboy::spot {
 
-struct Coin {
-    std::string id;
-    std::string symbol;
-    std::string name;
-    double price;
-    double change24h;
-    double holdings;
-};
+static double round_to_decimals(double v, int decimals) {
+    if (!std::isfinite(v)) return 0.0;
+    if (decimals <= 0) return std::round(v);
+    const double p = std::pow(10.0, (double)decimals);
+    return std::round(v * p) / p;
+}
 
-static const Coin MOCK_COINS_ARR[] = {
-    {"1", "BTC", "Bitcoin", 64230.50, 2.4, 0.15},
-    {"2", "ETH", "Ethereum", 3450.12, -1.2, 2.5},
-    {"3", "SOL", "Solana", 145.60, 5.8, 100.0},
-    {"4", "DOGE", "Dogecoin", 0.12, 0.5, 5000.0},
-    {"5", "ADA", "Cardano", 0.45, -3.4, 0.0},
-    {"6", "XRP", "Ripple", 0.60, 1.1, 0.0},
-    {"7", "DOT", "Polkadot", 7.20, -0.8, 0.0},
-};
+static std::string format_fixed_round(double v, int decimals) {
+    if (!std::isfinite(v)) return std::string("0");
+    int d = std::max(0, std::min(10, decimals));
+    double rv = round_to_decimals(v, d);
+    std::ostringstream ss;
+    ss.setf(std::ios::fixed);
+    ss.precision(d);
+    ss << rv;
+    return ss.str();
+}
 
-static std::vector<Coin> MOCK_COINS(
-    MOCK_COINS_ARR,
-    MOCK_COINS_ARR + (sizeof(MOCK_COINS_ARR) / sizeof(MOCK_COINS_ARR[0])));
-
-void render_spot_screen(int selected_row_idx, int action_idx, bool buy_pressed, bool sell_pressed, ImFont* font_bold, bool action_btn_held, bool l1_btn_held, bool r1_btn_held) {
+void render_spot_screen(const std::vector<tradeboy::model::SpotRow>& rows,
+                        int page_start_idx,
+                        int selected_row_idx,
+                        int action_idx,
+                        bool buy_pressed,
+                        bool sell_pressed,
+                        ImFont* font_bold,
+                        bool action_btn_held,
+                        bool l1_btn_held,
+                        bool r1_btn_held) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 p = ImGui::GetCursorScreenPos();
     ImVec2 size = ImGui::GetContentRegionAvail();
@@ -45,16 +52,26 @@ void render_spot_screen(int selected_row_idx, int action_idx, bool buy_pressed, 
 
     if (size.x <= 1.0f || size.y <= 1.0f) return;
     if (!dl) return;
-    if (MOCK_COINS.empty()) return;
+    if (rows.empty()) {
+        const float padding = 16.0f;
+        const float headerH = 54.0f;
+        float y = p.y + padding + headerH;
+        ImVec2 ts = ImGui::CalcTextSize("LOADING DATA...");
+        float cx = p.x + (size.x - ts.x) * 0.5f;
+        float cy = y + (size.y - y + p.y - ts.y) * 0.5f;
+        dl->AddText(ImVec2(cx, cy), MatrixTheme::DIM, "LOADING DATA...");
+        return;
+    }
 
-    selected_row_idx = std::max(0, std::min((int)MOCK_COINS.size() - 1, selected_row_idx));
+    page_start_idx = std::max(0, std::min((int)rows.size() - 1, page_start_idx));
+    selected_row_idx = std::max(0, std::min((int)rows.size() - 1, selected_row_idx));
     action_idx = std::max(0, std::min(1, action_idx));
 
     const float padding = 16.0f;
     const float headerH = 54.0f;
     const float footerH = 55.0f; // Increased to move footer up
     const float tableHeaderH = 30.0f;
-    const float rowH = 44.0f;
+    const int targetRows = 7;
 
     float y = p.y + padding;
     float w = size.x - 2 * padding;
@@ -92,14 +109,17 @@ void render_spot_screen(int selected_row_idx, int action_idx, bool buy_pressed, 
     // List
     {
         float listH = size.y - padding - footerH - y + p.y;
-        int startIdx = 0;
-        int maxRows = std::max(1, (int)(listH / rowH));
-        if (selected_row_idx >= maxRows) startIdx = selected_row_idx - maxRows + 1;
+        int startIdx = page_start_idx;
+        int maxRows = std::max(1, targetRows);
+        float rowH = std::max(1.0f, std::ceil(listH / (float)maxRows));
+        if (startIdx + maxRows > (int)rows.size()) {
+            startIdx = std::max(0, (int)rows.size() - maxRows);
+        }
         
         float textH = ImGui::CalcTextSize("A").y;
 
-        for (int i = startIdx; i < (int)MOCK_COINS.size() && (i - startIdx) < maxRows; ++i) {
-            const auto& coin = MOCK_COINS[i];
+        for (int i = startIdx; i < (int)rows.size() && (i - startIdx) < maxRows; ++i) {
+            const auto& coin = rows[(size_t)i];
             bool isSelected = (i == selected_row_idx);
             float rowY = y + (i - startIdx) * rowH;
 
@@ -124,29 +144,41 @@ void render_spot_screen(int selected_row_idx, int action_idx, bool buy_pressed, 
 
             ImU32 textCol = isSelected ? MatrixTheme::BLACK : MatrixTheme::TEXT;
             ImU32 numCol = isSelected ? MatrixTheme::BLACK : MatrixTheme::TEXT;
-            ImU32 changeCol = isSelected ? MatrixTheme::BLACK : (coin.change24h >= 0 ? MatrixTheme::TEXT : MatrixTheme::ALERT);
+            double chg24 = 0.0;
+            bool hasChg24 = (coin.prev_day_px > 0.0 && coin.price > 0.0 && std::isfinite(coin.prev_day_px) && std::isfinite(coin.price));
+            if (hasChg24) chg24 = ((coin.price - coin.prev_day_px) / coin.prev_day_px) * 100.0;
+            ImU32 changeCol = isSelected ? MatrixTheme::BLACK : ((!hasChg24 || chg24 >= 0) ? MatrixTheme::TEXT : MatrixTheme::ALERT);
 
             float col1 = left;
             float col2 = left + w * 0.35f;
             float col3 = right - 130;
             float col4 = right;
 
-            dl->AddText(ImVec2(col1 + 30, textY), textCol, coin.symbol.c_str());
+            dl->AddText(ImVec2(col1 + 30, textY), textCol, coin.sym.c_str());
 
-            if (coin.holdings > 0) {
+            if (coin.balance > 0) {
                 char holdBuf[32];
-                std::snprintf(holdBuf, sizeof(holdBuf), "%.2f", coin.holdings);
+                std::snprintf(holdBuf, sizeof(holdBuf), "%.2f", coin.balance);
                 ImVec2 sz = ImGui::CalcTextSize(holdBuf);
                 dl->AddText(ImVec2(col2 - sz.x * 0.5f, textY), textCol, holdBuf);
             }
 
-            char priceBuf[32];
-            std::snprintf(priceBuf, sizeof(priceBuf), "%.2f", coin.price);
-            ImVec2 szP = ImGui::CalcTextSize(priceBuf);
-            dl->AddText(ImVec2(col3 - szP.x, textY), numCol, priceBuf);
+            std::string priceStr = format_fixed_round(coin.price, coin.price_decimals);
+            ImVec2 szP = ImGui::CalcTextSize(priceStr.c_str());
+            dl->AddText(ImVec2(col3 - szP.x, textY), numCol, priceStr.c_str());
 
             char chgBuf[32];
-            std::snprintf(chgBuf, sizeof(chgBuf), "%+.1f%%", coin.change24h);
+            if (hasChg24) {
+                double c2 = round_to_decimals(chg24, 2);
+                if (std::fabs(c2) >= 1000.0) {
+                    const double mult = (coin.price / coin.prev_day_px);
+                    std::snprintf(chgBuf, sizeof(chgBuf), "%.2fx", mult);
+                } else {
+                    std::snprintf(chgBuf, sizeof(chgBuf), "%+.2f%%", c2);
+                }
+            } else {
+                std::snprintf(chgBuf, sizeof(chgBuf), "--");
+            }
             ImVec2 szC = ImGui::CalcTextSize(chgBuf);
             dl->AddText(ImVec2(col4 - szC.x, textY), changeCol, chgBuf);
         }
@@ -157,13 +189,13 @@ void render_spot_screen(int selected_row_idx, int action_idx, bool buy_pressed, 
         float footerTop = p.y + size.y - footerH;
         dl->AddLine(ImVec2(left, footerTop), ImVec2(right, footerTop), MatrixTheme::DIM, 2.0f);
 
-        const auto& selCoin = MOCK_COINS[selected_row_idx];
+        const auto& selCoin = rows[(size_t)selected_row_idx];
         char body[128];
-        double val = selCoin.holdings * selCoin.price;
-        if (selCoin.holdings > 0)
+        double val = selCoin.balance * selCoin.price;
+        if (selCoin.balance > 0)
             std::snprintf(body, sizeof(body), "It worth $%.2f", val);
         else
-            std::snprintf(body, sizeof(body), "No %s", selCoin.symbol.c_str());
+            std::snprintf(body, sizeof(body), "No %s", selCoin.sym.c_str());
 
         static tradeboy::utils::TypewriterState tw;
         std::string full_body = body;

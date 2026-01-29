@@ -124,41 +124,10 @@ static void set_alert_static(tradeboy::app::App& app, const char* msg) {
 void App::init_demo_data() {
     log_str("[App] init_demo_data enter\n");
 
-    std::vector<tradeboy::model::SpotRow> rows;
-    rows.reserve(8);
-
-    rows.emplace_back("BTC", 87482.75, 87482.75, 0.0, 87482.75);
-    rows.emplace_back("ETH", 2962.41, 2962.41, 0.0, 2962.41);
-    rows.emplace_back("SOL", 124.15, 124.15, 0.0, 124.15);
-    rows.emplace_back("BNB", 842.00, 842.00, 0.0, 842.00);
-    rows.emplace_back("XRP", 1.86, 1.86, 0.0, 1.86);
-    rows.emplace_back("TRX", 0.2843, 0.2843, 0.0, 0.2843);
-    rows.emplace_back("DOGE", 0.12907, 0.12907, 0.0, 0.12907);
-    rows.emplace_back("ADA", 0.3599, 0.3599, 0.0, 0.3599);
-
-    log_str("[App] init_demo_data rows ready\n");
-
-    uint32_t seed = (uint32_t)(SDL_GetTicks() ^ 0xA53C9E17u);
-    log_str("[App] init_demo_data rng seeded\n");
-    auto rnd01 = [&]() {
-        seed = seed * 1664525u + 1013904223u;
-        return (double)((seed >> 8) & 0xFFFFu) / 65535.0;
-    };
-    for (auto& r : rows) {
-        double bal = 0.0;
-        if (r.sym == "BTC") bal = 0.01 + rnd01() * 0.05;
-        else if (r.sym == "ETH") bal = 0.2 + rnd01() * 1.5;
-        else bal = rnd01() * 50.0;
-        r.balance = bal;
-
-        double entry_mul = 0.90 + rnd01() * 0.20;
-        r.entry_price = r.price * entry_mul;
-    }
-
     log_str("[App] init_demo_data applying to model\n");
 
     log_str("[App] init_demo_data call set_spot_rows\n");
-    model.set_spot_rows(std::move(rows));
+    model.set_spot_rows(std::vector<tradeboy::model::SpotRow>());
 
     log_str("[App] init_demo_data returned set_spot_rows\n");
     log_str("[App] init_demo_data call set_spot_row_idx\n");
@@ -263,12 +232,90 @@ void App::open_spot_order(bool buy) {
 }
 
 void App::apply_spot_ui_events(const std::vector<tradeboy::spot::SpotUiEvent>& ev) {
+    const int kSpotPageRows = 7;
     for (const auto& e : ev) {
         switch (e.type) {
             case tradeboy::spot::SpotUiEventType::RowDelta:
-                spot_row_idx += e.value;
-                model.set_spot_row_idx(spot_row_idx);
+                {
+                    tradeboy::model::TradeModelSnapshot s = model.snapshot();
+                    const int n = (int)s.spot_rows.size();
+                    if (n <= 0) {
+                        spot_row_idx = 0;
+                        spot_page_start_idx = 0;
+                        model.set_spot_row_idx(0);
+                        break;
+                    }
+
+                    const int max_start = std::max(0, n - kSpotPageRows);
+                    spot_page_start_idx = std::max(0, std::min(max_start, spot_page_start_idx));
+                    spot_row_idx = std::max(0, std::min(n - 1, spot_row_idx));
+
+                    if (e.value > 0) {
+                        // Down
+                        if (spot_row_idx < n - 1) {
+                            const int page_end = std::min(n - 1, spot_page_start_idx + kSpotPageRows - 1);
+                            if (spot_row_idx < page_end) {
+                                spot_row_idx++;
+                            } else {
+                                // At bottom of visible page: soft-scroll by 1 line (keep selection on bottom).
+                                spot_page_start_idx = std::min(max_start, spot_page_start_idx + 1);
+                                spot_row_idx = std::min(n - 1, spot_row_idx + 1);
+                            }
+                        }
+                    } else if (e.value < 0) {
+                        // Up
+                        if (spot_row_idx > 0) {
+                            const int page_top = spot_page_start_idx;
+                            if (spot_row_idx > page_top) {
+                                spot_row_idx--;
+                            } else {
+                                // At top of visible page: soft-scroll by 1 line (keep selection on top).
+                                spot_page_start_idx = std::max(0, spot_page_start_idx - 1);
+                                spot_row_idx = std::max(0, spot_row_idx - 1);
+                            }
+                        }
+                    }
+
+                    model.set_spot_row_idx(spot_row_idx);
+                    {
+                        tradeboy::model::TradeModelSnapshot s2 = model.snapshot();
+                        spot_row_idx = s2.spot_row_idx;
+                        const int n2 = (int)s2.spot_rows.size();
+                        const int max_start2 = std::max(0, n2 - kSpotPageRows);
+                        spot_page_start_idx = std::max(0, std::min(max_start2, spot_page_start_idx));
+                        // Ensure selected row stays visible.
+                        if (spot_row_idx < spot_page_start_idx) spot_page_start_idx = spot_row_idx;
+                        if (spot_row_idx >= spot_page_start_idx + kSpotPageRows) {
+                            spot_page_start_idx = std::max(0, spot_row_idx - kSpotPageRows + 1);
+                        }
+                        spot_page_start_idx = std::max(0, std::min(max_start2, spot_page_start_idx));
+                    }
+                }
                 break;
+            case tradeboy::spot::SpotUiEventType::PageDelta: {
+                tradeboy::model::TradeModelSnapshot s = model.snapshot();
+                const int n = (int)s.spot_rows.size();
+                if (n <= 0) {
+                    spot_row_idx = 0;
+                    spot_page_start_idx = 0;
+                    model.set_spot_row_idx(0);
+                    break;
+                }
+                const int max_start = std::max(0, n - kSpotPageRows);
+                spot_page_start_idx = std::max(0, std::min(max_start, spot_page_start_idx));
+
+                if (e.value > 0) {
+                    spot_page_start_idx = std::min(max_start, spot_page_start_idx + kSpotPageRows);
+                } else if (e.value < 0) {
+                    spot_page_start_idx = std::max(0, spot_page_start_idx - kSpotPageRows);
+                }
+                spot_row_idx = std::max(0, std::min(n - 1, spot_page_start_idx));
+                model.set_spot_row_idx(spot_row_idx);
+                {
+                    tradeboy::model::TradeModelSnapshot s2 = model.snapshot();
+                    spot_row_idx = s2.spot_row_idx;
+                }
+            } break;
             case tradeboy::spot::SpotUiEventType::EnterActionFocus:
                 spot_action_focus = true;
                 spot_action_idx = e.value;
@@ -763,7 +810,11 @@ void App::render() {
     // Hide base pages while an input modal is open to avoid overlap.
     if (!spot_order.open() && !internal_transfer_amount.open && !withdraw_amount.open && !deposit_amount.open) {
         if (tab == Tab::Spot) {
+            tradeboy::model::TradeModelSnapshot snap = model.snapshot();
+            spot_row_idx = snap.spot_row_idx;
             tradeboy::spot::render_spot_screen(
+                snap.spot_rows,
+                spot_page_start_idx,
                 spot_row_idx,
                 spot_action_idx,
                 buy_flash,
