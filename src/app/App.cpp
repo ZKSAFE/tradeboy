@@ -304,12 +304,16 @@ void App::apply_spot_ui_events(const std::vector<tradeboy::spot::SpotUiEvent>& e
                 const int max_start = std::max(0, n - kSpotPageRows);
                 spot_page_start_idx = std::max(0, std::min(max_start, spot_page_start_idx));
 
+                int offset_in_page = spot_row_idx - spot_page_start_idx;
+                offset_in_page = std::max(0, std::min(kSpotPageRows - 1, offset_in_page));
+
                 if (e.value > 0) {
                     spot_page_start_idx = std::min(max_start, spot_page_start_idx + kSpotPageRows);
                 } else if (e.value < 0) {
                     spot_page_start_idx = std::max(0, spot_page_start_idx - kSpotPageRows);
                 }
-                spot_row_idx = std::max(0, std::min(n - 1, spot_page_start_idx));
+
+                spot_row_idx = std::max(0, std::min(n - 1, spot_page_start_idx + offset_in_page));
                 model.set_spot_row_idx(spot_row_idx);
                 {
                     tradeboy::model::TradeModelSnapshot s2 = model.snapshot();

@@ -457,7 +457,7 @@ static bool build_spot_rows_from_spot_meta_and_ctxs(const std::string& spot_meta
         if (a.day_ntl_vlm != b.day_ntl_vlm) return a.day_ntl_vlm > b.day_ntl_vlm;
         return a.sym < b.sym;
     });
-    if (out_rows.size() > 20) out_rows.resize(20);
+    if (out_rows.size() > 40) out_rows.resize(40);
 
     return !out_rows.empty();
 }
