@@ -5,6 +5,7 @@
 #include <cmath>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "../model/TradeModel.h"
@@ -30,6 +31,20 @@ static std::string format_fixed_round(double v, int decimals) {
     ss.precision(d);
     ss << rv;
     return ss.str();
+}
+
+static ImU32 lerp_color_to_white(ImU32 base, float t) {
+    if (t <= 0.0f) return base;
+    if (t >= 1.0f) t = 1.0f;
+    ImU32 r = (base >> IM_COL32_R_SHIFT) & 0xFF;
+    ImU32 g = (base >> IM_COL32_G_SHIFT) & 0xFF;
+    ImU32 b = (base >> IM_COL32_B_SHIFT) & 0xFF;
+    const ImU32 a = (base >> IM_COL32_A_SHIFT) & 0xFF;
+
+    const ImU32 rr = (ImU32)std::round((double)r + (255.0 - (double)r) * t);
+    const ImU32 gg = (ImU32)std::round((double)g + (255.0 - (double)g) * t);
+    const ImU32 bb = (ImU32)std::round((double)b + (255.0 - (double)b) * t);
+    return IM_COL32(rr, gg, bb, a);
 }
 
 void render_spot_screen(const std::vector<tradeboy::model::SpotRow>& rows,
@@ -119,6 +134,14 @@ void render_spot_screen(const std::vector<tradeboy::model::SpotRow>& rows,
 
     // List
     {
+        struct FlashState {
+            double last_price = 0.0;
+            ImU32 last_base_col = MatrixTheme::TEXT;
+            int frames_left = 0;
+            bool init = false;
+        };
+        static std::unordered_map<std::string, FlashState> flash;
+
         float listH = size.y - padding - footerH - y + p.y;
         int startIdx = page_start_idx;
         int maxRows = std::max(1, targetRows);
@@ -154,11 +177,55 @@ void render_spot_screen(const std::vector<tradeboy::model::SpotRow>& rows,
             } 
 
             ImU32 textCol = isSelected ? MatrixTheme::BLACK : MatrixTheme::TEXT;
-            ImU32 numCol = isSelected ? MatrixTheme::BLACK : MatrixTheme::TEXT;
             double chg24 = 0.0;
             bool hasChg24 = (coin.prev_day_px > 0.0 && coin.price > 0.0 && std::isfinite(coin.prev_day_px) && std::isfinite(coin.price));
             if (hasChg24) chg24 = ((coin.price - coin.prev_day_px) / coin.prev_day_px) * 100.0;
-            ImU32 changeCol = isSelected ? MatrixTheme::BLACK : ((!hasChg24 || chg24 >= 0) ? MatrixTheme::TEXT : MatrixTheme::ALERT);
+
+            // 24H color is static (no flash): green up, red down.
+            ImU32 changeCol = isSelected ? MatrixTheme::BLACK : ((!hasChg24 || chg24 >= 0.0) ? MatrixTheme::TEXT : MatrixTheme::ALERT);
+
+            // Price color is real-time tick (compare to last price): green up, red down.
+            FlashState& fs = flash[coin.sym];
+            if (!fs.init) {
+                fs.init = true;
+                fs.last_price = coin.price;
+                fs.last_base_col = MatrixTheme::TEXT;
+                fs.frames_left = 0;
+            } else {
+                const bool price_changed = (std::isfinite(coin.price) && std::fabs(coin.price - fs.last_price) > 0.0);
+                if (price_changed) {
+                    fs.frames_left = 60;
+                }
+            }
+
+            // Determine base price color using strict comparison against previous price.
+            ImU32 basePriceCol = fs.last_base_col;
+            if (std::isfinite(coin.price) && std::isfinite(fs.last_price)) {
+                if (coin.price > fs.last_price) basePriceCol = MatrixTheme::TEXT;
+                else if (coin.price < fs.last_price) basePriceCol = MatrixTheme::ALERT;
+            } else {
+                basePriceCol = MatrixTheme::TEXT;
+            }
+            fs.last_base_col = basePriceCol;
+
+            // Update last price after deciding base color.
+            if (fs.init) fs.last_price = coin.price;
+
+            // Two-phase flash: 60 frames total.
+            // - frames_left == 60 => start at base
+            // - at 30 elapsed => fully white
+            // - at 60 elapsed => back to base
+            float t_white = 0.0f;
+            if (fs.frames_left > 0) {
+                int elapsed = 60 - fs.frames_left;
+                if (elapsed < 30) t_white = (float)elapsed / 30.0f;
+                else t_white = (float)(60 - elapsed) / 30.0f;
+                if (t_white < 0.0f) t_white = 0.0f;
+                if (t_white > 1.0f) t_white = 1.0f;
+                fs.frames_left--;
+            }
+
+            ImU32 priceCol = isSelected ? MatrixTheme::BLACK : lerp_color_to_white(basePriceCol, t_white);
 
             float col1 = left;
             float col2 = left + w * 0.35f;
@@ -176,7 +243,7 @@ void render_spot_screen(const std::vector<tradeboy::model::SpotRow>& rows,
 
             std::string priceStr = format_fixed_round(coin.price, coin.price_decimals);
             ImVec2 szP = ImGui::CalcTextSize(priceStr.c_str());
-            dl->AddText(ImVec2(col3 - szP.x, textY), numCol, priceStr.c_str());
+            dl->AddText(ImVec2(col3 - szP.x, textY), priceCol, priceStr.c_str());
 
             char chgBuf[32];
             if (hasChg24) {

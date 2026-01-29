@@ -987,7 +987,9 @@ void App::render() {
     // Process account address dialog flash -> trigger closing when finished.
     if (account_address_dialog.open && !account_address_dialog.closing) {
         if (account_address_dialog.tick_flash()) {
+            const int action = account_address_dialog.pending_action;
             account_address_dialog.start_close();
+            account_address_dialog.pending_action = action;
         }
     }
 
@@ -1021,7 +1023,7 @@ void App::render() {
         const bool now_ok = model.account_snapshot().arb_rpc_ok;
         if (!now_ok && arb_rpc_last_ok) {
             if (!arb_deposit_inflight.load()) {
-                set_alert("RPC_CONNECTION_FAILED");
+                // no-op
             }
         }
         arb_rpc_last_ok = now_ok;
