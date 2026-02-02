@@ -897,6 +897,25 @@ void App::render() {
     dec_frame_counter(sell_press_frames);
     dec_frame_counter(l1_flash_frames);
     dec_frame_counter(r1_flash_frames);
+    if (spot_order.open()) {
+        tradeboy::model::TradeModelSnapshot snap = model.snapshot();
+        double new_price = 0.0;
+        if (spot_row_idx >= 0 && spot_row_idx < (int)snap.spot_rows.size()) {
+            const auto& row = snap.spot_rows[(size_t)spot_row_idx];
+            if (row.sym == spot_order.sym) {
+                new_price = row.price;
+            }
+        }
+        if (new_price <= 0.0) {
+            for (const auto& row : snap.spot_rows) {
+                if (row.sym == spot_order.sym) {
+                    new_price = row.price;
+                    break;
+                }
+            }
+        }
+        spot_order.sync_price(new_price);
+    }
     tradeboy::ui::render(internal_transfer_amount, font_bold);
     tradeboy::ui::render(withdraw_amount, font_bold);
     tradeboy::ui::render(deposit_amount, font_bold);

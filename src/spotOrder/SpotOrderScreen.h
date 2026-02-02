@@ -37,6 +37,8 @@ struct SpotOrderState {
     tradeboy::ui::NumberInputResult get_result() const { return input_state.result; }
     double get_result_value() const { return input_state.result_value; }
     void clear_result() { input_state.result = tradeboy::ui::NumberInputResult::None; }
+
+    void sync_price(double new_price);
 };
 
 bool handle_input(SpotOrderState& st, const tradeboy::app::InputState& in, const tradeboy::app::EdgeState& edges);

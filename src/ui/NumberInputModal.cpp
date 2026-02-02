@@ -461,9 +461,14 @@ void render(NumberInputState& st, ImFont* font_bold) {
 
     double cur = parse_amount(st.input);
     if (st.config.price > 0.0) {
-        char approx_usd[96];
-        std::snprintf(approx_usd, sizeof(approx_usd), "\xE2\x89\x88 $%.2f USD", cur * st.config.price);
-        dl->AddText(ImVec2(left_x + left_w - input_pad - ImGui::CalcTextSize(approx_usd).x, input_y + input_h - 28.0f), dim, approx_usd);
+        char approx_val[96];
+        double approx = st.config.approx_divide ? (cur / st.config.price) : (cur * st.config.price);
+        if (st.config.approx_divide) {
+            std::snprintf(approx_val, sizeof(approx_val), "\xE2\x89\x88 %.4f %s", approx, st.config.approx_label.c_str());
+        } else {
+            std::snprintf(approx_val, sizeof(approx_val), "\xE2\x89\x88 $%.2f %s", approx, st.config.approx_label.c_str());
+        }
+        dl->AddText(ImVec2(left_x + left_w - input_pad - ImGui::CalcTextSize(approx_val).x, input_y + input_h - 28.0f), dim, approx_val);
     }
 
     // Left: keypad grid

@@ -33,10 +33,22 @@ void SpotOrderState::open_with(const tradeboy::model::SpotRow& row, Side in_side
     std::snprintf(price_label, sizeof(price_label), "PRICE: $%.2f", row.price);
     cfg.price_label = price_label;
     cfg.price = row.price;
+    cfg.approx_divide = (in_side == Side::Buy);
+    cfg.approx_label = (in_side == Side::Buy) ? row.sym : "USD";
     
     cfg.show_available_panel = true;
     
     input_state.open_with(cfg);
+}
+
+void SpotOrderState::sync_price(double new_price) {
+    if (!open()) return;
+    if (new_price <= 0.0 || std::fabs(new_price - price) < 0.0000001) return;
+    price = new_price;
+    input_state.config.price = new_price;
+    char price_label[64];
+    std::snprintf(price_label, sizeof(price_label), "PRICE: $%.2f", new_price);
+    input_state.config.price_label = price_label;
 }
 
 void SpotOrderState::close() {

@@ -39,6 +39,8 @@ struct NumberInputConfig {
     
     std::string price_label;      // e.g. "PRICE: $87482.75"
     double price = 0.0;           // For USD approximation display
+    bool approx_divide = false;   // false: input * price, true: input / price
+    std::string approx_label = "USD";  // e.g. "USD", "BTC"
     
     bool show_available_panel = true;
 };
