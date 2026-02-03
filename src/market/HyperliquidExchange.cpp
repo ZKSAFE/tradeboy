@@ -339,6 +339,22 @@ static std::string float_to_wire(double x) {
     return s;
 }
 
+static std::string float_to_wire_fixed_decimals(double x, int decimals) {
+    decimals = std::max(0, std::min(12, decimals));
+    double rounded = round_to_decimals(x, decimals);
+    if (rounded == -0.0) rounded = 0.0;
+    char buf[96];
+    std::snprintf(buf, sizeof(buf), "%.*f", decimals, rounded);
+    std::string s = buf;
+    if (decimals > 0) {
+        while (!s.empty() && s.back() == '0') s.pop_back();
+        if (!s.empty() && s.back() == '.') s.pop_back();
+    }
+    if (s == "-0") s = "0";
+    if (s.empty()) s = "0";
+    return s;
+}
+
 static bool secp256k1_key_from_priv(const std::vector<unsigned char>& priv32, EC_KEY*& out_key, std::string& out_err) {
     out_err.clear();
     out_key = nullptr;
@@ -1202,8 +1218,18 @@ bool exchange_spot_market_order(const std::string& wallet_address_0x,
         return false;
     }
 
-    double px_sig = round_to_sig_fig(px, 5);
-    int px_decimals = std::max(0, 8 - sz_decimals);
+    // Spot tick size rules (docs):
+    // - Prices can have up to 5 significant figures (unless integer price).
+    // - No more than MAX_DECIMALS - szDecimals decimal places (MAX_DECIMALS=8 for spot).
+    const int px_decimals = std::max(0, 8 - sz_decimals);
+
+    double px_sig = px;
+    if (std::fabs(px - std::round(px)) > 1e-9) {
+        px_sig = round_to_sig_fig(px, 5);
+    } else {
+        px_sig = std::round(px);
+    }
+
     double px_rounded = round_to_decimals(px_sig, px_decimals);
     if (px_rounded <= 0.0) {
         out_err = "invalid_price";
@@ -1217,8 +1243,24 @@ bool exchange_spot_market_order(const std::string& wallet_address_0x,
         return false;
     }
 
-    const std::string price_s = float_to_wire(px_rounded);
-    const std::string size_s = float_to_wire(size);
+    const std::string price_s = float_to_wire_fixed_decimals(px_rounded, px_decimals);
+    const std::string size_s = float_to_wire_fixed_decimals(size, sz_decimals);
+
+    {
+        char buf[256];
+        std::snprintf(buf,
+                      sizeof(buf),
+                      "[HLX] spot_order fmt sym=%s buy=%d sz_dec=%d px_dec=%d mid=%.8f px=%.8f p=%s s=%s\n",
+                      display_sym.c_str(),
+                      (int)is_buy,
+                      sz_decimals,
+                      px_decimals,
+                      mid_px,
+                      px_rounded,
+                      price_s.c_str(),
+                      size_s.c_str());
+        log_str(buf);
+    }
 
     const unsigned long long nonce_ms = (unsigned long long)std::chrono::duration_cast<std::chrono::milliseconds>(
                                             std::chrono::system_clock::now().time_since_epoch())
