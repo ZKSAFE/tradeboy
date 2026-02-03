@@ -43,12 +43,14 @@ App::App() {
     pthread_mutex_init(&arb_deposit_mu, nullptr);
     pthread_mutex_init(&hl_transfer_mu, nullptr);
     pthread_mutex_init(&hl_withdraw_mu, nullptr);
+    pthread_mutex_init(&hl_spot_order_mu, nullptr);
 }
 
 App::~App() {
     pthread_mutex_destroy(&arb_deposit_mu);
     pthread_mutex_destroy(&hl_transfer_mu);
     pthread_mutex_destroy(&hl_withdraw_mu);
+    pthread_mutex_destroy(&hl_spot_order_mu);
 }
 
 static void set_hl_transfer_alert(tradeboy::app::App& app, const std::string& body) {
@@ -63,6 +65,13 @@ static void set_hl_withdraw_alert(tradeboy::app::App& app, const std::string& bo
     app.hl_withdraw_alert_body = body;
     pthread_mutex_unlock(&app.hl_withdraw_mu);
     app.hl_withdraw_alert_pending.store(true);
+}
+
+static void set_hl_spot_order_alert(tradeboy::app::App& app, const std::string& body) {
+    pthread_mutex_lock(&app.hl_spot_order_mu);
+    app.hl_spot_order_alert_body = body;
+    pthread_mutex_unlock(&app.hl_spot_order_mu);
+    app.hl_spot_order_alert_pending.store(true);
 }
 
 static std::string truncate_for_alert(const std::string& s, size_t max_len) {
@@ -222,7 +231,7 @@ void App::open_spot_order(bool buy) {
 
     double maxv = 0.0;
     if (buy) {
-        maxv = (row.price > 0.0) ? (account.hl_usdc / row.price) : 0.0;
+        maxv = account.hl_usdc;
     } else {
         maxv = row.balance;
     }
@@ -987,12 +996,64 @@ void App::render() {
         spot_order.clear_result();
         
         if (res == tradeboy::ui::NumberInputResult::Confirmed) {
-            // TODO: Execute order
-            char msg[128];
-            std::snprintf(msg, sizeof(msg), "ORDER_SUBMITTED\n%s %.4f %s", 
-                spot_order.side == tradeboy::spotOrder::Side::Buy ? "BUY" : "SELL",
-                val, spot_order.sym.c_str());
-            set_alert(msg);
+            if (hl_spot_order_inflight.exchange(true)) {
+                set_alert("ORDER_BUSY\nPLEASE_WAIT");
+            } else {
+                const tradeboy::model::WalletSnapshot w = model.wallet_snapshot();
+                if (w.wallet_address.empty() || w.private_key.empty()) {
+                    hl_spot_order_inflight.store(false);
+                    set_alert("ORDER_FAILED\nMISSING_WALLET");
+                } else {
+                    const double mid_px = spot_order.price;
+                    const std::string spot_meta_json = model.hl_spot_meta_json();
+                    if (mid_px <= 0.0 || spot_meta_json.empty()) {
+                        hl_spot_order_inflight.store(false);
+                        set_alert("ORDER_FAILED\nMISSING_MARKET_DATA");
+                    } else {
+                        const bool is_buy = (spot_order.side == tradeboy::spotOrder::Side::Buy);
+                        const double input_amount = val;
+                        const std::string display_sym = spot_order.sym;
+
+                        set_alert("ORDER_SUBMITTED\nPlease wait...");
+
+                        if (hl_spot_order_thread.joinable()) {
+                            hl_spot_order_thread.join();
+                        }
+
+                        hl_spot_order_thread = std::thread([this, w, display_sym, is_buy, input_amount, mid_px, spot_meta_json]() {
+                            std::string resp;
+                            std::string err;
+                            bool ok = tradeboy::market::exchange_spot_market_order(
+                                w.wallet_address,
+                                w.private_key,
+                                display_sym,
+                                is_buy,
+                                input_amount,
+                                mid_px,
+                                spot_meta_json,
+                                0.01,
+                                true,
+                                resp,
+                                err);
+
+                            if (ok) {
+                                hl_transfer_refresh_requested.store(true);
+                                set_hl_spot_order_alert(*this, std::string("ORDER_OK\n") + truncate_for_alert(resp, 220));
+                            } else {
+                                std::string body = "ORDER_FAILED\n";
+                                if (!err.empty()) body += err;
+                                else body += "UNKNOWN";
+                                if (!resp.empty()) {
+                                    body += "\n";
+                                    body += truncate_for_alert(resp, 220);
+                                }
+                                set_hl_spot_order_alert(*this, body);
+                            }
+                            hl_spot_order_inflight.store(false);
+                        });
+                    }
+                }
+            }
         }
     }
 
@@ -1074,6 +1135,16 @@ void App::render() {
             pthread_mutex_lock(&hl_withdraw_mu);
             body = hl_withdraw_alert_body;
             pthread_mutex_unlock(&hl_withdraw_mu);
+        }
+        set_alert(body);
+    }
+
+    if (hl_spot_order_alert_pending.exchange(false)) {
+        std::string body;
+        {
+            pthread_mutex_lock(&hl_spot_order_mu);
+            body = hl_spot_order_alert_body;
+            pthread_mutex_unlock(&hl_spot_order_mu);
         }
         set_alert(body);
     }

@@ -35,6 +35,7 @@ struct NumberInputConfig {
     double min_value = 0.0;
     double max_value = 0.0;
     int allowed_decimals = -1;
+    int available_decimals = -1;
     std::string available_label;  // e.g. "USDC", "BTC"
     
     std::string price_label;      // e.g. "PRICE: $87482.75"
@@ -68,6 +69,8 @@ struct NumberInputState {
     int l1_flash_timer = 0;
     int r1_flash_timer = 0;
     int b_flash_timer = 0;
+    int l1_hold_frames = 0;
+    int r1_hold_frames = 0;
     
     NumberInputResult result = NumberInputResult::None;
     double result_value = 0.0;

@@ -28,6 +28,8 @@ void SpotOrderState::open_with(const tradeboy::model::SpotRow& row, Side in_side
     cfg.min_value = 0.0;
     cfg.max_value = std::max(0.0, in_max_possible);
     cfg.available_label = (in_side == Side::Buy) ? "USDC" : row.sym;
+    cfg.allowed_decimals = (in_side == Side::Buy) ? 2 : row.size_decimals;
+    cfg.available_decimals = (in_side == Side::Buy) ? 2 : row.price_decimals;
     
     char price_label[64];
     std::snprintf(price_label, sizeof(price_label), "PRICE: $%.2f", row.price);

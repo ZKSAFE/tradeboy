@@ -123,6 +123,13 @@ struct App {
 
     std::thread hl_withdraw_thread;
 
+    std::atomic<bool> hl_spot_order_inflight{false};
+    std::atomic<bool> hl_spot_order_alert_pending{false};
+    mutable pthread_mutex_t hl_spot_order_mu;
+    std::string hl_spot_order_alert_body;
+
+    std::thread hl_spot_order_thread;
+
     tradeboy::model::TradeModel model;
     std::unique_ptr<tradeboy::market::IMarketDataSource> market_src;
     std::unique_ptr<tradeboy::market::MarketDataService> market_service;

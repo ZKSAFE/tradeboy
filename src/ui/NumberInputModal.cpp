@@ -61,29 +61,93 @@ static void append_char(std::string& s, char ch) {
     s.push_back(ch);
 }
 
-static void set_amount_percent(NumberInputState& st, int percent) {
-    percent = tradeboy::utils::clampi(percent, 0, 100);
-    double v = (st.config.max_value * (double)percent) / 100.0;
-
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "%.4f", v);
-    std::string out = buf;
-    while (out.size() > 1 && out.back() == '0') out.pop_back();
-    if (!out.empty() && out.back() == '.') out.pop_back();
-    st.input = out.empty() ? "0" : out;
+static double trunc_to_decimals(double v, int decimals) {
+    if (decimals < 0) return v;
+    const double p = std::pow(10.0, (double)decimals);
+    return std::trunc(v * p) / p;
 }
 
-static int current_percent(const NumberInputState& st) {
-    if (st.config.max_value <= 0.0) return 0;
+static std::string format_trunc_fixed_full(double v, int decimals) {
+    if (!std::isfinite(v)) return "0";
+    int d = std::max(0, std::min(10, decimals));
+    const double p = std::pow(10.0, (double)d);
+    double tv = std::trunc(v * p) / p;
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.*f", d, tv);
+    return std::string(buf);
+}
+
+static std::string format_round_fixed(double v, int decimals) {
+    if (!std::isfinite(v)) return "0";
+    int d = std::max(0, std::min(10, decimals));
+    const double p = std::pow(10.0, (double)d);
+    double rv = std::round(v * p) / p;
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.*f", d, rv);
+    std::string out = buf;
+    if (d > 0) {
+        while (!out.empty() && out.back() == '0') out.pop_back();
+        if (!out.empty() && out.back() == '.') out.pop_back();
+    }
+    if (out.empty()) out = "0";
+    return out;
+}
+
+static std::string format_round_fixed_full(double v, int decimals) {
+    if (!std::isfinite(v)) return "0";
+    int d = std::max(0, std::min(10, decimals));
+    const double p = std::pow(10.0, (double)d);
+    double rv = std::round(v * p) / p;
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.*f", d, rv);
+    return std::string(buf);
+}
+
+static int available_decimals(const NumberInputState& st) {
+    return (st.config.available_decimals >= 0)
+               ? st.config.available_decimals
+               : ((st.config.allowed_decimals >= 0) ? st.config.allowed_decimals : 2);
+}
+
+static double available_value(const NumberInputState& st) {
+    int decimals = available_decimals(st);
+    double v = trunc_to_decimals(st.config.max_value, decimals);
+    return std::max(0.0, v);
+}
+
+static void set_amount_percent(NumberInputState& st, int percent) {
+    percent = tradeboy::utils::clampi(percent, 0, 100);
+    const double avail = available_value(st);
+    double v = (avail * (double)percent) / 100.0;
+    int decimals = available_decimals(st);
+    std::string out = format_round_fixed_full(v, decimals);
+    st.input = out;
+}
+
+static int current_percent_raw(const NumberInputState& st) {
+    const double avail = available_value(st);
+    if (avail <= 0.0) return 0;
     double v = parse_amount(st.input);
-    double p = (v / st.config.max_value) * 100.0;
-    int ip = (int)std::floor(p + 1e-9);
+    double p = (v / avail) * 100.0;
+    int ip = (int)std::round(p);
     return tradeboy::utils::clampi(ip, 0, 100);
 }
 
 static void adjust_percent_step(NumberInputState& st, int delta) {
-    int p = current_percent(st);
-    p = tradeboy::utils::clampi(p + delta, 0, 100);
+    const double avail = available_value(st);
+    if (avail <= 0.0) return;
+    int raw = current_percent_raw(st); // rounded percent shown to user
+    int p = raw;
+    if (delta > 0) {
+        // Up to nearest tick; if already on a tick, go to next tick.
+        if ((raw % 5) == 0) p = raw + 5;
+        else p = ((raw / 5) + 1) * 5;
+    } else {
+        // Down to nearest tick; if already on a tick, go to previous tick.
+        if ((raw % 5) == 0) p = raw - 5;
+        else p = (raw / 5) * 5;
+    }
+    p = tradeboy::utils::clampi(p, 0, 100);
     set_amount_percent(st, p);
 }
 
@@ -107,6 +171,8 @@ void NumberInputState::open_with(const NumberInputConfig& cfg) {
     l1_flash_timer = 0;
     r1_flash_timer = 0;
     b_flash_timer = 0;
+    l1_hold_frames = 0;
+    r1_hold_frames = 0;
     
     result = NumberInputResult::None;
     result_value = 0.0;
@@ -207,9 +273,11 @@ bool handle_input(NumberInputState& st, const tradeboy::app::InputState& in, con
                     std::snprintf(msg, sizeof(msg), "BELOW_MIN\nMIN: %.8f %s", st.config.min_value, st.config.available_label.c_str());
                     st.out_of_range_dialog.open_dialog(msg, 1);
                 } else if (value > st.config.max_value) {
-                    char msg[192];
-                    std::snprintf(msg, sizeof(msg), "OUT_OF_RANGE\nMAX: %.8f %s", st.config.max_value, st.config.available_label.c_str());
-                    st.out_of_range_dialog.open_dialog(msg, 1);
+                    int avail_decimals = available_decimals(st);
+                    double max_disp = trunc_to_decimals(st.config.max_value, avail_decimals);
+                    std::string max_str = format_trunc_fixed_full(max_disp, avail_decimals);
+                    std::string msg = std::string("OUT_OF_RANGE\nMAX: ") + max_str + " " + st.config.available_label;
+                    st.out_of_range_dialog.open_dialog(msg.c_str(), 1);
                 } else {
                     st.close_with_result(NumberInputResult::Confirmed, value);
                 }
@@ -228,13 +296,38 @@ bool handle_input(NumberInputState& st, const tradeboy::app::InputState& in, con
         return true;
     }
 
+    const int l1_initial_delay = 20;
+    const int l1_repeat_interval = 6;
+    if (!in.l1) {
+        st.l1_hold_frames = 0;
+    }
     if (tradeboy::utils::pressed(in.l1, edges.prev.l1)) {
         adjust_percent_step(st, -5);
         st.l1_flash_timer = 6;
+        st.l1_hold_frames = 1;
+    } else if (in.l1) {
+        st.l1_hold_frames++;
+        if (st.l1_hold_frames >= l1_initial_delay &&
+            ((st.l1_hold_frames - l1_initial_delay) % l1_repeat_interval) == 0) {
+            adjust_percent_step(st, -5);
+            st.l1_flash_timer = 6;
+        }
+    }
+
+    if (!in.r1) {
+        st.r1_hold_frames = 0;
     }
     if (tradeboy::utils::pressed(in.r1, edges.prev.r1)) {
         adjust_percent_step(st, +5);
         st.r1_flash_timer = 6;
+        st.r1_hold_frames = 1;
+    } else if (in.r1) {
+        st.r1_hold_frames++;
+        if (st.r1_hold_frames >= l1_initial_delay &&
+            ((st.r1_hold_frames - l1_initial_delay) % l1_repeat_interval) == 0) {
+            adjust_percent_step(st, +5);
+            st.r1_flash_timer = 6;
+        }
     }
 
     if (tradeboy::utils::pressed(in.up, edges.prev.up)) {
@@ -542,13 +635,15 @@ void render(NumberInputState& st, ImFont* font_bold) {
             dl->AddText(ImVec2(mt_x, mt_y), dim, meter_title);
         }
 
-        char alloc_val[64];
-        std::snprintf(alloc_val, sizeof(alloc_val), "%.2f %s", st.config.max_value, st.config.available_label.c_str());
-        ImVec2 av_sz = font_bold ? font_bold->CalcTextSizeA(alloc_font, FLT_MAX, 0.0f, alloc_val) : ImGui::CalcTextSize(alloc_val);
+        int avail_decimals = available_decimals(st);
+        double avail_value = trunc_to_decimals(st.config.max_value, avail_decimals);
+        std::string avail_str = format_trunc_fixed_full(avail_value, avail_decimals);
+        std::string alloc_text = avail_str + " " + st.config.available_label;
+        ImVec2 av_sz = font_bold ? font_bold->CalcTextSizeA(alloc_font, FLT_MAX, 0.0f, alloc_text.c_str()) : ImGui::CalcTextSize(alloc_text.c_str());
         if (font_bold) {
-            dl->AddText(font_bold, alloc_font, ImVec2(right_x + (right_w - av_sz.x) * 0.5f, mt_y + mt_sz.y + 4.0f), text, alloc_val);
+            dl->AddText(font_bold, alloc_font, ImVec2(right_x + (right_w - av_sz.x) * 0.5f, mt_y + mt_sz.y + 4.0f), text, alloc_text.c_str());
         } else {
-            dl->AddText(ImVec2(right_x + (right_w - av_sz.x) * 0.5f, mt_y + mt_sz.y + 4.0f), text, alloc_val);
+            dl->AddText(ImVec2(right_x + (right_w - av_sz.x) * 0.5f, mt_y + mt_sz.y + 4.0f), text, alloc_text.c_str());
         }
 
         // Vertical bar
@@ -561,7 +656,8 @@ void render(NumberInputState& st, ImFont* font_bold) {
         dl->AddRect(ImVec2(bar_x, bar_y), ImVec2(bar_x + bar_w, bar_y + bar_h), dim, 0.0f, 0, 2.0f);
 
         float pct = 0.0f;
-        if (st.config.max_value > 0.0) pct = (float)std::min(1.0, cur / st.config.max_value);
+        const double avail = available_value(st);
+        if (avail > 0.0) pct = (float)std::min(1.0, cur / avail);
         float fill_h = bar_h * pct;
         
         // Color based on range
@@ -575,7 +671,7 @@ void render(NumberInputState& st, ImFont* font_bold) {
         }
 
         char pct_s[16];
-        std::snprintf(pct_s, sizeof(pct_s), "%d%%", (int)std::round(pct * 100.0f));
+        std::snprintf(pct_s, sizeof(pct_s), "%d%%", current_percent_raw(st));
         float pct_font = 30.0f;
         ImVec2 ps = font_bold ? font_bold->CalcTextSizeA(pct_font, FLT_MAX, 0.0f, pct_s) : ImGui::CalcTextSize(pct_s);
         float pct_x = right_x + (right_w - ps.x) * 0.5f;

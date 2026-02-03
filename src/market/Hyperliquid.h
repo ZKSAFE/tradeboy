@@ -23,4 +23,9 @@ bool parse_spot_usdc_balance(const std::string& spot_state_json, double& out_usd
 
 bool parse_perp_usdc_balance(const std::string& perp_state_json, double& out_usdc);
 
+bool parse_spot_asset_info(const std::string& spot_meta_json,
+                           const std::string& display_sym,
+                           int& out_asset,
+                           int& out_sz_decimals);
+
 } // namespace tradeboy::market

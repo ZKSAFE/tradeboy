@@ -22,4 +22,16 @@ bool exchange_withdraw3(const std::string& wallet_address_0x,
                         std::string& out_resp,
                         std::string& out_err);
 
+bool exchange_spot_market_order(const std::string& wallet_address_0x,
+                                const std::string& private_key_hex,
+                                const std::string& display_sym,
+                                bool is_buy,
+                                double input_amount,
+                                double mid_px,
+                                const std::string& spot_meta_json,
+                                double slippage,
+                                bool is_mainnet,
+                                std::string& out_resp,
+                                std::string& out_err);
+
 } // namespace tradeboy::market

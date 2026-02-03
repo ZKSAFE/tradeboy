@@ -10,13 +10,22 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <cmath>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #include <openssl/bn.h>
 #include <openssl/ec.h>
 #include <openssl/ecdsa.h>
 #include <openssl/obj_mac.h>
+#pragma GCC diagnostic pop
 
 #include "utils/Log.h"
+#include "utils/Format.h"
+#include "Hyperliquid.h"
+
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 namespace tradeboy::market {
 
@@ -77,7 +86,7 @@ static void keccak_256_str(const std::string& in, unsigned char out32[32]) {
     tradeboy::utils::keccak_256(in.data(), in.size(), out32);
 }
 
-static std::vector<unsigned char> cat32(const unsigned char a[32], const unsigned char b[32]) {
+[[maybe_unused]] static std::vector<unsigned char> cat32(const unsigned char a[32], const unsigned char b[32]) {
     std::vector<unsigned char> out;
     out.reserve(64);
     out.insert(out.end(), a, a + 32);
@@ -102,6 +111,232 @@ static std::vector<unsigned char> cat4_32(const unsigned char a[32], const unsig
     out.insert(out.end(), c, c + 32);
     out.insert(out.end(), d, d + 32);
     return out;
+}
+
+static std::vector<unsigned char> cat5_32(const unsigned char a[32],
+                                          const unsigned char b[32],
+                                          const unsigned char c[32],
+                                          const unsigned char d[32],
+                                          const unsigned char e[32]) {
+    std::vector<unsigned char> out;
+    out.reserve(160);
+    out.insert(out.end(), a, a + 32);
+    out.insert(out.end(), b, b + 32);
+    out.insert(out.end(), c, c + 32);
+    out.insert(out.end(), d, d + 32);
+    out.insert(out.end(), e, e + 32);
+    return out;
+}
+
+static void append_be_u64(std::vector<unsigned char>& out, unsigned long long v) {
+    unsigned char buf[8];
+    for (int i = 0; i < 8; i++) {
+        buf[7 - i] = (unsigned char)(v & 0xFFu);
+        v >>= 8;
+    }
+    out.insert(out.end(), buf, buf + 8);
+}
+
+static void msgpack_pack_uint(std::vector<unsigned char>& out, unsigned long long v) {
+    if (v < 128) {
+        out.push_back((unsigned char)v);
+        return;
+    }
+    if (v <= 0xFFu) {
+        out.push_back(0xCC);
+        out.push_back((unsigned char)v);
+        return;
+    }
+    if (v <= 0xFFFFu) {
+        out.push_back(0xCD);
+        out.push_back((unsigned char)((v >> 8) & 0xFFu));
+        out.push_back((unsigned char)(v & 0xFFu));
+        return;
+    }
+    if (v <= 0xFFFFFFFFu) {
+        out.push_back(0xCE);
+        out.push_back((unsigned char)((v >> 24) & 0xFFu));
+        out.push_back((unsigned char)((v >> 16) & 0xFFu));
+        out.push_back((unsigned char)((v >> 8) & 0xFFu));
+        out.push_back((unsigned char)(v & 0xFFu));
+        return;
+    }
+    out.push_back(0xCF);
+    for (int i = 7; i >= 0; i--) {
+        out.push_back((unsigned char)((v >> (8 * i)) & 0xFFu));
+    }
+}
+
+static void msgpack_pack_bool(std::vector<unsigned char>& out, bool v) {
+    out.push_back(v ? 0xC3 : 0xC2);
+}
+
+static void msgpack_pack_str(std::vector<unsigned char>& out, const std::string& s) {
+    const size_t n = s.size();
+    if (n < 32) {
+        out.push_back((unsigned char)(0xA0 | (unsigned char)n));
+    } else if (n <= 0xFF) {
+        out.push_back(0xD9);
+        out.push_back((unsigned char)n);
+    } else if (n <= 0xFFFF) {
+        out.push_back(0xDA);
+        out.push_back((unsigned char)((n >> 8) & 0xFFu));
+        out.push_back((unsigned char)(n & 0xFFu));
+    } else {
+        out.push_back(0xDB);
+        out.push_back((unsigned char)((n >> 24) & 0xFFu));
+        out.push_back((unsigned char)((n >> 16) & 0xFFu));
+        out.push_back((unsigned char)((n >> 8) & 0xFFu));
+        out.push_back((unsigned char)(n & 0xFFu));
+    }
+    out.insert(out.end(), s.begin(), s.end());
+}
+
+static void msgpack_pack_map_header(std::vector<unsigned char>& out, size_t n) {
+    if (n < 16) {
+        out.push_back((unsigned char)(0x80 | (unsigned char)n));
+    } else if (n <= 0xFFFF) {
+        out.push_back(0xDE);
+        out.push_back((unsigned char)((n >> 8) & 0xFFu));
+        out.push_back((unsigned char)(n & 0xFFu));
+    } else {
+        out.push_back(0xDF);
+        out.push_back((unsigned char)((n >> 24) & 0xFFu));
+        out.push_back((unsigned char)((n >> 16) & 0xFFu));
+        out.push_back((unsigned char)((n >> 8) & 0xFFu));
+        out.push_back((unsigned char)(n & 0xFFu));
+    }
+}
+
+static void msgpack_pack_array_header(std::vector<unsigned char>& out, size_t n) {
+    if (n < 16) {
+        out.push_back((unsigned char)(0x90 | (unsigned char)n));
+    } else if (n <= 0xFFFF) {
+        out.push_back(0xDC);
+        out.push_back((unsigned char)((n >> 8) & 0xFFu));
+        out.push_back((unsigned char)(n & 0xFFu));
+    } else {
+        out.push_back(0xDD);
+        out.push_back((unsigned char)((n >> 24) & 0xFFu));
+        out.push_back((unsigned char)((n >> 16) & 0xFFu));
+        out.push_back((unsigned char)((n >> 8) & 0xFFu));
+        out.push_back((unsigned char)(n & 0xFFu));
+    }
+}
+
+static void msgpack_pack_order_action(std::vector<unsigned char>& out,
+                                      int asset,
+                                      bool is_buy,
+                                      const std::string& price,
+                                      const std::string& size,
+                                      const std::string& tif) {
+    msgpack_pack_map_header(out, 3);
+    msgpack_pack_str(out, "type");
+    msgpack_pack_str(out, "order");
+
+    msgpack_pack_str(out, "orders");
+    msgpack_pack_array_header(out, 1);
+    msgpack_pack_map_header(out, 6);
+    msgpack_pack_str(out, "a");
+    msgpack_pack_uint(out, (unsigned long long)asset);
+    msgpack_pack_str(out, "b");
+    msgpack_pack_bool(out, is_buy);
+    msgpack_pack_str(out, "p");
+    msgpack_pack_str(out, price);
+    msgpack_pack_str(out, "s");
+    msgpack_pack_str(out, size);
+    msgpack_pack_str(out, "r");
+    msgpack_pack_bool(out, false);
+    msgpack_pack_str(out, "t");
+    msgpack_pack_map_header(out, 1);
+    msgpack_pack_str(out, "limit");
+    msgpack_pack_map_header(out, 1);
+    msgpack_pack_str(out, "tif");
+    msgpack_pack_str(out, tif);
+
+    msgpack_pack_str(out, "grouping");
+    msgpack_pack_str(out, "na");
+}
+
+[[maybe_unused]] static bool address_to_bytes20(const std::string& addr_0x, unsigned char out20[20]) {
+    std::vector<unsigned char> bytes;
+    if (!tradeboy::utils::hex_to_bytes(addr_0x, bytes)) return false;
+    if (bytes.size() < 20) {
+        size_t pad = 20 - bytes.size();
+        std::memset(out20, 0, 20);
+        std::memcpy(out20 + pad, bytes.data(), bytes.size());
+        return true;
+    }
+    std::memcpy(out20, bytes.data() + (bytes.size() - 20), 20);
+    return true;
+}
+
+static void eip712_hash_l1_agent(const unsigned char connection_id[32],
+                                 bool is_mainnet,
+                                 unsigned char out_digest32[32]) {
+    unsigned char typehash_domain[32];
+    keccak_256_str("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)", typehash_domain);
+
+    unsigned char name_hash[32];
+    unsigned char version_hash[32];
+    keccak_256_str("Exchange", name_hash);
+    keccak_256_str("1", version_hash);
+
+    unsigned char chain_id_u256[32];
+    store_u256_be(1337, chain_id_u256);
+
+    unsigned char verifying_contract[32];
+    std::memset(verifying_contract, 0, 32);
+
+    unsigned char domain_sep[32];
+    {
+        std::vector<unsigned char> enc = cat5_32(typehash_domain, name_hash, version_hash, chain_id_u256, verifying_contract);
+        tradeboy::utils::keccak_256(enc.data(), enc.size(), domain_sep);
+    }
+
+    unsigned char typehash_agent[32];
+    keccak_256_str("Agent(string source,bytes32 connectionId)", typehash_agent);
+
+    const char* source = is_mainnet ? "a" : "b";
+    unsigned char source_hash[32];
+    keccak_256_str(source, source_hash);
+
+    unsigned char msg_hash[32];
+    {
+        std::vector<unsigned char> enc = cat3_32(typehash_agent, source_hash, connection_id);
+        tradeboy::utils::keccak_256(enc.data(), enc.size(), msg_hash);
+    }
+
+    unsigned char prefix[2] = {0x19, 0x01};
+    std::vector<unsigned char> dig;
+    dig.reserve(2 + 32 + 32);
+    dig.push_back(prefix[0]);
+    dig.push_back(prefix[1]);
+    dig.insert(dig.end(), domain_sep, domain_sep + 32);
+    dig.insert(dig.end(), msg_hash, msg_hash + 32);
+    tradeboy::utils::keccak_256(dig.data(), dig.size(), out_digest32);
+}
+
+static double round_to_sig_fig(double v, int sig) {
+    if (v == 0.0) return 0.0;
+    double abs_v = std::fabs(v);
+    double exp = std::floor(std::log10(abs_v));
+    double scale = std::pow(10.0, (double)(sig - 1) - exp);
+    return std::round(v * scale) / scale;
+}
+
+static double round_to_decimals(double v, int decimals) {
+    if (decimals < 0) return v;
+    double p = std::pow(10.0, (double)decimals);
+    return std::round(v * p) / p;
+}
+
+static std::string float_to_wire(double x) {
+    double rounded = round_to_decimals(x, 8);
+    if (rounded == -0.0) rounded = 0.0;
+    std::string s = tradeboy::utils::format_fixed_trunc_sig(rounded, 16, 8);
+    if (s == "-0") s = "0";
+    return s;
 }
 
 static bool secp256k1_key_from_priv(const std::vector<unsigned char>& priv32, EC_KEY*& out_key, std::string& out_err) {
@@ -257,7 +492,7 @@ static bool secp256k1_sign_rs(const unsigned char hash32[32],
     return true;
 }
 
-static bool secp256k1_compute_recid(const unsigned char hash32[32],
+[[maybe_unused]] static bool secp256k1_compute_recid(const unsigned char hash32[32],
                                    const std::vector<unsigned char>& priv32,
                                    const BIGNUM* r,
                                    const BIGNUM* s,
@@ -926,6 +1161,136 @@ static std::string json_escape(const std::string& s) {
         }
     }
     return out;
+}
+
+bool exchange_spot_market_order(const std::string& wallet_address_0x,
+                                const std::string& private_key_hex,
+                                const std::string& display_sym,
+                                bool is_buy,
+                                double input_amount,
+                                double mid_px,
+                                const std::string& spot_meta_json,
+                                double slippage,
+                                bool is_mainnet,
+                                std::string& out_resp,
+                                std::string& out_err) {
+    out_resp.clear();
+    out_err.clear();
+
+    if (mid_px <= 0.0 || input_amount <= 0.0) {
+        out_err = "invalid_input";
+        return false;
+    }
+
+    std::vector<unsigned char> priv;
+    if (!tradeboy::utils::hex_to_bytes(private_key_hex, priv) || priv.size() != 32) {
+        out_err = "invalid_private_key";
+        return false;
+    }
+
+    int asset = -1;
+    int sz_decimals = 0;
+    if (!tradeboy::market::parse_spot_asset_info(spot_meta_json, display_sym, asset, sz_decimals) || asset < 0) {
+        out_err = "spot_meta_missing";
+        return false;
+    }
+
+    const double slip = (slippage > 0.0) ? slippage : 0.0;
+    double px = mid_px * (is_buy ? (1.0 + slip) : (1.0 - slip));
+    if (px <= 0.0) {
+        out_err = "invalid_price";
+        return false;
+    }
+
+    double px_sig = round_to_sig_fig(px, 5);
+    int px_decimals = std::max(0, 8 - sz_decimals);
+    double px_rounded = round_to_decimals(px_sig, px_decimals);
+    if (px_rounded <= 0.0) {
+        out_err = "invalid_price";
+        return false;
+    }
+
+    double size = is_buy ? (input_amount / px_rounded) : input_amount;
+    size = tradeboy::utils::trunc_to_decimals(size, sz_decimals);
+    if (size <= 0.0) {
+        out_err = "invalid_size";
+        return false;
+    }
+
+    const std::string price_s = float_to_wire(px_rounded);
+    const std::string size_s = float_to_wire(size);
+
+    const unsigned long long nonce_ms = (unsigned long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                                            std::chrono::system_clock::now().time_since_epoch())
+                                            .count();
+
+    std::vector<unsigned char> packed;
+    msgpack_pack_order_action(packed, asset, is_buy, price_s, size_s, "Ioc");
+    append_be_u64(packed, nonce_ms);
+    packed.push_back(0x00);
+
+    unsigned char action_hash[32];
+    keccak_256_vec(packed, action_hash);
+
+    unsigned char digest[32];
+    eip712_hash_l1_agent(action_hash, is_mainnet, digest);
+
+    std::string r_0x, s_0x;
+    int v = 0;
+    std::string sign_err;
+    if (!sign_digest_eth(digest, priv, wallet_address_0x, r_0x, s_0x, v, sign_err)) {
+        out_err = std::string("sign_failed:") + sign_err;
+        return false;
+    }
+
+    std::string action_json = std::string("{") +
+                              "\"type\":\"order\"," +
+                              "\"orders\":[{" +
+                              "\"a\":" + std::to_string(asset) + "," +
+                              "\"b\":" + std::string(is_buy ? "true" : "false") + "," +
+                              "\"p\":\"" + json_escape(price_s) + "\"," +
+                              "\"s\":\"" + json_escape(size_s) + "\"," +
+                              "\"r\":false," +
+                              "\"t\":{\"limit\":{\"tif\":\"Ioc\"}}" +
+                              "}]," +
+                              "\"grouping\":\"na\"" +
+                              "}";
+
+    std::string payload = std::string("{") +
+                          "\"action\":" + action_json + "," +
+                          "\"nonce\":" + std::to_string(nonce_ms) + "," +
+                          "\"signature\":{" +
+                          "\"r\":\"" + r_0x + "\"," +
+                          "\"s\":\"" + s_0x + "\"," +
+                          "\"v\":" + std::to_string(v) +
+                          "}" +
+                          "}\n";
+
+    const char* path = "/tmp/hl_spot_order_req.json";
+    if (!write_file(path, payload)) {
+        out_err = "write_req_failed";
+        return false;
+    }
+
+    const char* url = is_mainnet ? "https://api.hyperliquid.xyz/exchange" : "https://api.hyperliquid-testnet.xyz/exchange";
+    std::string resp;
+    if (!http_post_json_wget(url, path, resp)) {
+        out_err = "http_post_failed";
+        out_resp = resp;
+        log_str("[HLX] spot_order http_post_failed\n");
+        return false;
+    }
+
+    out_resp = resp;
+    if (resp.find("\"error\"") != std::string::npos) {
+        out_err = "exchange_error";
+        std::string prefix = resp.substr(0, std::min<size_t>(256, resp.size()));
+        std::string line = std::string("[HLX] spot_order exchange_error resp_prefix=") + prefix + "\n";
+        log_str(line.c_str());
+        return false;
+    }
+
+    return true;
 }
 
 bool exchange_usd_class_transfer(const std::string& wallet_address_0x,

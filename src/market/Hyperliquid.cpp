@@ -51,6 +51,72 @@ static bool pj_get_string_like(const picojson::value& v, std::string& out) {
     return false;
 }
 
+static std::string map_token_display_sym(const std::string& token_name, const std::string& token_full_name) {
+    struct NameMap {
+        const char* l1;
+        const char* disp;
+    };
+    static const NameMap kOverrides[] = {
+        {"UBTC", "BTC"},
+        {"UETH", "ETH"},
+        {"USOL", "SOL"},
+        {"UPUMP", "PUMP"},
+        {"UBONK", "BONK"},
+        {"UMON", "MON"},
+        {"MON", "MONPRO"},
+        {"UFART", "FARTCOIN"},
+        {"UXPL", "XPL"},
+        {"UENA", "ENA"},
+        {"HPENGU", "PENGU"},
+        {"UDZ", "2Z"},
+        {"USDE", "USDE"},
+        {"FEUSD", "FEUSD"},
+        {"USDHL", "USDHL"},
+        {"MMOVE", "MOVE"},
+        {"USDT0", "USDT"},
+        {"XAUT0", "XAUT"},
+        {"LINK0", "LINK"},
+        {"TRX0", "TRX"},
+        {"AAVE0", "AAVE"},
+        {"AVAX0", "AVAX"},
+        {"PEPE0", "PEPE"},
+        {"BNB1", "BNB"},
+        {"XMR1", "XMR"},
+    };
+    for (size_t i = 0; i < sizeof(kOverrides) / sizeof(kOverrides[0]); i++) {
+        if (token_name == kOverrides[i].l1) return kOverrides[i].disp;
+    }
+
+    if (!token_full_name.empty()) {
+        const std::string prefix = "Unit ";
+        if (token_full_name.size() > prefix.size() && token_full_name.compare(0, prefix.size(), prefix) == 0) {
+            const std::string base = token_full_name.substr(prefix.size());
+            if (base == "Bitcoin") return "BTC";
+            if (base == "Ethereum") return "ETH";
+            if (base == "Solana") return "SOL";
+            if (base == "Pump Fun") return "PUMP";
+            if (base == "Bonk") return "BONK";
+        }
+
+        auto is_upper_alnum = [](char c) {
+            return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+        };
+        for (size_t i = 0; i < token_full_name.size(); i++) {
+            if (token_full_name[i] == '$' && (i + 1) < token_full_name.size()) {
+                size_t j = i + 1;
+                while (j < token_full_name.size() && is_upper_alnum(token_full_name[j])) j++;
+                if (j > i + 1) {
+                    std::string t = token_full_name.substr(i + 1, j - (i + 1));
+                    while (!t.empty() && t.back() >= '0' && t.back() <= '9') t.pop_back();
+                    if (!t.empty()) return t;
+                }
+            }
+        }
+    }
+
+    return token_name;
+}
+
 static bool pj_parse_root_object(const std::string& s, picojson::object& out_obj) {
     out_obj.clear();
     picojson::value root;
@@ -350,6 +416,86 @@ bool parse_mid_price(const std::string& all_mids_json, const std::string& coin, 
     if (!parse_quoted_value(all_mids_json, p, v)) return false;
     out_price = std::strtod(v.c_str(), nullptr);
     return out_price > 0.0;
+}
+
+bool parse_spot_asset_info(const std::string& spot_meta_json,
+                           const std::string& display_sym,
+                           int& out_asset,
+                           int& out_sz_decimals) {
+    out_asset = -1;
+    out_sz_decimals = 0;
+    picojson::value root;
+    std::string err = picojson::parse(root, spot_meta_json);
+    if (!err.empty()) return false;
+
+    const picojson::object* obj = nullptr;
+    if (root.is<picojson::object>()) {
+        obj = pj_get_obj(root);
+    } else if (root.is<picojson::array>()) {
+        const picojson::array& top = root.get<picojson::array>();
+        if (!top.empty()) {
+            obj = pj_get_obj(top[0]);
+        }
+    }
+    if (!obj) return false;
+
+    const picojson::value* uni_v = pj_find(*obj, "universe");
+    const picojson::value* tokens_v = pj_find(*obj, "tokens");
+    const picojson::array* universe = uni_v ? pj_get_arr(*uni_v) : nullptr;
+    const picojson::array* tokens = tokens_v ? pj_get_arr(*tokens_v) : nullptr;
+    if (!universe || !tokens) return false;
+
+    for (size_t i = 0; i < universe->size(); i++) {
+        const picojson::object* pair = pj_get_obj((*universe)[i]);
+        if (!pair) continue;
+
+        const picojson::value* name_v = pj_find(*pair, "name");
+        if (!name_v) continue;
+        std::string name;
+        if (!pj_get_string_like(*name_v, name) || name.empty()) continue;
+
+        const picojson::value* toks_v = pj_find(*pair, "tokens");
+        const picojson::array* toks = toks_v ? pj_get_arr(*toks_v) : nullptr;
+        if (!toks || toks->size() < 1) continue;
+
+        int base_idx = -1;
+        if ((*toks)[0].is<double>()) base_idx = (int)(*toks)[0].get<double>();
+        if (base_idx < 0 || (size_t)base_idx >= tokens->size()) continue;
+
+        const picojson::object* base_tok = pj_get_obj((*tokens)[(size_t)base_idx]);
+        if (!base_tok) continue;
+
+        std::string token_name;
+        std::string token_full;
+        const picojson::value* tname = pj_find(*base_tok, "name");
+        const picojson::value* tfull = pj_find(*base_tok, "fullName");
+        if (tname) (void)pj_get_string_like(*tname, token_name);
+        if (tfull) (void)pj_get_string_like(*tfull, token_full);
+
+        if (!token_name.empty()) {
+            token_name = map_token_display_sym(token_name, token_full);
+        }
+        if (token_name.empty()) {
+            size_t slash = name.find('/');
+            token_name = (slash == std::string::npos) ? name : name.substr(0, slash);
+        }
+        if (token_name != display_sym) continue;
+
+        int index = -1;
+        const picojson::value* iv = pj_find(*pair, "index");
+        if (iv && iv->is<double>()) index = (int)iv->get<double>();
+        if (index < 0) continue;
+
+        int sz_decimals = 0;
+        const picojson::value* sdv = pj_find(*base_tok, "szDecimals");
+        if (sdv && sdv->is<double>()) sz_decimals = std::max(0, (int)sdv->get<double>());
+
+        out_asset = index + 10000;
+        out_sz_decimals = sz_decimals;
+        return true;
+    }
+
+    return false;
 }
 
 } // namespace tradeboy::market

@@ -26,6 +26,7 @@ struct SpotRow {
     double day_base_vlm = 0.0;
     double day_ntl_vlm = 0.0;
     int price_decimals = 2;
+    int size_decimals = 2;
     double balance = 0.0;
     double entry_price = 0.0;
 

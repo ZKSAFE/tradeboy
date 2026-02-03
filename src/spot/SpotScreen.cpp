@@ -22,6 +22,13 @@ static double round_to_decimals(double v, int decimals) {
     return std::round(v * p) / p;
 }
 
+static double trunc_to_decimals(double v, int decimals) {
+    if (!std::isfinite(v)) return 0.0;
+    if (decimals <= 0) return std::trunc(v);
+    const double p = std::pow(10.0, (double)decimals);
+    return std::trunc(v * p) / p;
+}
+
 static std::string format_fixed_round(double v, int decimals) {
     if (!std::isfinite(v)) return std::string("0");
     int d = std::max(0, std::min(10, decimals));
@@ -30,6 +37,17 @@ static std::string format_fixed_round(double v, int decimals) {
     ss.setf(std::ios::fixed);
     ss.precision(d);
     ss << rv;
+    return ss.str();
+}
+
+static std::string format_fixed_trunc(double v, int decimals) {
+    if (!std::isfinite(v)) return std::string("0");
+    int d = std::max(0, std::min(10, decimals));
+    double tv = trunc_to_decimals(v, d);
+    std::ostringstream ss;
+    ss.setf(std::ios::fixed);
+    ss.precision(d);
+    ss << tv;
     return ss.str();
 }
 
@@ -235,10 +253,9 @@ void render_spot_screen(const std::vector<tradeboy::model::SpotRow>& rows,
             dl->AddText(ImVec2(col1 + 30, textY), textCol, coin.sym.c_str());
 
             if (coin.balance > 0) {
-                char holdBuf[32];
-                std::snprintf(holdBuf, sizeof(holdBuf), "%.2f", coin.balance);
-                ImVec2 sz = ImGui::CalcTextSize(holdBuf);
-                dl->AddText(ImVec2(col2 - sz.x * 0.5f, textY), textCol, holdBuf);
+                std::string holdStr = format_fixed_trunc(coin.balance, coin.price_decimals);
+                ImVec2 sz = ImGui::CalcTextSize(holdStr.c_str());
+                dl->AddText(ImVec2(col2 - sz.x * 0.5f, textY), textCol, holdStr.c_str());
             }
 
             std::string priceStr = format_fixed_round(coin.price, coin.price_decimals);

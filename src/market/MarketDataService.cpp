@@ -403,6 +403,7 @@ static bool build_spot_rows_from_spot_meta_and_ctxs(const std::string& spot_meta
 
         tradeboy::model::SpotRow r(price_key, display_sym, 0.0, 0.0, 0.0, 0.0);
         r.price_decimals = fallback_decimals;
+        r.size_decimals = fallback_decimals;
 
         // assetCtxs coin key can be one of:
         // - BASE (e.g. BTC)
@@ -483,6 +484,10 @@ static bool parse_spot_balances_by_coin(const std::string& spot_state_json, std:
         if (!pj_get_string_like(*cv, coin) || coin.empty()) continue;
         if (!pj_get_double_like(*tv, total)) continue;
         out[coin] = total;
+        std::string disp = map_token_display_sym(coin, std::string());
+        if (!disp.empty()) {
+            out[disp] = total;
+        }
     }
     return true;
 }
