@@ -1,7 +1,12 @@
 #pragma once
 
 #include "imgui.h"
+#if defined(TRADEBOY_DESKTOP)
+#define GL_SILENCE_DEPRECATION
+#include <OpenGL/gl3.h>
+#else
 #include <SDL_opengles2.h>
+#endif
 
 namespace tradeboy {
 namespace filters {

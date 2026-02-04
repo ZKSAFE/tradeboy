@@ -1,5 +1,10 @@
 #include <SDL.h>
+#if defined(TRADEBOY_DESKTOP)
+#define GL_SILENCE_DEPRECATION
+#include <OpenGL/gl3.h>
+#else
 #include <SDL_opengles2.h>
+#endif
 
 #include "imgui.h"
 #include "backends/imgui_impl_opengl3.h"
@@ -94,6 +99,11 @@ int main(int argc, char** argv) {
     SDL_JoystickEventState(SDL_ENABLE);
 
     SDL_DisplayMode mode;
+#if defined(TRADEBOY_DESKTOP)
+    mode.w = 720;
+    mode.h = 480;
+    mode.refresh_rate = 60;
+#else
     if (SDL_GetCurrentDisplayMode(0, &mode) != 0) {
         mode.w = 720;
         mode.h = 480;
@@ -114,11 +124,18 @@ int main(int argc, char** argv) {
             mode.refresh_rate = 60;
         }
     }
+#endif
     log_str("Display Mode: <logged>\n");
 
+    #if defined(TRADEBOY_DESKTOP)
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+    #else
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    #endif
     SDL_GL_SetAttribute(SDL_GL_BUFFER_SIZE, 16);
     SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 5);
     SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 6);
@@ -134,9 +151,13 @@ int main(int argc, char** argv) {
             const char* name;
             Uint32 flags;
         } attempts[] = {
+#if defined(TRADEBOY_DESKTOP)
+            {"windowed", SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN},
+#else
             {"fullscreen_desktop", SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_SHOWN},
             {"fullscreen", SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_SHOWN},
             {"windowed", SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN},
+#endif
         };
 
         for (const auto& a : attempts) {
@@ -181,7 +202,11 @@ int main(int argc, char** argv) {
 
     ImGui::StyleColorsDark();
 
+    #if defined(TRADEBOY_DESKTOP)
+    const char* glsl_version = "#version 120";
+    #else
     const char* glsl_version = "#version 100";
+    #endif
     ImGui_ImplSDL2_InitForOpenGL(window, glctx);
     ImGui_ImplOpenGL3_Init(glsl_version);
 

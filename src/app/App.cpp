@@ -221,7 +221,7 @@ void App::open_spot_order(bool buy) {
     const tradeboy::model::AccountSnapshot account = model.account_snapshot();
 
     if (buy) {
-        const bool has_usdc = (!account.hl_usdc_str.empty() && account.hl_usdc_str != "UNKNOWN" && account.hl_usdc > 0.0);
+        const bool has_usdc = (!account.hl_usdc_str.empty() && account.hl_usdc_str != "UNKNOWN");
         const bool has_price = (row.price > 0.0);
         if (!has_usdc || !has_price) {
             set_alert("Loading user data\nPlease wait...");

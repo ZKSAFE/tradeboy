@@ -12,6 +12,16 @@ InputState poll_input_state_from_events(const std::vector<SDL_Event>& events) {
             case SDLK_DOWN: st.down = down; break;
             case SDLK_LEFT: st.left = down; break;
             case SDLK_RIGHT: st.right = down; break;
+#if defined(TRADEBOY_DESKTOP)
+            case SDLK_a: st.a = down; break;
+            case SDLK_b: st.b = down; break;
+            case SDLK_x: st.x = down; break;
+            case SDLK_y: st.y = down; break;
+            case SDLK_l: st.l1 = down; break;
+            case SDLK_r: st.r1 = down; break;
+            case SDLK_q: st.l2 = down; break;
+            case SDLK_w: st.r2 = down; break;
+#else
             case SDLK_z: st.a = down; break;
             case SDLK_x: st.b = down; break;
             case SDLK_q: st.l1 = down; break;
@@ -19,6 +29,7 @@ InputState poll_input_state_from_events(const std::vector<SDL_Event>& events) {
             case SDLK_a: st.l2 = down; break;
             case SDLK_s: st.r2 = down; break;
             case SDLK_c: st.x = down; break;
+#endif
             case SDLK_m: st.m = down; break;
             default: break;
         }

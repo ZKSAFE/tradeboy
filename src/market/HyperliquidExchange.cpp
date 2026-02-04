@@ -37,13 +37,43 @@ static bool write_file(const char* path, const std::string& s) {
     return w == s.size();
 }
 
+static const char* resolve_curl_path() {
+    static const char* path = nullptr;
+    if (path) return path;
+    const char* candidates[] = {
+        "/opt/homebrew/bin/curl",
+        "/opt/homebrew/opt/curl/bin/curl",
+        "/usr/local/bin/curl",
+        "/usr/local/opt/curl/bin/curl",
+        "/usr/bin/curl"
+    };
+    for (const char* candidate : candidates) {
+        FILE* f = std::fopen(candidate, "rb");
+        if (f) {
+            std::fclose(f);
+            path = candidate;
+            return path;
+        }
+    }
+    path = "/usr/bin/curl";
+    return path;
+}
+
 static bool http_post_json_wget(const char* url, const char* json_path, std::string& out_json) {
     out_json.clear();
+#if defined(TRADEBOY_DESKTOP)
+    std::string cmd = std::string(resolve_curl_path()) + " -sS -H \"Content-Type: application/json\" --data-binary @";
+    cmd += json_path;
+    cmd += " ";
+    cmd += url;
+    return tradeboy::utils::run_cmd_capture(cmd, out_json) && !out_json.empty();
+#else
     std::string cmd = "/usr/bin/wget -qO- --header=\"Content-Type: application/json\" --post-file=";
     cmd += json_path;
     cmd += " ";
     cmd += url;
     return tradeboy::utils::run_cmd_capture(cmd, out_json) && !out_json.empty();
+#endif
 }
 
 static void bn_freep(BIGNUM*& b) {

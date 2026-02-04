@@ -164,7 +164,41 @@ static bool run_cmd_capture(const std::string& cmd, std::string& out) {
     return rc == 0 && !out.empty();
 }
 
+static const char* resolve_curl_path() {
+    static const char* path = nullptr;
+    if (path) return path;
+    const char* candidates[] = {
+        "/opt/homebrew/bin/curl",
+        "/opt/homebrew/opt/curl/bin/curl",
+        "/usr/local/bin/curl",
+        "/usr/local/opt/curl/bin/curl",
+        "/usr/bin/curl"
+    };
+    for (const char* candidate : candidates) {
+        FILE* f = std::fopen(candidate, "rb");
+        if (f) {
+            std::fclose(f);
+            path = candidate;
+            return path;
+        }
+    }
+    path = "/usr/bin/curl";
+    return path;
+}
+
 static bool hl_post_file(const char* json_path, std::string& out_json) {
+#if defined(TRADEBOY_DESKTOP)
+    std::string cmd = std::string(resolve_curl_path()) + " -sS -H \"Content-Type: application/json\" --data-binary @";
+    cmd += json_path;
+    cmd += " https://api.hyperliquid.xyz/info";
+    if (run_cmd_capture(cmd, out_json)) return true;
+
+    std::string diag;
+    std::string cmd2 = std::string(resolve_curl_path()) + " -sS -D - -o - -H \"Content-Type: application/json\" --data-binary @";
+    cmd2 += json_path;
+    cmd2 += " https://api.hyperliquid.xyz/info 2>&1";
+    run_cmd_capture(cmd2, diag);
+#else
     // NOTE: we rely on /usr/bin/wget existing on device. The builder does not ship TLS libs.
     // -qO- prints response body to stdout.
     std::string cmd = "/usr/bin/wget -qO- --header=\"Content-Type: application/json\" --post-file=";
@@ -178,6 +212,7 @@ static bool hl_post_file(const char* json_path, std::string& out_json) {
     cmd2 += json_path;
     cmd2 += " https://api.hyperliquid.xyz/info 2>&1";
     run_cmd_capture(cmd2, diag);
+#endif
     out_json = diag;
     return false;
 }

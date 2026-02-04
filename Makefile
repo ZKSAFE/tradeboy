@@ -5,6 +5,15 @@ CFLAGS = -Wall -O2 -D_GNU_SOURCE
 CXXFLAGS = $(CFLAGS) -std=c++11 -Wno-psabi
 DEPFLAGS = -MMD -MP
 
+# macOS (desktop) build settings
+MAC_CXX = clang++
+MAC_SDL_CFLAGS = $(shell sdl2-config --cflags)
+MAC_SDL_LIBS = $(shell sdl2-config --libs)
+MAC_OPENSSL_CFLAGS = $(shell pkg-config --cflags openssl 2>/dev/null)
+MAC_OPENSSL_LIBS = $(shell pkg-config --libs openssl 2>/dev/null)
+MAC_CXXFLAGS = -Wall -O2 -D_GNU_SOURCE -std=c++11 -DTRADEBOY_DESKTOP $(MAC_SDL_CFLAGS) $(MAC_OPENSSL_CFLAGS)
+MAC_LIBS = $(MAC_SDL_LIBS) $(MAC_OPENSSL_LIBS) -framework OpenGL
+
 # 交叉编译设置
 ARM_CC = aarch64-linux-gnu-gcc
 ARM_CXX = aarch64-linux-gnu-g++
@@ -60,6 +69,7 @@ IMGUI_CORE_SOURCES = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_
 IMGUI_BACKEND_SOURCES = $(IMGUI_BACKENDS_DIR)/imgui_impl_sdl2.cpp $(IMGUI_BACKENDS_DIR)/imgui_impl_opengl3.cpp
 
 BUILD_DIR_ARMHF = build/armhf
+BUILD_DIR_MAC = build/macos
 OUTPUT_DIR = output
 IMGUI_DEMO_OBJS = \
 	$(BUILD_DIR_ARMHF)/imgui-demo.o \
@@ -69,6 +79,15 @@ IMGUI_DEMO_OBJS = \
 	$(BUILD_DIR_ARMHF)/imgui_widgets.o \
 	$(BUILD_DIR_ARMHF)/imgui_impl_sdl2.o \
 	$(BUILD_DIR_ARMHF)/imgui_impl_opengl3.o
+
+TRADEBOY_MAC_OBJS = \
+	$(patsubst src/%.cpp,$(BUILD_DIR_MAC)/%.o,$(TRADEBOY_SOURCES)) \
+	$(BUILD_DIR_MAC)/imgui.o \
+	$(BUILD_DIR_MAC)/imgui_draw.o \
+	$(BUILD_DIR_MAC)/imgui_tables.o \
+	$(BUILD_DIR_MAC)/imgui_widgets.o \
+	$(BUILD_DIR_MAC)/imgui_impl_sdl2.o \
+	$(BUILD_DIR_MAC)/imgui_impl_opengl3.o
 
 TRADEBOY_OBJS = \
 	$(patsubst src/%.cpp,$(BUILD_DIR_ARMHF)/%.o,$(TRADEBOY_SOURCES)) \
@@ -83,6 +102,7 @@ TRADEBOY_OBJS = \
 TARGET_DEMO_ARMHF = $(OUTPUT_DIR)/sdl2demo-armhf
 TARGET_IMGUI_DEMO_ARMHF = $(OUTPUT_DIR)/imgui-demo-armhf
 TARGET_TRADEBOY_ARMHF = $(OUTPUT_DIR)/tradeboy-armhf
+TARGET_TRADEBOY_MAC = $(OUTPUT_DIR)/tradeboy-macos
 DOCKER_ARMHF_BUILDER_IMAGE = rg34xx-armhf-builder:latest
 CCACHE_VOLUME = -v "$(PWD)/.ccache:/ccache"
 
@@ -102,6 +122,9 @@ $(OUTPUT_DIR):
 $(BUILD_DIR_ARMHF):
 	mkdir -p $(BUILD_DIR_ARMHF)
 
+$(BUILD_DIR_MAC):
+	mkdir -p $(BUILD_DIR_MAC)
+
 $(BUILD_DIR_ARMHF)/imgui-demo.o: $(IMGUI_DEMO_SOURCES) | $(BUILD_DIR_ARMHF)
 	$(ARMHF_CXX) $(CXXFLAGS) $(DEPFLAGS) -I./src -I/usr/include/SDL2 -D_REENTRANT -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $(IMGUI_DEMO_SOURCES) -o $@
 
@@ -109,23 +132,45 @@ $(BUILD_DIR_ARMHF)/%.o: src/%.cpp | $(BUILD_DIR_ARMHF)
 	@mkdir -p $(dir $@)
 	$(ARMHF_CXX) $(CXXFLAGS) $(DEPFLAGS) -I./src -I/usr/include/SDL2 -D_REENTRANT -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $< -o $@
 
+$(BUILD_DIR_MAC)/%.o: src/%.cpp | $(BUILD_DIR_MAC)
+	@mkdir -p $(dir $@)
+	$(MAC_CXX) $(MAC_CXXFLAGS) $(DEPFLAGS) -I./src -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $< -o $@
+
 $(BUILD_DIR_ARMHF)/imgui.o: $(IMGUI_DIR)/imgui.cpp | $(BUILD_DIR_ARMHF)
 	$(ARMHF_CXX) $(CXXFLAGS) $(DEPFLAGS) -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -c $< -o $@
+
+$(BUILD_DIR_MAC)/imgui.o: $(IMGUI_DIR)/imgui.cpp | $(BUILD_DIR_MAC)
+	$(MAC_CXX) $(MAC_CXXFLAGS) $(DEPFLAGS) -I./$(IMGUI_DIR) -c $< -o $@
 
 $(BUILD_DIR_ARMHF)/imgui_draw.o: $(IMGUI_DIR)/imgui_draw.cpp | $(BUILD_DIR_ARMHF)
 	$(ARMHF_CXX) $(CXXFLAGS) $(DEPFLAGS) -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -c $< -o $@
 
+$(BUILD_DIR_MAC)/imgui_draw.o: $(IMGUI_DIR)/imgui_draw.cpp | $(BUILD_DIR_MAC)
+	$(MAC_CXX) $(MAC_CXXFLAGS) $(DEPFLAGS) -I./$(IMGUI_DIR) -c $< -o $@
+
 $(BUILD_DIR_ARMHF)/imgui_tables.o: $(IMGUI_DIR)/imgui_tables.cpp | $(BUILD_DIR_ARMHF)
 	$(ARMHF_CXX) $(CXXFLAGS) $(DEPFLAGS) -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -c $< -o $@
+
+$(BUILD_DIR_MAC)/imgui_tables.o: $(IMGUI_DIR)/imgui_tables.cpp | $(BUILD_DIR_MAC)
+	$(MAC_CXX) $(MAC_CXXFLAGS) $(DEPFLAGS) -I./$(IMGUI_DIR) -c $< -o $@
 
 $(BUILD_DIR_ARMHF)/imgui_widgets.o: $(IMGUI_DIR)/imgui_widgets.cpp | $(BUILD_DIR_ARMHF)
 	$(ARMHF_CXX) $(CXXFLAGS) $(DEPFLAGS) -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -c $< -o $@
 
+$(BUILD_DIR_MAC)/imgui_widgets.o: $(IMGUI_DIR)/imgui_widgets.cpp | $(BUILD_DIR_MAC)
+	$(MAC_CXX) $(MAC_CXXFLAGS) $(DEPFLAGS) -I./$(IMGUI_DIR) -c $< -o $@
+
 $(BUILD_DIR_ARMHF)/imgui_impl_sdl2.o: $(IMGUI_BACKENDS_DIR)/imgui_impl_sdl2.cpp | $(BUILD_DIR_ARMHF)
 	$(ARMHF_CXX) $(CXXFLAGS) $(DEPFLAGS) -I/usr/include/SDL2 -D_REENTRANT -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $< -o $@
 
+$(BUILD_DIR_MAC)/imgui_impl_sdl2.o: $(IMGUI_BACKENDS_DIR)/imgui_impl_sdl2.cpp | $(BUILD_DIR_MAC)
+	$(MAC_CXX) $(MAC_CXXFLAGS) $(DEPFLAGS) -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $< -o $@
+
 $(BUILD_DIR_ARMHF)/imgui_impl_opengl3.o: $(IMGUI_BACKENDS_DIR)/imgui_impl_opengl3.cpp | $(BUILD_DIR_ARMHF)
 	$(ARMHF_CXX) $(CXXFLAGS) $(DEPFLAGS) -DIMGUI_IMPL_OPENGL_ES2 -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $< -o $@
+
+$(BUILD_DIR_MAC)/imgui_impl_opengl3.o: $(IMGUI_BACKENDS_DIR)/imgui_impl_opengl3.cpp | $(BUILD_DIR_MAC)
+	$(MAC_CXX) $(MAC_CXXFLAGS) $(DEPFLAGS) -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $< -o $@
 
 -include $(TRADEBOY_OBJS:.o=.d) $(IMGUI_DEMO_OBJS:.o=.d)
 
@@ -134,6 +179,11 @@ $(TARGET_IMGUI_DEMO_ARMHF): $(IMGUI_DEMO_OBJS) | $(OUTPUT_DIR)
 
 $(TARGET_TRADEBOY_ARMHF): $(TRADEBOY_OBJS) | $(OUTPUT_DIR)
 	$(ARMHF_CXX) $(CXXFLAGS) -o $(TARGET_TRADEBOY_ARMHF) $(TRADEBOY_OBJS) -L/usr/lib/arm-linux-gnueabihf $(LIBS_ARMHF_GLES) -Wl,-rpath,/usr/lib32 -lSDL2
+
+$(TARGET_TRADEBOY_MAC): $(TRADEBOY_MAC_OBJS) | $(OUTPUT_DIR)
+	$(MAC_CXX) $(MAC_CXXFLAGS) -o $(TARGET_TRADEBOY_MAC) $(TRADEBOY_MAC_OBJS) $(MAC_LIBS)
+
+tradeboy-macos: $(TARGET_TRADEBOY_MAC)
 
 # Docker ARM编译
 arm-docker:
@@ -158,9 +208,12 @@ output-assets: | $(OUTPUT_DIR)
 clean:
 	rm -f $(TARGET_DEMO_ARMHF) $(TARGET_IMGUI_DEMO_ARMHF) $(TARGET_TRADEBOY_ARMHF)
 	rm -rf $(BUILD_DIR_ARMHF)
+	rm -f $(TARGET_TRADEBOY_MAC)
+	rm -rf $(BUILD_DIR_MAC)
 
 clean-obj:
 	rm -rf $(BUILD_DIR_ARMHF)
+	rm -rf $(BUILD_DIR_MAC)
 
 # 安装到设备（脚本会根据当前目录有哪些二进制选择性上传）
 install:

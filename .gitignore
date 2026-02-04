@@ -1,1 +1,3 @@
 .ccache
+*.cfg
+log.txt

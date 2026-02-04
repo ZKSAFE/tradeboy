@@ -18,6 +18,7 @@ struct InputState {
     bool l2 = false;
     bool r2 = false;
     bool x = false;
+    bool y = false;
     bool m = false;
 };
 

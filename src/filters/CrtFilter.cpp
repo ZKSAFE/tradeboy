@@ -109,7 +109,11 @@ bool CrtFilter::init(int width, int height) {
         "}\n";
 
     const char* crt_fs_src =
+#if defined(TRADEBOY_DESKTOP)
+        ""
+#else
         "precision mediump float;\n"
+#endif
         "varying vec2 vUV;\n"
         "uniform sampler2D uTex;\n"
         "uniform vec2 uResolution;\n"
