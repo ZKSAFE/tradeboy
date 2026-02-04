@@ -2,7 +2,7 @@
 
 SDL2-based trading UI for the RG34XX handheld and macOS (Apple Silicon) desktop.
 
-![Preview](preview.jpg)
+![Preview](docs/preview.jpg)
 
 ## Features
 - SDL2 rendering + input
