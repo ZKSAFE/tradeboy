@@ -11,7 +11,7 @@ MAC_SDL_CFLAGS = $(shell sdl2-config --cflags)
 MAC_SDL_LIBS = $(shell sdl2-config --libs)
 MAC_OPENSSL_CFLAGS = $(shell pkg-config --cflags openssl 2>/dev/null)
 MAC_OPENSSL_LIBS = $(shell pkg-config --libs openssl 2>/dev/null)
-MAC_CXXFLAGS = -Wall -O2 -D_GNU_SOURCE -std=c++11 -DTRADEBOY_DESKTOP $(MAC_SDL_CFLAGS) $(MAC_OPENSSL_CFLAGS)
+MAC_CXXFLAGS = -Wall -O2 -D_GNU_SOURCE -std=c++11 -DTRADEBOY_DESKTOP -Wno-deprecated-declarations -Wno-unused-function -Wno-c++17-extensions $(MAC_SDL_CFLAGS) $(MAC_OPENSSL_CFLAGS)
 MAC_LIBS = $(MAC_SDL_LIBS) $(MAC_OPENSSL_LIBS) -framework OpenGL
 
 # 交叉编译设置

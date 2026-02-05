@@ -2,6 +2,7 @@
 #include "ui/MatrixTheme.h"
 #include "utils/Flash.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstdio>
 #include <string>
@@ -135,20 +136,26 @@ void render_account_screen(int selected_btn,
             bool pct_ok = false;
             double pnl = 0.0;
             double pct = 0.0;
+            ImU32 pnl_col = MatrixTheme::TEXT;
+            ImU32 pct_col = MatrixTheme::TEXT;
             if (try_parse_double(pnl_v, &pnl)) {
-                std::snprintf(pnl_buf, sizeof(pnl_buf), "%+.2f", pnl);
+                const double pnl_abs = std::fabs(pnl);
+                const char* pnl_fmt = (pnl < 0.0) ? "-$%.2f" : "+$%.2f";
+                std::snprintf(pnl_buf, sizeof(pnl_buf), pnl_fmt, pnl_abs);
                 pnl_v = pnl_buf;
                 pnl_ok = true;
+                pnl_col = (pnl < 0.0) ? MatrixTheme::ALERT : MatrixTheme::TEXT;
             }
             if (try_parse_percent_double(pct_v, &pct)) {
                 std::snprintf(pct_buf, sizeof(pct_buf), "(%+.2f%%)", pct);
                 pct_v = pct_buf;
                 pct_ok = true;
+                pct_col = (pct < 0.0) ? MatrixTheme::ALERT : MatrixTheme::TEXT;
             }
             (void)pnl_ok;
             (void)pct_ok;
-            dl->AddText(font_reg, vSz, ImVec2(bx, blockY + lblSz + gap), MatrixTheme::TEXT, pnl_v);
-            dl->AddText(font_reg, vSz, ImVec2(bx, blockY + lblSz + gap + vSz + gap), MatrixTheme::TEXT, pct_v);
+            dl->AddText(font_reg, vSz, ImVec2(bx, blockY + lblSz + gap), pnl_col, pnl_v);
+            dl->AddText(font_reg, vSz, ImVec2(bx, blockY + lblSz + gap + vSz + gap), pct_col, pct_v);
             
             currY += boxH + 20.0f;
         }
