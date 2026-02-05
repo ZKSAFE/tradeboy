@@ -60,6 +60,26 @@ static bool file_exists(const char* path) {
     return f.good();
 }
 
+static std::string find_system_font_path() {
+    const char* candidates[] = {
+#if defined(TRADEBOY_DESKTOP)
+        "/System/Library/Fonts/SFNS.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/System/Library/Fonts/Supplemental/Helvetica.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+#endif
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/ttf/DejaVuSans.ttf"
+    };
+    for (const char* candidate : candidates) {
+        if (file_exists(candidate)) {
+            return std::string(candidate);
+        }
+    }
+    return std::string();
+}
+
 static bool dir_exists(const char* path) {
     if (!path) return false;
     struct stat st;
@@ -215,52 +235,6 @@ int main(int argc, char** argv) {
         log_str("[CRT] init failed, running without CRT\n");
     }
 
-    // Font: prefer bundled cour-new.ttf for readable UI on 720x480.
-    const char* font_path = nullptr;
-    if (file_exists("cour-new.ttf")) font_path = "cour-new.ttf";
-    else if (file_exists("output/cour-new.ttf")) font_path = "output/cour-new.ttf";
-    else if (file_exists("CourierPrime-Regular.ttf")) font_path = "CourierPrime-Regular.ttf";
-    else if (file_exists("output/NotoSansCJK-Regular.ttc")) font_path = "output/NotoSansCJK-Regular.ttc";
-    else if (file_exists("NotoSansCJK-Regular.ttc")) font_path = "NotoSansCJK-Regular.ttc";
-
-    ImFont* loaded_font_bold = nullptr;
-    if (font_path) {
-        log_str("[Main] Loading font\n");
-        ImFontConfig cfg;
-        cfg.OversampleH = 1;
-        cfg.OversampleV = 1;
-        cfg.PixelSnapH = true;
-        ImFont* f = io.Fonts->AddFontFromFileTTF(font_path, 28.0f, &cfg);
-        if (f) {
-            io.FontDefault = f;
-        } else {
-            log_str("[Main] Font load failed, using default\n");
-        }
-    } else {
-        log_str("[Main] No font file found, using default\n");
-    }
-
-    // Load Bold Font (must be before font atlas build)
-    const char* font_path_bold = nullptr;
-    if (file_exists("cour-new-BOLDITALIC.ttf")) font_path_bold = "cour-new-BOLDITALIC.ttf";
-    else if (file_exists("output/cour-new-BOLDITALIC.ttf")) font_path_bold = "output/cour-new-BOLDITALIC.ttf";
-
-    if (font_path_bold) {
-        log_str("[Main] Loading bold font\n");
-        ImFontConfig cfg;
-        cfg.OversampleH = 1;
-        cfg.OversampleV = 1;
-        cfg.PixelSnapH = true;
-        loaded_font_bold = io.Fonts->AddFontFromFileTTF(font_path_bold, 28.0f, &cfg);
-    }
-
-    if (font_path) {
-        unsigned char* pixels = nullptr;
-        int w = 0, h = 0;
-        io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
-        log_str("[Main] Font atlas built\n");
-    }
-
     SDL_Joystick* joy0 = nullptr;
     if (SDL_NumJoysticks() > 0) {
         joy0 = SDL_JoystickOpen(0);
@@ -272,13 +246,111 @@ int main(int argc, char** argv) {
     tradeboy::app::App& app = *app_ptr;
 
     log_str("[Main] App constructed\n");
-    app.font_bold = loaded_font_bold;
     log_str("[Main] init_demo_data begin\n");
     app.init_demo_data();
     log_str("[Main] init_demo_data done\n");
     log_str("[Main] calling startup\n");
     app.startup();
     log_str("[Main] app.startup done\n");
+
+    std::string system_font_path = find_system_font_path();
+    std::string cfg_regular_path = app.wallet_cfg.regular_font_path;
+    std::string cfg_bolditalic_path = app.wallet_cfg.bolditalic_font_path;
+    const char* font_path = nullptr;
+    const char* font_path_bold = nullptr;
+    std::string fallback_font_path;
+    std::string fallback_bold_path;
+    bool cfg_regular_failed = false;
+    bool cfg_bold_failed = false;
+
+    if (!cfg_regular_path.empty() && file_exists(cfg_regular_path.c_str())) {
+        font_path = cfg_regular_path.c_str();
+    } else if (!cfg_regular_path.empty()) {
+        cfg_regular_failed = true;
+    }
+    if (!font_path && !system_font_path.empty() && file_exists(system_font_path.c_str())) {
+        font_path = system_font_path.c_str();
+        fallback_font_path = system_font_path;
+    }
+
+    if (!cfg_bolditalic_path.empty() && file_exists(cfg_bolditalic_path.c_str())) {
+        font_path_bold = cfg_bolditalic_path.c_str();
+    } else if (!cfg_bolditalic_path.empty()) {
+        cfg_bold_failed = true;
+    }
+    if (!font_path_bold && !system_font_path.empty() && file_exists(system_font_path.c_str())) {
+        font_path_bold = system_font_path.c_str();
+        fallback_bold_path = system_font_path;
+    }
+
+    ImFont* loaded_font_bold = nullptr;
+    if (font_path && file_exists(font_path)) {
+        log_str("[Main] Loading font\n");
+        ImFontConfig cfg;
+        cfg.OversampleH = 1;
+        cfg.OversampleV = 1;
+        cfg.PixelSnapH = true;
+        ImFont* f = io.Fonts->AddFontFromFileTTF(font_path, 28.0f, &cfg);
+        if (f) {
+            io.FontDefault = f;
+        }
+    }
+
+    if (!io.FontDefault && !fallback_font_path.empty() && file_exists(fallback_font_path.c_str())) {
+        ImFontConfig cfg;
+        cfg.OversampleH = 1;
+        cfg.OversampleV = 1;
+        cfg.PixelSnapH = true;
+        ImFont* fallback = io.Fonts->AddFontFromFileTTF(fallback_font_path.c_str(), 28.0f, &cfg);
+        if (fallback) {
+            io.FontDefault = fallback;
+        }
+    }
+
+    if (font_path_bold && file_exists(font_path_bold)) {
+        log_str("[Main] Loading bold font\n");
+        ImFontConfig cfg;
+        cfg.OversampleH = 1;
+        cfg.OversampleV = 1;
+        cfg.PixelSnapH = true;
+        loaded_font_bold = io.Fonts->AddFontFromFileTTF(font_path_bold, 28.0f, &cfg);
+    }
+
+    if (!loaded_font_bold && !fallback_bold_path.empty() && file_exists(fallback_bold_path.c_str())) {
+        ImFontConfig cfg;
+        cfg.OversampleH = 1;
+        cfg.OversampleV = 1;
+        cfg.PixelSnapH = true;
+        loaded_font_bold = io.Fonts->AddFontFromFileTTF(fallback_bold_path.c_str(), 28.0f, &cfg);
+    }
+
+    if (!app.cfg_created) {
+        if (cfg_regular_failed) {
+            std::string msg = "Configured regular font '" + cfg_regular_path + "' failed to load. Using ";
+            msg += fallback_font_path.empty() ? "the default font" : ("'" + fallback_font_path + "'");
+            msg += ".";
+            app.set_alert(msg);
+        }
+        if (cfg_bold_failed) {
+            std::string msg = "Configured bold-italic font '" + cfg_bolditalic_path + "' failed to load. Using ";
+            msg += fallback_bold_path.empty() ? "the default font" : ("'" + fallback_bold_path + "'");
+            msg += ".";
+            app.set_alert(msg);
+        }
+    }
+
+    if (!font_path) {
+        log_str("[Main] No font file found, using default\n");
+    }
+
+    app.font_bold = loaded_font_bold ? loaded_font_bold : io.FontDefault;
+
+    if (font_path || loaded_font_bold) {
+        unsigned char* pixels = nullptr;
+        int w = 0, h = 0;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
+        log_str("[Main] Font atlas built\n");
+    }
 
     tradeboy::app::EdgeState edges;
 

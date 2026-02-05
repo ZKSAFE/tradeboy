@@ -158,6 +158,7 @@ void App::startup() {
     if (!tradeboy::wallet::load_or_create_config("./tradeboy.cfg", wallet_cfg, created, err)) {
         set_alert(std::string("RPC_CONFIG_ERROR\n") + err);
     } else {
+        cfg_created = created;
         model.set_wallet(wallet_cfg.wallet_address, wallet_cfg.private_key);
         wallet_address_short = make_address_short(wallet_cfg.wallet_address);
         if (created) {

@@ -92,6 +92,8 @@ struct App {
     int boot_anim_frames = 0;
     float boot_anim_t = 0.0f;
 
+    bool cfg_created = false;
+
     bool overlay_rect_active = false;
     ImVec4 overlay_rect_uv = ImVec4(0, 0, 0, 0);
 

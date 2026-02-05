@@ -8,7 +8,7 @@
 set -e
 
 # 默认配置
-DEFAULT_IP="192.168.1.7"
+DEFAULT_IP="192.168.1.6"
 DEFAULT_PASSWORD="root"
 DEFAULT_USER="root"
 
@@ -66,31 +66,6 @@ if [ "$HAS_TRADEBOY" -eq 0 ]; then
     exit 1
 fi
 
-HAS_FONT=0
-if [ -f "output/NotoSansCJK-Regular.ttc" ]; then
-    HAS_FONT=1
-fi
-
-HAS_COUR=0
-COUR_PATH=""
-if [ -f "cour-new.ttf" ]; then
-    HAS_COUR=1
-    COUR_PATH="cour-new.ttf"
-elif [ -f "output/cour-new.ttf" ]; then
-    HAS_COUR=1
-    COUR_PATH="output/cour-new.ttf"
-fi
-
-HAS_COUR_BOLD=0
-COUR_BOLD_PATH=""
-if [ -f "cour-new-BOLDITALIC.ttf" ]; then
-    HAS_COUR_BOLD=1
-    COUR_BOLD_PATH="cour-new-BOLDITALIC.ttf"
-elif [ -f "output/cour-new-BOLDITALIC.ttf" ]; then
-    HAS_COUR_BOLD=1
-    COUR_BOLD_PATH="output/cour-new-BOLDITALIC.ttf"
-fi
-
 echo -e "${GREEN}✅ 文件检查完成${NC}"
 
 
@@ -132,40 +107,10 @@ exec ./tradeboy-armhf.bin
 EOF" 2>/dev/null
 fi
 
-if [ "$HAS_FONT" -eq 1 ]; then
-    echo "📤 上传字体文件..."
-    if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS output/NotoSansCJK-Regular.ttc "$USER@$IP:/mnt/mmc/Roms/APPS/"; then
-        echo -e "${RED}❌ 上传字体文件失败${NC}"
-        exit 1
-    fi
-fi
-
-if [ "$HAS_COUR" -eq 1 ]; then
-    echo "📤 上传 cour-new.ttf..."
-    if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS "$COUR_PATH" "$USER@$IP:/mnt/mmc/Roms/APPS/cour-new.ttf"; then
-        echo -e "${RED}❌ 上传 cour-new.ttf 失败${NC}"
-        exit 1
-    fi
-fi
-
-if [ "$HAS_COUR_BOLD" -eq 1 ]; then
-    echo "📤 上传 cour-new-BOLDITALIC.ttf..."
-    if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS "$COUR_BOLD_PATH" "$USER@$IP:/mnt/mmc/Roms/APPS/cour-new-BOLDITALIC.ttf"; then
-        echo -e "${RED}❌ 上传 cour-new-BOLDITALIC.ttf 失败${NC}"
-        exit 1
-    fi
-fi
-
 # 设置文件权限
 echo "🔧 设置文件权限..."
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-armhf /mnt/mmc/Roms/APPS/tradeboy-armhf.bin"
-fi
-if [ "$HAS_FONT" -eq 1 ]; then
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 644 /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
-fi
-if [ "$HAS_COUR" -eq 1 ]; then
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 644 /mnt/mmc/Roms/APPS/cour-new.ttf"
 fi
 
 # 验证安装结果
@@ -173,15 +118,6 @@ echo "✅ 验证安装结果..."
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-armhf"
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-armhf.bin"
-fi
-if [ "$HAS_FONT" -eq 1 ]; then
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/NotoSansCJK-Regular.ttc"
-fi
-if [ "$HAS_COUR" -eq 1 ]; then
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/cour-new.ttf"
-fi
-if [ "$HAS_COUR_BOLD" -eq 1 ]; then
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/cour-new-BOLDITALIC.ttf"
 fi
 
 # 获取设备信息

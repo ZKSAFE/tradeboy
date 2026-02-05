@@ -39,13 +39,39 @@ static bool parse_kv(const std::string& text, const std::string& key, std::strin
     return false;
 }
 
-static std::string default_cfg_text(const std::string& rpc, const std::string& addr, const std::string& priv) {
+static std::string default_cfg_text(const std::string& rpc,
+                                    const std::string& addr,
+                                    const std::string& priv,
+                                    const std::string& regular_font_path,
+                                    const std::string& bolditalic_font_path) {
     std::string s;
     s += "arb_rpc_url=" + rpc + "\n";
     s += "wallet_address=" + addr + "\n";
     s += "private_key=" + priv + "\n";
+    s += "regular_font_path=" + regular_font_path + "\n";
+    s += "bolditalic_font_path=" + bolditalic_font_path + "\n";
     s += "usdc_contract=0xaf88d065e77c8cC2239327C5EDb3A432268e5831\n";
     return s;
+}
+
+static std::string detect_default_font_path() {
+    const char* candidates[] = {
+#if defined(TRADEBOY_DESKTOP)
+        "/System/Library/Fonts/SFNS.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/System/Library/Fonts/Supplemental/Helvetica.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+#endif
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/ttf/DejaVuSans.ttf"
+    };
+    for (const char* candidate : candidates) {
+        if (tradeboy::utils::file_exists(candidate)) {
+            return std::string(candidate);
+        }
+    }
+    return std::string();
 }
 
 static bool write_ec_privkey_der(const std::vector<unsigned char>& priv32, const char* path) {
@@ -186,6 +212,8 @@ bool load_or_create_config(const std::string& path, WalletConfig& out_cfg, bool&
         parse_kv(text, "arb_rpc_url", out_cfg.arb_rpc_url);
         parse_kv(text, "wallet_address", out_cfg.wallet_address);
         parse_kv(text, "private_key", out_cfg.private_key);
+        parse_kv(text, "regular_font_path", out_cfg.regular_font_path);
+        parse_kv(text, "bolditalic_font_path", out_cfg.bolditalic_font_path);
 
         if (!out_cfg.arb_rpc_url.empty() && !out_cfg.wallet_address.empty() && !out_cfg.private_key.empty()) {
             return true;
@@ -204,8 +232,12 @@ bool load_or_create_config(const std::string& path, WalletConfig& out_cfg, bool&
     out_cfg.arb_rpc_url = default_rpc;
     out_cfg.wallet_address = addr;
     out_cfg.private_key = priv;
+    out_cfg.regular_font_path = detect_default_font_path();
+    out_cfg.bolditalic_font_path = detect_default_font_path();
 
-    std::string cfg_text = default_cfg_text(default_rpc, addr, priv);
+    std::string cfg_text = default_cfg_text(default_rpc, addr, priv,
+                                            out_cfg.regular_font_path,
+                                            out_cfg.bolditalic_font_path);
     if (!tradeboy::utils::write_text_file(path, cfg_text)) {
         out_err = "write_cfg_failed";
         return false;

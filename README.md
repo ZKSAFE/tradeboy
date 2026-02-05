@@ -61,6 +61,16 @@ Upload to device (uses SSH in `upload.sh`):
 ./upload.sh
 ```
 
+## Fonts
+
+TradeBoy reads `regular_font_path` and `bolditalic_font_path` from `tradeboy.cfg`.
+
+- On first launch, it detects a system font and writes it to both paths.
+- If the configured font fails to load (existing cfg only), TradeBoy falls back
+  to a system font and shows an alert like: `Configured font 'X' failed to load. Using 'Y'.`.
+- `upload.sh` does not upload font files. Place the font on the device yourself
+  and update `tradeboy.cfg` if you want a custom typeface.
+
 ## Input mapping
 
 ### macOS keyboard (desktop build only)
