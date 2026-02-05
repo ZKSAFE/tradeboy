@@ -59,7 +59,7 @@ static const char* resolve_curl_path() {
 static bool http_post_json_wget(const std::string& rpc_url, const char* json_path, std::string& out_json) {
     out_json.clear();
 #if defined(TRADEBOY_DESKTOP)
-    std::string cmd = std::string(resolve_curl_path()) + " -sS -H \"Content-Type: application/json\" --data-binary @";
+    std::string cmd = std::string(resolve_curl_path()) + " -sS --connect-timeout 3 --max-time 8 -H \"Content-Type: application/json\" --data-binary @";
     cmd += json_path;
     cmd += " ";
     cmd += rpc_url;

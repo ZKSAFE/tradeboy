@@ -27,6 +27,7 @@
 #include "utils/Format.h"
 
 #include "utils/Log.h"
+#include "core/Logger.h"
 
 #include <cstdio>
 #include <chrono>
@@ -189,6 +190,7 @@ void App::startup() {
 
 void App::shutdown() {
     log_str("[App] shutdown()\n");
+    tradeboy::core::logger_shutdown();
     if (arb_deposit_thread.joinable()) {
         arb_deposit_thread.join();
     }
