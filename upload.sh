@@ -87,19 +87,32 @@ echo -e "${GREEN}✅ SSH连接成功${NC}"
 # 创建应用目录
 echo "📁 创建应用目录..."
 retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mkdir -p /mnt/mmc/Roms/APPS" 2>/dev/null
+retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mkdir -p /mnt/mmc/Roms/APPS/Imgs" 2>/dev/null
+
+# Upload logo
+if [ -f "logo.240x180.png" ]; then
+    echo "🖼️  Uploading logo..."
+    if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS "logo.240x180.png" "$USER@$IP:/mnt/mmc/Roms/APPS/Imgs/run-tradeboy-armhf.png"; then
+        echo -e "${RED}❌ Upload logo failed${NC}"
+        exit 1
+    fi
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 644 /mnt/mmc/Roms/APPS/Imgs/run-tradeboy-armhf.png" 2>/dev/null || true
+else
+    echo -e "${YELLOW}⚠️  logo.240x180.png not found, skipping logo upload${NC}"
+fi
 
 # 上传文件
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
     echo "📤 上传TradeBoy可执行文件..."
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "rm -f /mnt/mmc/Roms/APPS/tradeboy-armhf /mnt/mmc/Roms/APPS/tradeboy-armhf.bin /mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp /mnt/mmc/Roms/APPS/.tradeboy-armhf.bin.tmp" 2>/dev/null || true
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "rm -f /mnt/mmc/Roms/APPS/run-tradeboy-armhf.sh /mnt/mmc/Roms/APPS/tradeboy-armhf.bin /mnt/mmc/Roms/APPS/.tradeboy-armhf.tmp /mnt/mmc/Roms/APPS/.tradeboy-armhf.bin.tmp" 2>/dev/null || true
     if ! retry sshpass -p "$PASSWORD" scp $SSH_OPTS output/tradeboy-armhf "$USER@$IP:/mnt/mmc/Roms/APPS/.tradeboy-armhf.bin.tmp"; then
         echo -e "${RED}❌ 上传TradeBoy失败${NC}"
         exit 1
     fi
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.tradeboy-armhf.bin.tmp /mnt/mmc/Roms/APPS/tradeboy-armhf.bin" 2>/dev/null
 
-    echo "🧩 写入启动包装脚本 (LD_LIBRARY_PATH)..."
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "cat > /mnt/mmc/Roms/APPS/tradeboy-armhf <<'EOF'
+    echo "🧩 Writing wrapper script (LD_LIBRARY_PATH)..."
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "cat > /mnt/mmc/Roms/APPS/run-tradeboy-armhf.sh <<'EOF'
 #!/bin/sh
 export LD_LIBRARY_PATH=/usr/lib32:/usr/lib:/mnt/vendor/lib
 cd /mnt/mmc/Roms/APPS || exit 1
@@ -110,13 +123,13 @@ fi
 # 设置文件权限
 echo "🔧 设置文件权限..."
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/tradeboy-armhf /mnt/mmc/Roms/APPS/tradeboy-armhf.bin"
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 755 /mnt/mmc/Roms/APPS/run-tradeboy-armhf.sh /mnt/mmc/Roms/APPS/tradeboy-armhf.bin"
 fi
 
 # 验证安装结果
 echo "✅ 验证安装结果..."
 if [ "$HAS_TRADEBOY" -eq 1 ]; then
-    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-armhf"
+    retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/run-tradeboy-armhf.sh"
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-armhf.bin"
 fi
 
@@ -140,12 +153,12 @@ echo ""
 echo -e "${GREEN}🎉 TradeBoy安装完成！${NC}"
 echo "=================="
 echo -e "运行命令:"
-echo -e "${YELLOW}ssh $USER@$IP 'export LD_LIBRARY_PATH=/usr/lib32:/usr/lib:/mnt/vendor/lib && cd /mnt/mmc/Roms/APPS && ./tradeboy-armhf'${NC}"
+echo -e "${YELLOW}ssh $USER@$IP 'cd /mnt/mmc/Roms/APPS && ./run-tradeboy-armhf.sh'${NC}"
 echo ""
 echo -e "${GREEN}安装脚本执行完成！${NC}"
 
 echo ""
-echo -e "${YELLOW}请在掌机上手动启动 TradeBoy（从 APPS 里运行 tradeboy-armhf）。${NC}"
+echo -e "${YELLOW}Please start TradeBoy manually on the device (run run-tradeboy-armhf.sh from APPS).${NC}"
 STARTED=""
 if [ -t 0 ]; then
     read -r -p "你已经手动启动了吗？(y/N): " STARTED
