@@ -22,6 +22,7 @@
 #include "../ui/NumberInputModal.h"
 
 namespace tradeboy::spot { struct SpotUiEvent; }
+namespace tradeboy::perp { struct PerpUiEvent; }
 
 namespace tradeboy::app {
 
@@ -48,6 +49,11 @@ struct App {
     int spot_page_start_idx = 0;
     int spot_action_idx = 0; // 0=buy, 1=sell
     bool spot_action_focus = false;
+
+    int perp_row_idx = 0;
+    int perp_page_start_idx = 0;
+    int perp_action_idx = 0; // 0=long/short, 1=close
+    bool perp_action_focus = false;
 
     // Account state
     int account_selected_btn = 0; // 0=S<>P, 1=Withdraw, 2=Deposit
@@ -79,6 +85,9 @@ struct App {
 
     int l1_flash_frames = 0;
     int r1_flash_frames = 0;
+
+    int perp_primary_press_frames = 0;
+    int perp_close_press_frames = 0;
 
     tradeboy::spotOrder::SpotOrderState spot_order;
 
@@ -146,6 +155,7 @@ struct App {
     static void dec_frame_counter(int& v);
 
     void open_spot_order(bool buy);
+    void apply_perp_ui_events(const std::vector<tradeboy::perp::PerpUiEvent>& ev);
 
     void apply_spot_ui_events(const std::vector<tradeboy::spot::SpotUiEvent>& ev);
 

@@ -61,16 +61,18 @@ build/macos/app/App.o: src/app/App.cpp src/app/App.h \
   src/app/../ui/DialogState.h src/app/../ui/NumberInputModal.h \
   src/app/../spot/SpotScreen.h src/app/../spot/../model/TradeModel.h \
   src/app/../spot/SpotUiEvents.h src/app/../spot/../app/Input.h \
-  src/app/../spot/../utils/Math.h \
+  src/app/../spot/../utils/Math.h src/app/../perp/PerpUiEvents.h \
+  src/app/../perp/../app/Input.h src/app/../perp/../utils/Math.h \
   src/app/../market/HyperliquidWgetDataSource.h \
   src/app/../market/HyperliquidWsDataSource.h \
-  src/app/../perp/PerpScreen.h src/app/../account/AccountScreen.h \
-  src/utils/File.h src/utils/Flash.h src/utils/Typewriter.h \
-  src/wallet/Wallet.h src/arb/ArbitrumRpc.h src/market/Hyperliquid.h \
-  src/market/HyperliquidExchange.h src/utils/Format.h src/utils/Log.h \
-  src/core/Logger.h src/app/../ui/MatrixBackground.h \
-  src/app/../ui/MatrixTheme.h src/app/../ui/MainUI.h \
-  src/app/../spotOrder/../ui/../app/App.h src/app/../ui/Dialog.h
+  src/app/../perp/PerpScreen.h src/app/../perp/../model/TradeModel.h \
+  src/app/../account/AccountScreen.h src/utils/File.h src/utils/Flash.h \
+  src/utils/Typewriter.h src/wallet/Wallet.h src/arb/ArbitrumRpc.h \
+  src/market/Hyperliquid.h src/market/HyperliquidExchange.h \
+  src/utils/Format.h src/utils/Log.h src/core/Logger.h \
+  src/app/../ui/MatrixBackground.h src/app/../ui/MatrixTheme.h \
+  src/app/../ui/MainUI.h src/app/../spotOrder/../ui/../app/App.h \
+  src/app/../ui/Dialog.h
 
 src/app/App.h:
 
@@ -216,11 +218,19 @@ src/app/../spot/../app/Input.h:
 
 src/app/../spot/../utils/Math.h:
 
+src/app/../perp/PerpUiEvents.h:
+
+src/app/../perp/../app/Input.h:
+
+src/app/../perp/../utils/Math.h:
+
 src/app/../market/HyperliquidWgetDataSource.h:
 
 src/app/../market/HyperliquidWsDataSource.h:
 
 src/app/../perp/PerpScreen.h:
+
+src/app/../perp/../model/TradeModel.h:
 
 src/app/../account/AccountScreen.h:
 

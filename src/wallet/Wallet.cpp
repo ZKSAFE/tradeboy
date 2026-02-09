@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 
 namespace tradeboy::wallet {
@@ -22,7 +23,21 @@ static std::string trim_line(std::string s) {
     return s.substr(a, b - a);
 }
 
-static bool parse_kv(const std::string& text, const std::string& key, std::string& out_val) {
+static std::string strip_inline_comment(std::string v) {
+    size_t hash = v.find('#');
+    if (hash == std::string::npos) return trim_line(v);
+    return trim_line(v.substr(0, hash));
+}
+
+static std::string strip_bom(std::string s) {
+    if (s.size() >= 3 && (unsigned char)s[0] == 0xEF && (unsigned char)s[1] == 0xBB && (unsigned char)s[2] == 0xBF) {
+        return s.substr(3);
+    }
+    return s;
+}
+
+static void parse_kv_map(const std::string& text, std::unordered_map<std::string, std::string>& out) {
+    out.clear();
     std::istringstream ss(text);
     std::string line;
     while (std::getline(ss, line)) {
@@ -31,12 +46,11 @@ static bool parse_kv(const std::string& text, const std::string& key, std::strin
         if (line[0] == '#') continue;
         size_t eq = line.find('=');
         if (eq == std::string::npos) continue;
-        std::string k = trim_line(line.substr(0, eq));
-        if (k != key) continue;
-        out_val = trim_line(line.substr(eq + 1));
-        return true;
+        std::string k = strip_bom(trim_line(line.substr(0, eq)));
+        std::string v = strip_inline_comment(line.substr(eq + 1));
+        if (k.empty()) continue;
+        out[k] = v;
     }
-    return false;
 }
 
 static std::string default_cfg_text(const std::string& rpc,
@@ -209,11 +223,14 @@ bool load_or_create_config(const std::string& path, WalletConfig& out_cfg, bool&
 
     std::string text = tradeboy::utils::read_text_file(path);
     if (!text.empty()) {
-        parse_kv(text, "arb_rpc_url", out_cfg.arb_rpc_url);
-        parse_kv(text, "wallet_address", out_cfg.wallet_address);
-        parse_kv(text, "private_key", out_cfg.private_key);
-        parse_kv(text, "regular_font_path", out_cfg.regular_font_path);
-        parse_kv(text, "bolditalic_font_path", out_cfg.bolditalic_font_path);
+        out_cfg = WalletConfig();
+        std::unordered_map<std::string, std::string> cfg;
+        parse_kv_map(text, cfg);
+        out_cfg.arb_rpc_url = cfg["arb_rpc_url"];
+        out_cfg.wallet_address = cfg["wallet_address"];
+        out_cfg.private_key = cfg["private_key"];
+        out_cfg.regular_font_path = cfg["regular_font_path"];
+        out_cfg.bolditalic_font_path = cfg["bolditalic_font_path"];
 
         if (!out_cfg.arb_rpc_url.empty() && !out_cfg.wallet_address.empty() && !out_cfg.private_key.empty()) {
             return true;

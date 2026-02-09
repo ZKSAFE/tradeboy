@@ -24,6 +24,7 @@ TradeModelSnapshot TradeModel::snapshot() const {
     TradeModelSnapshot s;
     s.spot_row_idx = spot_row_idx_;
     s.spot_rows = spot_rows_;
+    s.perp_rows = perp_rows_;
     pthread_mutex_unlock(&mu);
     return s;
 }
@@ -88,6 +89,13 @@ void TradeModel::set_wallet(const std::string& wallet_address, const std::string
     }
     wallet_address_ = wallet_address;
     private_key_ = private_key;
+    pthread_mutex_unlock(&mu);
+}
+
+void TradeModel::set_perp_rows(std::vector<PerpRow> rows) {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) return;
+    perp_rows_.swap(rows);
     pthread_mutex_unlock(&mu);
 }
 

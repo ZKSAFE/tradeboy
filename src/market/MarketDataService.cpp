@@ -67,6 +67,29 @@ static bool pj_get_string_like(const picojson::value& v, std::string& out) {
     return false;
 }
 
+static bool parse_perp_dex_names(const std::string& perp_dexs_json, std::vector<std::string>& out_dexes) {
+    out_dexes.clear();
+    picojson::value root;
+    std::string err = picojson::parse(root, perp_dexs_json);
+    if (!err.empty()) return false;
+    if (!root.is<picojson::array>()) return false;
+
+    const picojson::array& arr = root.get<picojson::array>();
+    std::unordered_set<std::string> seen;
+    seen.insert("");
+    out_dexes.push_back("");
+
+    for (const auto& v : arr) {
+        const picojson::object* obj = pj_get_obj(v);
+        if (!obj) continue;
+        const picojson::value* name_v = pj_find(*obj, "name");
+        std::string name;
+        if (!name_v || !pj_get_string_like(*name_v, name) || name.empty()) continue;
+        if (seen.insert(name).second) out_dexes.push_back(name);
+    }
+    return !out_dexes.empty();
+}
+
 static bool pj_get_double_like(const picojson::value& v, double& out) {
     if (v.is<double>()) {
         out = v.get<double>();
@@ -77,6 +100,218 @@ static bool pj_get_double_like(const picojson::value& v, double& out) {
         return true;
     }
     return false;
+}
+
+static bool build_perp_rows_from_clearinghouse(const std::string& perp_json,
+                                               const std::string& all_mids_json,
+                                               std::vector<tradeboy::model::PerpRow>& out_rows) {
+    out_rows.clear();
+    picojson::value root;
+    std::string err = picojson::parse(root, perp_json);
+    if (!err.empty()) return false;
+    if (!root.is<picojson::object>()) return false;
+    const picojson::object& obj = root.get<picojson::object>();
+
+    const picojson::value* ap_v = pj_find(obj, "assetPositions");
+    const picojson::array* ap = ap_v ? pj_get_arr(*ap_v) : nullptr;
+    if (!ap) return false;
+
+    for (size_t i = 0; i < ap->size(); i++) {
+        const picojson::object* ap_obj = pj_get_obj((*ap)[i]);
+        if (!ap_obj) continue;
+        const picojson::value* pos_v = pj_find(*ap_obj, "position");
+        const picojson::object* pos = pos_v ? pj_get_obj(*pos_v) : nullptr;
+        if (!pos) continue;
+
+        std::string coin;
+        const picojson::value* coin_v = pj_find(*pos, "coin");
+        if (!coin_v || !pj_get_string_like(*coin_v, coin) || coin.empty()) continue;
+
+        double szi = 0.0;
+        const picojson::value* szi_v = pj_find(*pos, "szi");
+        if (szi_v) (void)pj_get_double_like(*szi_v, szi);
+
+        bool is_long = (szi >= 0.0);
+        const picojson::value* side_v = pj_find(*pos, "side");
+        if (side_v && side_v->is<std::string>()) {
+            const std::string side = side_v->get<std::string>();
+            if (side == "short" || side == "SHORT") is_long = false;
+            if (side == "long" || side == "LONG") is_long = true;
+        }
+
+        double leverage = 1.0;
+        const picojson::value* lev_v = pj_find(*pos, "leverage");
+        if (lev_v) {
+            if (lev_v->is<picojson::object>()) {
+                const picojson::object& lev_obj = lev_v->get<picojson::object>();
+                const picojson::value* lv = pj_find(lev_obj, "value");
+                if (lv) (void)pj_get_double_like(*lv, leverage);
+            } else {
+                (void)pj_get_double_like(*lev_v, leverage);
+            }
+        }
+
+        double margin_used = 0.0;
+        const picojson::value* mu_v = pj_find(*pos, "marginUsed");
+        if (mu_v) (void)pj_get_double_like(*mu_v, margin_used);
+
+        double liq_px = 0.0;
+        const picojson::value* liq_v = pj_find(*pos, "liquidationPx");
+        if (liq_v) (void)pj_get_double_like(*liq_v, liq_px);
+
+        double price = 0.0;
+        (void)tradeboy::market::parse_mid_price(all_mids_json, coin, price);
+
+        tradeboy::model::PerpRow row;
+        row.coin = coin;
+        row.is_long = is_long;
+        row.leverage = leverage;
+        row.margin_used = margin_used;
+        row.price = price;
+        row.liquidation_px = liq_px;
+        out_rows.push_back(std::move(row));
+    }
+
+    std::sort(out_rows.begin(), out_rows.end(), [](const tradeboy::model::PerpRow& a, const tradeboy::model::PerpRow& b) {
+        return a.coin < b.coin;
+    });
+    return true;
+}
+
+static int snap_leverage_step(int v) {
+    if (v >= 20) return v;
+    if (v >= 12) return 10;
+    if (v >= 6) return 5;
+    if (v >= 4) return 3;
+    return 2;
+}
+
+static void build_leverage_ladder(int max_lev, std::vector<int>& out) {
+    out.clear();
+    if (max_lev < 2) max_lev = 2;
+    out.push_back(max_lev);
+
+    int lev = max_lev;
+    while (lev > 10) {
+        lev = lev / 2;
+        lev = snap_leverage_step(lev);
+        if (std::find(out.begin(), out.end(), lev) == out.end()) {
+            out.push_back(lev);
+        }
+    }
+
+    if (max_lev >= 5 && std::find(out.begin(), out.end(), 5) == out.end()) out.push_back(5);
+    if (max_lev >= 3 && std::find(out.begin(), out.end(), 3) == out.end()) out.push_back(3);
+    if (max_lev >= 2 && std::find(out.begin(), out.end(), 2) == out.end()) out.push_back(2);
+
+    std::sort(out.begin(), out.end(), std::greater<int>());
+}
+
+static std::string normalize_perp_coin_name(const std::string& name) {
+    size_t pos = name.find(':');
+    if (pos == std::string::npos) return name;
+    if (pos + 1 >= name.size()) return name;
+    return name.substr(pos + 1);
+}
+
+static bool build_perp_rows_from_multi_meta_and_ctxs(const std::vector<std::string>& meta_and_ctxs_jsons,
+                                                     std::vector<tradeboy::model::PerpRow>& out_rows) {
+    out_rows.clear();
+    struct PerpBase {
+        std::string coin;
+        double max_lev = 1.0;
+        double price = 0.0;
+        double volume = 0.0;
+    };
+    std::vector<PerpBase> bases;
+
+    for (const auto& meta_json : meta_and_ctxs_jsons) {
+        picojson::value root;
+        std::string err = picojson::parse(root, meta_json);
+        if (!err.empty() || !root.is<picojson::array>()) return false;
+        const picojson::array& top = root.get<picojson::array>();
+        if (top.size() < 2) return false;
+
+        const picojson::object* meta = pj_get_obj(top[0]);
+        const picojson::array* ctxs = pj_get_arr(top[1]);
+        if (!meta || !ctxs) return false;
+
+        const picojson::value* uni_v = pj_find(*meta, "universe");
+        const picojson::array* uni = uni_v ? pj_get_arr(*uni_v) : nullptr;
+        if (!uni) return false;
+
+        const size_t n = std::min(uni->size(), ctxs->size());
+        for (size_t i = 0; i < n; i++) {
+            const picojson::object* u = pj_get_obj((*uni)[i]);
+            const picojson::object* c = pj_get_obj((*ctxs)[i]);
+            if (!u || !c) continue;
+
+            std::string name;
+            const picojson::value* name_v = pj_find(*u, "name");
+            if (!name_v || !pj_get_string_like(*name_v, name) || name.empty()) continue;
+
+            double vol = 0.0;
+            const picojson::value* v = pj_find(*c, "dayNtlVlm");
+            if (v) (void)pj_get_double_like(*v, vol);
+
+            double max_lev = 1.0;
+            const picojson::value* lev_v = pj_find(*u, "maxLeverage");
+            if (lev_v) (void)pj_get_double_like(*lev_v, max_lev);
+
+            double price = 0.0;
+            const picojson::value* mid_v = pj_find(*c, "midPx");
+            if (mid_v && !pj_get_double_like(*mid_v, price)) price = 0.0;
+            if (price <= 0.0) {
+                const picojson::value* mark_v = pj_find(*c, "markPx");
+                if (mark_v) (void)pj_get_double_like(*mark_v, price);
+            }
+            if (price <= 0.0) {
+                const picojson::value* oracle_v = pj_find(*c, "oraclePx");
+                if (oracle_v) (void)pj_get_double_like(*oracle_v, price);
+            }
+
+            PerpBase base;
+            base.coin = normalize_perp_coin_name(name);
+            base.max_lev = max_lev;
+            base.price = price;
+            base.volume = vol;
+            bases.push_back(std::move(base));
+        }
+    }
+
+    if (bases.empty()) return false;
+
+    std::sort(bases.begin(), bases.end(), [](const PerpBase& a, const PerpBase& b) {
+        return a.volume > b.volume;
+    });
+    if (bases.size() > 10) bases.resize(10);
+
+    std::vector<int> ladder;
+    for (const auto& base : bases) {
+        int max_lev_int = (int)std::round(base.max_lev);
+        build_leverage_ladder(max_lev_int, ladder);
+        for (int lev : ladder) {
+            tradeboy::model::PerpRow row;
+            row.coin = base.coin;
+            row.is_long = true;
+            row.leverage = (double)lev;
+            row.margin_used = 0.0;
+            row.price = base.price;
+            row.liquidation_px = 0.0;
+            out_rows.push_back(row);
+
+            row.is_long = false;
+            out_rows.push_back(row);
+        }
+    }
+    return true;
+}
+
+static bool build_perp_rows_from_meta_and_ctxs(const std::string& meta_and_ctxs_json,
+                                               std::vector<tradeboy::model::PerpRow>& out_rows) {
+    std::vector<std::string> meta_list;
+    meta_list.push_back(meta_and_ctxs_json);
+    return build_perp_rows_from_multi_meta_and_ctxs(meta_list, out_rows);
 }
 
 static int infer_decimals_from_px_string(const std::string& s) {
@@ -696,6 +931,10 @@ void MarketDataService::run() {
     std::string portfolio_json;
     std::string perp_meta_json;
     std::string spot_meta_json;
+    std::string perp_dexs_json;
+    std::vector<std::string> perp_meta_jsons;
+    std::vector<std::string> perp_dex_names;
+    bool perp_rows_initialized = false;
     bool spot_rows_initialized = false;
     bool logged_user_dump = false;
     long long last_mids_ms = 0;
@@ -712,6 +951,7 @@ void MarketDataService::run() {
     bool logged_portfolio_once = false;
     bool portfolio_failed_once = false;
     bool perp_meta_done = false;
+    bool perp_dexs_done = false;
     bool spot_meta_done = false;
 
     while (!stop_flag.load()) {
@@ -724,12 +964,49 @@ void MarketDataService::run() {
             last_heartbeat_ms = now_ms;
         }
 
-        if (!perp_meta_done) {
-            const std::string req = std::string("{\"type\":\"allPerpMetas\"}\n");
-            if (tradeboy::market::fetch_info_raw(req, perp_meta_json)) {
-                model.set_hl_perp_meta_json(perp_meta_json, true);
+        if (!perp_dexs_done) {
+            const std::string req = std::string("{\"type\":\"perpDexs\"}\n");
+            if (tradeboy::market::fetch_info_raw(req, perp_dexs_json)) {
+                if (parse_perp_dex_names(perp_dexs_json, perp_dex_names)) {
+                    perp_dexs_done = true;
+                    log_str("[HL] perpDexs cached\n");
+                }
+            }
+        }
+
+        if (perp_dexs_done && !perp_meta_done) {
+            bool all_ok = true;
+            perp_meta_jsons.clear();
+            perp_meta_jsons.reserve(perp_dex_names.size());
+            for (const auto& dex : perp_dex_names) {
+                std::string req = std::string("{\"type\":\"metaAndAssetCtxs\"");
+                if (!dex.empty()) {
+                    req += std::string(",\"dex\":\"") + dex + "\"";
+                }
+                req += "}\n";
+                std::string meta_json;
+                if (!tradeboy::market::fetch_info_raw(req, meta_json)) {
+                    all_ok = false;
+                    break;
+                }
+                if (dex.empty()) {
+                    perp_meta_json = meta_json;
+                    model.set_hl_perp_meta_json(perp_meta_json, true);
+                }
+                perp_meta_jsons.push_back(std::move(meta_json));
+            }
+
+            if (all_ok) {
+                if (!perp_rows_initialized) {
+                    std::vector<tradeboy::model::PerpRow> rows;
+                    if (build_perp_rows_from_multi_meta_and_ctxs(perp_meta_jsons, rows) && !rows.empty()) {
+                        model.set_perp_rows(std::move(rows));
+                        perp_rows_initialized = true;
+                        log_str("[Model] perp_rows initialized from multi metaAndAssetCtxs\n");
+                    }
+                }
                 perp_meta_done = true;
-                log_str("[HL] allPerpMetas cached\n");
+                log_str("[HL] metaAndAssetCtxs (multi-dex) cached\n");
             }
         }
 
@@ -811,6 +1088,12 @@ void MarketDataService::run() {
                 if (!logged_perp_dump) {
                     logged_perp_dump = true;
                     log_str("[Market] clearinghouseState raw received\n");
+                }
+                {
+                    std::vector<tradeboy::model::PerpRow> rows;
+                    if (build_perp_rows_from_clearinghouse(perp_json, mids_json, rows) && !rows.empty()) {
+                        model.set_perp_rows(std::move(rows));
+                    }
                 }
                 double usdc = 0.0;
                 if (parse_perp_usdc_balance_any(perp_json, usdc)) {

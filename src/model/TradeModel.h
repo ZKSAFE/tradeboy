@@ -40,10 +40,20 @@ struct SpotRow {
           entry_price(entry_price) {}
 };
 
+struct PerpRow {
+    std::string coin;
+    bool is_long = true;
+    double leverage = 1.0;
+    double margin_used = 0.0;
+    double price = 0.0;
+    double liquidation_px = 0.0;
+};
+
 struct TradeModelSnapshot {
     int spot_row_idx = 0;
 
     std::vector<SpotRow> spot_rows;
+    std::vector<PerpRow> perp_rows;
 };
 
 struct WalletSnapshot {
@@ -89,6 +99,7 @@ struct TradeModel {
 
     void set_spot_rows(std::vector<SpotRow> rows);
     void set_spot_row_idx(int idx);
+    void set_perp_rows(std::vector<PerpRow> rows);
 
     void set_wallet(const std::string& wallet_address, const std::string& private_key);
 
@@ -121,6 +132,8 @@ private:
     int spot_row_idx_ = 0;
 
     std::vector<SpotRow> spot_rows_;
+
+    std::vector<PerpRow> perp_rows_;
 
     std::string wallet_address_;
     std::string private_key_;

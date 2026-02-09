@@ -9,6 +9,7 @@
 
 #include "../spot/SpotScreen.h"
 #include "../spot/SpotUiEvents.h"
+#include "../perp/PerpUiEvents.h"
 #include "../spotOrder/SpotOrderScreen.h"
 #include "../market/MarketDataService.h"
 #include "../market/HyperliquidWgetDataSource.h"
@@ -45,6 +46,95 @@ App::App() {
     pthread_mutex_init(&hl_transfer_mu, nullptr);
     pthread_mutex_init(&hl_withdraw_mu, nullptr);
     pthread_mutex_init(&hl_spot_order_mu, nullptr);
+}
+
+void App::apply_perp_ui_events(const std::vector<tradeboy::perp::PerpUiEvent>& ev) {
+    const int kPerpPageRows = 7;
+    for (const auto& e : ev) {
+        switch (e.type) {
+            case tradeboy::perp::PerpUiEventType::RowDelta: {
+                tradeboy::model::TradeModelSnapshot s = model.snapshot();
+                const int n = (int)s.perp_rows.size();
+                if (n <= 0) {
+                    perp_row_idx = 0;
+                    perp_page_start_idx = 0;
+                    break;
+                }
+
+                const int max_start = std::max(0, n - kPerpPageRows);
+                perp_page_start_idx = std::max(0, std::min(max_start, perp_page_start_idx));
+                perp_row_idx = std::max(0, std::min(n - 1, perp_row_idx));
+
+                if (e.value > 0) {
+                    if (perp_row_idx < n - 1) {
+                        const int page_end = std::min(n - 1, perp_page_start_idx + kPerpPageRows - 1);
+                        if (perp_row_idx < page_end) {
+                            perp_row_idx++;
+                        } else {
+                            perp_page_start_idx = std::min(max_start, perp_page_start_idx + 1);
+                            perp_row_idx = std::min(n - 1, perp_row_idx + 1);
+                        }
+                    }
+                } else if (e.value < 0) {
+                    if (perp_row_idx > 0) {
+                        const int page_top = perp_page_start_idx;
+                        if (perp_row_idx > page_top) {
+                            perp_row_idx--;
+                        } else {
+                            perp_page_start_idx = std::max(0, perp_page_start_idx - 1);
+                            perp_row_idx = std::max(0, perp_row_idx - 1);
+                        }
+                    }
+                }
+
+                // Ensure selection stays visible.
+                if (perp_row_idx < perp_page_start_idx) perp_page_start_idx = perp_row_idx;
+                if (perp_row_idx >= perp_page_start_idx + kPerpPageRows) {
+                    perp_page_start_idx = std::max(0, perp_row_idx - kPerpPageRows + 1);
+                }
+                perp_page_start_idx = std::max(0, std::min(max_start, perp_page_start_idx));
+            } break;
+            case tradeboy::perp::PerpUiEventType::PageDelta: {
+                tradeboy::model::TradeModelSnapshot s = model.snapshot();
+                const int n = (int)s.perp_rows.size();
+                if (n <= 0) {
+                    perp_row_idx = 0;
+                    perp_page_start_idx = 0;
+                    break;
+                }
+                const int max_start = std::max(0, n - kPerpPageRows);
+                perp_page_start_idx = std::max(0, std::min(max_start, perp_page_start_idx));
+
+                int offset_in_page = perp_row_idx - perp_page_start_idx;
+                offset_in_page = std::max(0, std::min(kPerpPageRows - 1, offset_in_page));
+
+                if (e.value > 0) {
+                    perp_page_start_idx = std::min(max_start, perp_page_start_idx + kPerpPageRows);
+                } else if (e.value < 0) {
+                    perp_page_start_idx = std::max(0, perp_page_start_idx - kPerpPageRows);
+                }
+
+                perp_row_idx = std::max(0, std::min(n - 1, perp_page_start_idx + offset_in_page));
+            } break;
+            case tradeboy::perp::PerpUiEventType::EnterActionFocus:
+                perp_action_focus = true;
+                perp_action_idx = e.value;
+                break;
+            case tradeboy::perp::PerpUiEventType::ExitActionFocus:
+                perp_action_focus = false;
+                break;
+            case tradeboy::perp::PerpUiEventType::SetActionIdx:
+                perp_action_idx = e.value;
+                break;
+            case tradeboy::perp::PerpUiEventType::TriggerAction:
+                if (e.flag) {
+                    perp_primary_press_frames = 24;
+                } else {
+                    perp_close_press_frames = 24;
+                }
+                break;
+        }
+    }
 }
 
 App::~App() {
@@ -488,8 +578,8 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
         }
     }
     
-    // Block spot input if triggering action
-    if (buy_trigger_frames > 0 || sell_trigger_frames > 0) {
+    // Block spot/perp input if triggering action
+    if (buy_trigger_frames > 0 || sell_trigger_frames > 0 || perp_primary_press_frames > 0 || perp_close_press_frames > 0) {
         return;
     }
 
@@ -507,6 +597,15 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
 
         std::vector<tradeboy::spot::SpotUiEvent> ev = tradeboy::spot::collect_spot_ui_events(in, edges, ui);
         apply_spot_ui_events(ev);
+    } else if (tab == Tab::Perp) {
+        tradeboy::perp::PerpUiState ui;
+        ui.action_focus = perp_action_focus;
+        ui.action_idx = perp_action_idx;
+        ui.primary_press_frames = perp_primary_press_frames;
+        ui.close_press_frames = perp_close_press_frames;
+
+        std::vector<tradeboy::perp::PerpUiEvent> ev = tradeboy::perp::collect_perp_ui_events(in, edges, ui);
+        apply_perp_ui_events(ev);
     } else if (tab == Tab::Account) {
         if (tradeboy::utils::pressed(in.x, edges.prev.x)) {
             account_address_dialog.open_dialog("", 1);
@@ -794,6 +893,8 @@ void App::render() {
     // Total trigger duration is still 45 frames, but blink period is shorter.
     bool buy_flash = tradeboy::utils::blink_on(buy_trigger_frames, 6, 3);
     bool sell_flash = tradeboy::utils::blink_on(sell_trigger_frames, 6, 3);
+    bool perp_primary_flash = tradeboy::utils::blink_on(perp_primary_press_frames, 6, 3);
+    bool perp_close_flash = tradeboy::utils::blink_on(perp_close_press_frames, 6, 3);
 
     static const int TRADEMODEL_SNAPSHOT_ABI_GUARD = 1;
     (void)TRADEMODEL_SNAPSHOT_ABI_GUARD;
@@ -840,7 +941,15 @@ void App::render() {
                 l1_btn_held,
                 r1_btn_held);
         } else if (tab == Tab::Perp) {
-            tradeboy::perp::render_perp_screen(font_bold);
+            tradeboy::model::TradeModelSnapshot snap = model.snapshot();
+            tradeboy::perp::render_perp_screen(
+                snap.perp_rows,
+                perp_page_start_idx,
+                perp_row_idx,
+                perp_action_idx,
+                perp_primary_flash,
+                perp_close_flash,
+                font_bold);
         } else {
             tradeboy::model::AccountSnapshot account = model.account_snapshot();
             const std::string eth_s = account.arb_eth_str.empty() ? "UNKNOWN" : account.arb_eth_str;
@@ -907,6 +1016,8 @@ void App::render() {
 
     dec_frame_counter(buy_press_frames);
     dec_frame_counter(sell_press_frames);
+    dec_frame_counter(perp_primary_press_frames);
+    dec_frame_counter(perp_close_press_frames);
     dec_frame_counter(l1_flash_frames);
     dec_frame_counter(r1_flash_frames);
     if (spot_order.open()) {
