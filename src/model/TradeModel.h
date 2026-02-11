@@ -42,10 +42,12 @@ struct SpotRow {
 
 struct PerpRow {
     std::string coin;
+    std::string price_key;
     bool is_long = true;
     double leverage = 1.0;
     double margin_used = 0.0;
     double price = 0.0;
+    double prev_price = 0.0;
     double liquidation_px = 0.0;
 };
 
@@ -125,6 +127,7 @@ struct TradeModel {
     std::string hl_spot_meta_json() const;
 
     void update_mid_prices_from_allmids_json(const std::string& all_mids_json);
+    void update_perp_prices_from_allmids_json(const std::string& all_mids_json);
     void update_spot_balances(const std::unordered_map<std::string, double>& balances_by_sym);
     void sort_spot_rows();
 

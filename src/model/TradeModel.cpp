@@ -215,6 +215,24 @@ void TradeModel::update_mid_prices_from_allmids_json(const std::string& all_mids
     pthread_mutex_unlock(&mu);
 }
 
+void TradeModel::update_perp_prices_from_allmids_json(const std::string& all_mids_json) {
+    int rc = pthread_mutex_lock(&mu);
+    if (rc != 0) return;
+    for (auto& r : perp_rows_) {
+        const std::string& key = r.price_key.empty() ? r.coin : r.price_key;
+        double p = 0.0;
+        bool ok = tradeboy::market::parse_mid_price(all_mids_json, key, p);
+        if (!ok && key != r.coin) {
+            ok = tradeboy::market::parse_mid_price(all_mids_json, r.coin, p);
+        }
+        if (ok) {
+            r.prev_price = r.price;
+            r.price = p;
+        }
+    }
+    pthread_mutex_unlock(&mu);
+}
+
 void TradeModel::update_spot_balances(const std::unordered_map<std::string, double>& balances_by_sym) {
     int rc = pthread_mutex_lock(&mu);
     if (rc != 0) return;

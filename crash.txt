@@ -1,0 +1,48 @@
+[CRASH] signal=6
+[CRASH] backtrace_depth=45
+0   tradeboy-macos                      0x00000001001fc844 _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x000000019eff7744 _sigtramp + 56
+2   libsystem_pthread.dylib             0x000000019efed888 pthread_kill + 296
+3   libsystem_c.dylib                   0x000000019eef2850 abort + 124
+4   libsystem_malloc.dylib              0x000000019edf1224 malloc_vreport + 892
+5   libsystem_malloc.dylib              0x000000019ee207f0 malloc_zone_error + 100
+6   libsystem_malloc.dylib              0x000000019ede6ce8 tiny_malloc_from_free_list + 1940
+7   libsystem_malloc.dylib              0x000000019ede5dfc tiny_malloc_should_clear + 272
+8   libsystem_malloc.dylib              0x000000019ede4c28 szone_malloc_should_clear + 84
+9   CoreGraphics                        0x00000001a5db36ec CGGlyphBitmapCreate + 268
+10  CoreGraphics                        0x00000001a5daf530 CGGlyphBitmapCreateWithPathAndDilation + 1532
+11  CoreGraphics                        0x00000001a5dacfa0 CGGlyphBuilderLockBitmaps + 1364
+12  CoreGraphics                        0x00000001a5dac95c render_glyphs + 296
+13  CoreGraphics                        0x00000001a5dac110 draw_glyph_bitmaps + 860
+14  CoreGraphics                        0x00000001a5dabce4 ripc_DrawGlyphs + 1496
+15  CoreGraphics                        0x00000001a5dab4c8 CGContextDelegateDrawGlyphs + 344
+16  CoreGraphics                        0x00000001a62533cc _ZN2CG11DisplayList14executeEntriesENSt3__111__wrap_iterIPNS1_10shared_ptrIKNS_16DisplayListEntryEEEEES8_P17CGContextDelegateP16CGRenderingStateP8CGGStackPK6CGRectPK14__CFDictionaryb + 1404
+17  CoreGraphics                        0x00000001a5e07124 CGDisplayListDrawInContextDelegate + 680
+18  QuartzCore                          0x00000001a8d67330 CABackingStoreUpdate_ + 600
+19  QuartzCore                          0x00000001a8db1fb8 ___ZN2CA5Layer8display_Ev_block_invoke + 72
+20  QuartzCore                          0x00000001a8d66650 -[CALayer _display] + 1796
+21  AppKit                              0x00000001a38dc054 block_destroy_helper.34 + 10644
+22  AppKit                              0x00000001a38dbc8c block_destroy_helper.34 + 9676
+23  AppKit                              0x00000001a38dc128 block_destroy_helper.34 + 10856
+24  QuartzCore                          0x00000001a8d65d00 _ZN2CA5Layer17display_if_neededEPNS_11TransactionE + 784
+25  QuartzCore                          0x00000001a8f00454 _ZN2CA7Context18commit_transactionEPNS_11TransactionEdPd + 592
+26  QuartzCore                          0x00000001a8d4d43c _ZN2CA11Transaction6commitEv + 644
+27  AppKit                              0x00000001a352d9d0 __62+[CATransaction(NSCATransaction) NS_setFlushesWithDisplayLink]_block_invoke + 272
+28  CoreFoundation                      0x000000019f08be48 __CFRUNLOOP_IS_CALLING_OUT_TO_AN_OBSERVER_CALLBACK_FUNCTION__ + 36
+29  CoreFoundation                      0x000000019f08bd44 __CFRunLoopDoObservers + 648
+30  CoreFoundation                      0x000000019f08b350 __CFRunLoopRun + 764
+31  CoreFoundation                      0x000000019f145e34 _CFRunLoopRunSpecificWithOptions + 532
+32  HIToolbox                           0x00000001abb7b790 RunCurrentEventLoopInMode + 316
+33  HIToolbox                           0x00000001abb7e9e0 ReceiveNextEventCommon + 272
+34  HIToolbox                           0x00000001abd08b64 _BlockUntilNextEventMatchingListInMode + 48
+35  AppKit                              0x00000001a39a4b5c _DPSBlockUntilNextEventMatchingListInMode + 236
+36  AppKit                              0x00000001a349ee48 _DPSNextEvent + 588
+37  AppKit                              0x00000001a3f69d0c -[NSApplication(NSEventRouting) _nextEventMatchingEventMask:untilDate:inMode:dequeue:] + 688
+38  AppKit                              0x00000001a3f69a18 -[NSApplication(NSEventRouting) nextEventMatchingMask:untilDate:inMode:dequeue:] + 72
+39  libSDL2-2.0.0.dylib                 0x00000001006f8ebc Cocoa_PumpEventsUntilDate + 84
+40  libSDL2-2.0.0.dylib                 0x00000001006f906c Cocoa_PumpEvents + 56
+41  libSDL2-2.0.0.dylib                 0x000000010067bcd4 SDL_PumpEventsInternal + 64
+42  libSDL2-2.0.0.dylib                 0x000000010067bdf4 SDL_WaitEventTimeout_REAL + 96
+43  tradeboy-macos                      0x00000001001fc208 main + 2984
+44  dyld                                0x000000019ec25d54 start + 7184
+

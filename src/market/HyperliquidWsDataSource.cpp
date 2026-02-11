@@ -10,6 +10,7 @@
 #include <chrono>
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -18,6 +19,7 @@
 #include <sys/select.h>
 
 #include "Hyperliquid.h"
+#include "../../third_party/picojson/picojson.h"
 #include "utils/Log.h"
 
 namespace tradeboy::market {
@@ -27,6 +29,34 @@ struct Popen2 {
     FILE* out = nullptr; // from child stdout
     pid_t pid = -1;
 };
+
+static bool pj_parse_root_object(const std::string& s, picojson::object& out_obj) {
+    out_obj.clear();
+    picojson::value root;
+    std::string err = picojson::parse(root, s);
+    if (!err.empty()) return false;
+    if (!root.is<picojson::object>()) return false;
+    out_obj = root.get<picojson::object>();
+    return true;
+}
+
+static void merge_mids_json(std::string& dst_json, const std::string& src_json) {
+    if (src_json.empty()) return;
+    picojson::object src_obj;
+    if (!pj_parse_root_object(src_json, src_obj)) return;
+
+    picojson::object dst_obj;
+    if (!dst_json.empty()) {
+        (void)pj_parse_root_object(dst_json, dst_obj);
+    }
+
+    for (const auto& kv : src_obj) {
+        dst_obj[kv.first] = kv.second;
+    }
+
+    picojson::value v(dst_obj);
+    dst_json = v.serialize();
+}
 
 static bool parse_post_id(const std::string& msg, unsigned int& out_id) {
     size_t p = msg.find("\"id\"");
@@ -461,7 +491,7 @@ static std::string extract_object_after_key(const std::string& msg, const char* 
     return std::string();
 }
 
-static bool ws_connect_and_subscribe(Popen2& p) {
+static bool ws_connect_and_subscribe(Popen2& p, const std::vector<std::string>& perp_dexes) {
     const char* cmd = "/usr/bin/openssl s_client -quiet -connect api.hyperliquid.xyz:443 -servername api.hyperliquid.xyz";
     if (!popen2_sh(cmd, p)) {
         log_str("[WS] popen2 failed\n");
@@ -516,6 +546,16 @@ static bool ws_connect_and_subscribe(Popen2& p) {
         return false;
     }
 
+    for (const auto& dex : perp_dexes) {
+        if (dex.empty()) continue;
+        const std::string sub_dex = std::string("{\"method\":\"subscribe\",\"subscription\":{\"type\":\"allMids\",\"dex\":\"") +
+                                    dex + "\"}}";
+        if (!ws_write_text(p.in, sub_dex, (unsigned int)std::rand())) {
+            pclose2(p);
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -537,6 +577,25 @@ void HyperliquidWsDataSource::set_user_address(const std::string& user_address_0
         return;
     }
     user_address_0x_ = user_address_0x;
+    pthread_mutex_unlock(&mu_);
+    reconnect_requested_.store(true);
+}
+
+void HyperliquidWsDataSource::set_perp_dexes(const std::vector<std::string>& dexes) {
+    std::unordered_set<std::string> seen;
+    std::vector<std::string> cleaned;
+    cleaned.reserve(dexes.size());
+    for (const auto& d : dexes) {
+        if (d.empty()) continue;
+        if (seen.insert(d).second) cleaned.push_back(d);
+    }
+
+    pthread_mutex_lock(&mu_);
+    if (perp_dexes_ == cleaned) {
+        pthread_mutex_unlock(&mu_);
+        return;
+    }
+    perp_dexes_ = std::move(cleaned);
     pthread_mutex_unlock(&mu_);
     reconnect_requested_.store(true);
 }
@@ -606,7 +665,11 @@ void HyperliquidWsDataSource::run() {
 
     while (!stop_.load()) {
         Popen2 p;
-        if (!ws_connect_and_subscribe(p)) {
+        std::vector<std::string> perp_dexes;
+        pthread_mutex_lock(&mu_);
+        perp_dexes = perp_dexes_;
+        pthread_mutex_unlock(&mu_);
+        if (!ws_connect_and_subscribe(p, perp_dexes)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(reconnect_backoff_ms));
             reconnect_backoff_ms = std::min(30000, reconnect_backoff_ms * 2);
             continue;
@@ -681,7 +744,11 @@ void HyperliquidWsDataSource::run() {
                 if (mids_obj.empty()) mids_obj = extract_object_after_key(msg, "mids");
                 if (!mids_obj.empty() && mids_obj.find("\":\"") != std::string::npos) {
                     pthread_mutex_lock(&mu_);
-                    latest_mids_json_ = std::move(mids_obj);
+                    if (latest_mids_json_.empty()) {
+                        latest_mids_json_ = mids_obj;
+                    } else {
+                        merge_mids_json(latest_mids_json_, mids_obj);
+                    }
                     latest_mids_ms_ = now_ms;
                     log_every++;
                     if ((log_every % 20) == 1) {

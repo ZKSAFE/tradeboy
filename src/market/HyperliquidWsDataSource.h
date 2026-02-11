@@ -13,6 +13,7 @@
 #include <atomic>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <pthread.h>
 
@@ -26,6 +27,7 @@ struct HyperliquidWsDataSource : public IMarketDataSource {
 
     bool fetch_all_mids_raw(std::string& out_json) override;
     void set_user_address(const std::string& user_address_0x) override;
+    void set_perp_dexes(const std::vector<std::string>& dexes) override;
     bool fetch_user_webdata_raw(std::string& out_json) override;
     bool fetch_spot_clearinghouse_state_raw(std::string& out_json) override;
     bool fetch_perp_clearinghouse_state_raw(std::string& out_json) override;
@@ -39,6 +41,7 @@ private:
     mutable pthread_mutex_t mu_;
     std::string latest_mids_json_;
     long long latest_mids_ms_ = 0;
+    std::vector<std::string> perp_dexes_;
 
     std::string latest_user_json_;
     long long latest_user_ms_ = 0;

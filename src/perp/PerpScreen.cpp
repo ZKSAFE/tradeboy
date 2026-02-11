@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <sstream>
+#include <unordered_map>
 
 #include "ui/MatrixTheme.h"
 #include "utils/Flash.h"
@@ -38,6 +39,19 @@ static std::string format_leverage(double v) {
         std::snprintf(buf, sizeof(buf), "%.1fx", v);
     }
     return buf;
+}
+
+static ImU32 lerp_color_to_white(ImU32 base, float t) {
+    if (t <= 0.0f) return base;
+    if (t >= 1.0f) t = 1.0f;
+    ImU32 r = (base >> IM_COL32_R_SHIFT) & 0xFF;
+    ImU32 g = (base >> IM_COL32_G_SHIFT) & 0xFF;
+    ImU32 b = (base >> IM_COL32_B_SHIFT) & 0xFF;
+    ImU32 a = (base >> IM_COL32_A_SHIFT) & 0xFF;
+    ImU32 nr = r + (ImU32)((255 - r) * t);
+    ImU32 ng = g + (ImU32)((255 - g) * t);
+    ImU32 nb = b + (ImU32)((255 - b) * t);
+    return IM_COL32(nr, ng, nb, a);
 }
 
 void render_perp_screen(const std::vector<tradeboy::model::PerpRow>& rows,
@@ -119,6 +133,14 @@ void render_perp_screen(const std::vector<tradeboy::model::PerpRow>& rows,
 
     // List
     {
+        struct FlashState {
+            double last_price = 0.0;
+            ImU32 last_base_col = MatrixTheme::TEXT;
+            int frames_left = 0;
+            bool init = false;
+        };
+        static std::unordered_map<std::string, FlashState> flash;
+
         float listH = size.y - padding - footerH - y + p.y;
         int startIdx = page_start_idx;
         int maxRows = std::max(1, targetRows);
@@ -172,7 +194,41 @@ void render_perp_screen(const std::vector<tradeboy::model::PerpRow>& rows,
             int px_decimals = price_decimals_for(row.price);
             std::string priceStr = (row.price > 0.0) ? format_fixed_round(row.price, px_decimals) : std::string("--");
             ImVec2 szP = ImGui::CalcTextSize(priceStr.c_str());
-            dl->AddText(ImVec2(col3 - szP.x, textY), textCol, priceStr.c_str());
+
+            std::string flash_key = row.coin + (row.is_long ? "L" : "S") + format_leverage(row.leverage);
+            FlashState& fs = flash[flash_key];
+            if (!fs.init) {
+                fs.init = true;
+                fs.last_price = row.price;
+                fs.last_base_col = MatrixTheme::TEXT;
+                fs.frames_left = 0;
+            } else {
+                const bool price_changed = (std::isfinite(row.price) && std::fabs(row.price - fs.last_price) > 0.0);
+                if (price_changed) fs.frames_left = 60;
+            }
+
+            ImU32 basePriceCol = fs.last_base_col;
+            if (std::isfinite(row.price) && std::isfinite(fs.last_price)) {
+                if (row.price > fs.last_price) basePriceCol = MatrixTheme::TEXT;
+                else if (row.price < fs.last_price) basePriceCol = MatrixTheme::ALERT;
+            } else {
+                basePriceCol = MatrixTheme::TEXT;
+            }
+            fs.last_base_col = basePriceCol;
+            if (fs.init) fs.last_price = row.price;
+
+            float t_white = 0.0f;
+            if (fs.frames_left > 0) {
+                int elapsed = 60 - fs.frames_left;
+                if (elapsed < 30) t_white = (float)elapsed / 30.0f;
+                else t_white = (float)(60 - elapsed) / 30.0f;
+                if (t_white < 0.0f) t_white = 0.0f;
+                if (t_white > 1.0f) t_white = 1.0f;
+                fs.frames_left--;
+            }
+
+            ImU32 priceCol = isSelected ? MatrixTheme::BLACK : lerp_color_to_white(basePriceCol, t_white);
+            dl->AddText(ImVec2(col3 - szP.x, textY), priceCol, priceStr.c_str());
 
             if (row.margin_used > 0.0 && row.liquidation_px > 0.0) {
                 std::string liqStr = format_fixed_round(row.liquidation_px, px_decimals);

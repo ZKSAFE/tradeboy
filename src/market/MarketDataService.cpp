@@ -164,10 +164,12 @@ static bool build_perp_rows_from_clearinghouse(const std::string& perp_json,
 
         tradeboy::model::PerpRow row;
         row.coin = coin;
+        row.price_key = coin;
         row.is_long = is_long;
         row.leverage = leverage;
         row.margin_used = margin_used;
         row.price = price;
+        row.prev_price = price;
         row.liquidation_px = liq_px;
         out_rows.push_back(std::move(row));
     }
@@ -215,10 +217,13 @@ static std::string normalize_perp_coin_name(const std::string& name) {
 }
 
 static bool build_perp_rows_from_multi_meta_and_ctxs(const std::vector<std::string>& meta_and_ctxs_jsons,
-                                                     std::vector<tradeboy::model::PerpRow>& out_rows) {
+                                                     std::vector<tradeboy::model::PerpRow>& out_rows,
+                                                     std::vector<std::string>* out_dexes) {
     out_rows.clear();
+    if (out_dexes) out_dexes->clear();
     struct PerpBase {
         std::string coin;
+        std::string price_key;
         double max_lev = 1.0;
         double price = 0.0;
         double volume = 0.0;
@@ -272,6 +277,7 @@ static bool build_perp_rows_from_multi_meta_and_ctxs(const std::vector<std::stri
 
             PerpBase base;
             base.coin = normalize_perp_coin_name(name);
+            base.price_key = name;
             base.max_lev = max_lev;
             base.price = price;
             base.volume = vol;
@@ -287,16 +293,23 @@ static bool build_perp_rows_from_multi_meta_and_ctxs(const std::vector<std::stri
     if (bases.size() > 10) bases.resize(10);
 
     std::vector<int> ladder;
+    std::unordered_set<std::string> used_dexes;
     for (const auto& base : bases) {
         int max_lev_int = (int)std::round(base.max_lev);
         build_leverage_ladder(max_lev_int, ladder);
+        size_t dex_pos = base.price_key.find(':');
+        if (dex_pos != std::string::npos && dex_pos > 0) {
+            used_dexes.insert(base.price_key.substr(0, dex_pos));
+        }
         for (int lev : ladder) {
             tradeboy::model::PerpRow row;
             row.coin = base.coin;
+            row.price_key = base.price_key;
             row.is_long = true;
             row.leverage = (double)lev;
             row.margin_used = 0.0;
             row.price = base.price;
+            row.prev_price = base.price;
             row.liquidation_px = 0.0;
             out_rows.push_back(row);
 
@@ -304,14 +317,19 @@ static bool build_perp_rows_from_multi_meta_and_ctxs(const std::vector<std::stri
             out_rows.push_back(row);
         }
     }
+    if (out_dexes && !used_dexes.empty()) {
+        out_dexes->assign(used_dexes.begin(), used_dexes.end());
+        std::sort(out_dexes->begin(), out_dexes->end());
+    }
     return true;
 }
 
 static bool build_perp_rows_from_meta_and_ctxs(const std::string& meta_and_ctxs_json,
-                                               std::vector<tradeboy::model::PerpRow>& out_rows) {
+                                               std::vector<tradeboy::model::PerpRow>& out_rows,
+                                               std::vector<std::string>* out_dexes) {
     std::vector<std::string> meta_list;
     meta_list.push_back(meta_and_ctxs_json);
-    return build_perp_rows_from_multi_meta_and_ctxs(meta_list, out_rows);
+    return build_perp_rows_from_multi_meta_and_ctxs(meta_list, out_rows, out_dexes);
 }
 
 static int infer_decimals_from_px_string(const std::string& s) {
@@ -969,6 +987,7 @@ void MarketDataService::run() {
             if (tradeboy::market::fetch_info_raw(req, perp_dexs_json)) {
                 if (parse_perp_dex_names(perp_dexs_json, perp_dex_names)) {
                     perp_dexs_done = true;
+                    src.set_perp_dexes(perp_dex_names);
                     log_str("[HL] perpDexs cached\n");
                 }
             }
@@ -999,9 +1018,13 @@ void MarketDataService::run() {
             if (all_ok) {
                 if (!perp_rows_initialized) {
                     std::vector<tradeboy::model::PerpRow> rows;
-                    if (build_perp_rows_from_multi_meta_and_ctxs(perp_meta_jsons, rows) && !rows.empty()) {
+                    std::vector<std::string> used_dexes;
+                    if (build_perp_rows_from_multi_meta_and_ctxs(perp_meta_jsons, rows, &used_dexes) && !rows.empty()) {
                         model.set_perp_rows(std::move(rows));
                         perp_rows_initialized = true;
+                        if (!used_dexes.empty()) {
+                            src.set_perp_dexes(used_dexes);
+                        }
                         log_str("[Model] perp_rows initialized from multi metaAndAssetCtxs\n");
                     }
                 }
@@ -1040,6 +1063,7 @@ void MarketDataService::run() {
         if (now_ms - last_mids_ms > mids_interval_ms) {
             if (src.fetch_all_mids_raw(mids_json)) {
                 model.update_mid_prices_from_allmids_json(mids_json);
+                model.update_perp_prices_from_allmids_json(mids_json);
                 model.sort_spot_rows();
                 mids_backoff_ms = 0;
             } else {
