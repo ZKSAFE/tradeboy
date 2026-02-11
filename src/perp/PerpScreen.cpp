@@ -211,7 +211,6 @@ void render_perp_screen(const std::vector<tradeboy::model::PerpRow>& rows,
         bool closeFocus = (action_idx == 1);
 
         const char* primaryLabel = sel.is_long ? "LONG" : "SHORT";
-        if (sel.margin_used <= 0.0) primaryLabel = "LONG";
 
         float btnFontSize = 20.0f;
 

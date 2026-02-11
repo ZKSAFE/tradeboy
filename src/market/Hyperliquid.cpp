@@ -188,9 +188,9 @@ static const char* resolve_curl_path() {
 
 static bool hl_post_file(const char* json_path, std::string& out_json) {
 #if defined(TRADEBOY_DESKTOP)
-    std::string cmd = std::string(resolve_curl_path()) + " -sS --connect-timeout 3 --max-time 8 -H \"Content-Type: application/json\" --data-binary @";
+    std::string cmd = std::string(resolve_curl_path()) + " -s --connect-timeout 3 --max-time 8 -H \"Content-Type: application/json\" --data-binary @";
     cmd += json_path;
-    cmd += " https://api.hyperliquid.xyz/info";
+    cmd += " https://api.hyperliquid.xyz/info 2>/dev/null";
     if (run_cmd_capture(cmd, out_json)) return true;
 
     std::string diag;
