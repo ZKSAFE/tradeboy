@@ -51,6 +51,83 @@ static bool pj_get_string_like(const picojson::value& v, std::string& out) {
     return false;
 }
 
+static bool pj_get_double_like(const picojson::value& v, double& out) {
+    if (v.is<double>()) {
+        out = v.get<double>();
+        return true;
+    }
+    if (v.is<std::string>()) {
+        out = std::strtod(v.get<std::string>().c_str(), nullptr);
+        return true;
+    }
+    return false;
+}
+
+static std::string map_token_display_sym(const std::string& token_name, const std::string& token_full_name);
+
+bool parse_perp_asset_info(const std::string& perp_meta_json,
+                           const std::string& display_sym,
+                           int& out_asset,
+                           int& out_sz_decimals) {
+    out_asset = -1;
+    out_sz_decimals = 0;
+    picojson::value root;
+    std::string err = picojson::parse(root, perp_meta_json);
+    if (!err.empty()) return false;
+
+    const picojson::object* meta = nullptr;
+    if (root.is<picojson::array>()) {
+        const picojson::array& top = root.get<picojson::array>();
+        if (!top.empty()) meta = pj_get_obj(top[0]);
+    } else if (root.is<picojson::object>()) {
+        meta = pj_get_obj(root);
+    }
+    if (!meta) return false;
+
+    const picojson::value* uni_v = pj_find(*meta, "universe");
+    const picojson::array* uni = uni_v ? pj_get_arr(*uni_v) : nullptr;
+    if (!uni) return false;
+
+    auto normalize_sym = [](const std::string& name) {
+        std::string s = name;
+        size_t colon = s.find(':');
+        if (colon != std::string::npos && (colon + 1) < s.size()) {
+            s = s.substr(colon + 1);
+        }
+        size_t slash = s.find('/');
+        if (slash != std::string::npos) s = s.substr(0, slash);
+        return s;
+    };
+
+    for (size_t i = 0; i < uni->size(); i++) {
+        const picojson::object* u = pj_get_obj((*uni)[i]);
+        if (!u) continue;
+
+        std::string name;
+        const picojson::value* name_v = pj_find(*u, "name");
+        if (!name_v || !pj_get_string_like(*name_v, name) || name.empty()) continue;
+
+        std::string sym = normalize_sym(name);
+        if (!sym.empty()) {
+            sym = map_token_display_sym(sym, std::string());
+        }
+        if (sym != display_sym) continue;
+
+        int sz_decimals = 0;
+        const picojson::value* sdv = pj_find(*u, "szDecimals");
+        if (sdv) {
+            double d = 0.0;
+            if (pj_get_double_like(*sdv, d)) sz_decimals = std::max(0, (int)d);
+        }
+
+        out_asset = (int)i;
+        out_sz_decimals = sz_decimals;
+        return true;
+    }
+
+    return false;
+}
+
 static std::string map_token_display_sym(const std::string& token_name, const std::string& token_full_name) {
     struct NameMap {
         const char* l1;

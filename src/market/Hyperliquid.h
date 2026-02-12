@@ -28,4 +28,9 @@ bool parse_spot_asset_info(const std::string& spot_meta_json,
                            int& out_asset,
                            int& out_sz_decimals);
 
+bool parse_perp_asset_info(const std::string& perp_meta_json,
+                           const std::string& display_sym,
+                           int& out_asset,
+                           int& out_sz_decimals);
+
 } // namespace tradeboy::market

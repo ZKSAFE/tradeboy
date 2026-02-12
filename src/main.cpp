@@ -19,6 +19,8 @@
 #include <execinfo.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <exception>
+#include <typeinfo>
 
 #include "app/App.h"
 #include "app/Input.h"
@@ -37,21 +39,47 @@ void log_str(const char* s) {
     tradeboy::core::logger_log(s);
 }
 
+static void write_backtrace(FILE* f) {
+    if (!f) return;
+    void* bt[64];
+    int n = backtrace(bt, 64);
+    fprintf(f, "[CRASH] backtrace_depth=%d\n", n);
+    fflush(f);
+    backtrace_symbols_fd(bt, n, fileno(f));
+    fprintf(f, "\n");
+}
+
 static void crash_signal_handler(int sig) {
     FILE* f = fopen("crash.txt", "a");
     if (f) {
         fprintf(f, "[CRASH] signal=%d\n", sig);
         // Best-effort backtrace for post-mortem debugging (core dumps are disabled on device).
-        void* bt[64];
-        int n = backtrace(bt, 64);
-        fprintf(f, "[CRASH] backtrace_depth=%d\n", n);
-        fflush(f);
-        // backtrace_symbols_fd writes to a file descriptor.
-        backtrace_symbols_fd(bt, n, fileno(f));
-        fprintf(f, "\n");
+        write_backtrace(f);
         fclose(f);
     }
     _exit(128 + sig);
+}
+
+static void terminate_handler() {
+    FILE* f = fopen("crash.txt", "a");
+    if (f) {
+        fprintf(f, "[CRASH] terminate_handler invoked\n");
+        std::exception_ptr ep = std::current_exception();
+        if (ep) {
+            try {
+                std::rethrow_exception(ep);
+            } catch (const std::exception& e) {
+                fprintf(f, "[CRASH] uncaught exception: %s (%s)\n", e.what(), typeid(e).name());
+            } catch (...) {
+                fprintf(f, "[CRASH] uncaught exception: <non-std>\n");
+            }
+        } else {
+            fprintf(f, "[CRASH] no active exception\n");
+        }
+        write_backtrace(f);
+        fclose(f);
+    }
+    _exit(134);
 }
 
 static bool file_exists(const char* path) {
@@ -103,6 +131,7 @@ int main(int argc, char** argv) {
     signal(SIGABRT, crash_signal_handler);
     signal(SIGFPE, crash_signal_handler);
     signal(SIGILL, crash_signal_handler);
+    std::set_terminate(terminate_handler);
 
     // Initialize logger (clears log file on startup)
     tradeboy::core::logger_init("log.txt");

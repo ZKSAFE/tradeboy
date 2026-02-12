@@ -46,6 +46,9 @@ struct PerpRow {
     bool is_long = true;
     double leverage = 1.0;
     double margin_used = 0.0;
+    double position_value = 0.0;
+    double unrealized_pnl = 0.0;
+    double roe_pct = 0.0;
     double price = 0.0;
     double prev_price = 0.0;
     double liquidation_px = 0.0;

@@ -289,6 +289,22 @@ static void msgpack_pack_order_action(std::vector<unsigned char>& out,
     msgpack_pack_str(out, "na");
 }
 
+static void msgpack_pack_update_leverage_action(std::vector<unsigned char>& out,
+                                                int asset,
+                                                bool is_cross,
+                                                int leverage) {
+    msgpack_pack_map_header(out, 4);
+    msgpack_pack_str(out, "type");
+    msgpack_pack_str(out, "updateLeverage");
+
+    msgpack_pack_str(out, "asset");
+    msgpack_pack_uint(out, (unsigned long long)asset);
+    msgpack_pack_str(out, "isCross");
+    msgpack_pack_bool(out, is_cross);
+    msgpack_pack_str(out, "leverage");
+    msgpack_pack_uint(out, (unsigned long long)leverage);
+}
+
 [[maybe_unused]] static bool address_to_bytes20(const std::string& addr_0x, unsigned char out20[20]) {
     std::vector<unsigned char> bytes;
     if (!tradeboy::utils::hex_to_bytes(addr_0x, bytes)) return false;
@@ -299,6 +315,286 @@ static void msgpack_pack_order_action(std::vector<unsigned char>& out,
         return true;
     }
     std::memcpy(out20, bytes.data() + (bytes.size() - 20), 20);
+    return true;
+}
+
+static void eip712_hash_l1_agent(const unsigned char connection_id[32],
+                                 bool is_mainnet,
+                                 unsigned char out_digest32[32]);
+static bool sign_digest_eth(const unsigned char digest32[32],
+                            const std::vector<unsigned char>& priv32,
+                            const std::string& expected_wallet_addr_0x,
+                            std::string& out_r_0x,
+                            std::string& out_s_0x,
+                            int& out_v,
+                            std::string& out_err);
+
+bool exchange_perp_update_leverage(const std::string& wallet_address_0x,
+                                   const std::string& private_key_hex,
+                                   const std::string& display_sym,
+                                   double leverage,
+                                   bool is_cross,
+                                   const std::string& perp_meta_json,
+                                   bool is_mainnet,
+                                   std::string& out_resp,
+                                   std::string& out_err) {
+    out_resp.clear();
+    out_err.clear();
+
+    if (leverage <= 0.0) {
+        out_err = "invalid_input";
+        return false;
+    }
+
+    std::vector<unsigned char> priv;
+    if (!tradeboy::utils::hex_to_bytes(private_key_hex, priv) || priv.size() != 32) {
+        out_err = "invalid_private_key";
+        return false;
+    }
+
+    int asset = -1;
+    int sz_decimals = 0;
+    if (!tradeboy::market::parse_perp_asset_info(perp_meta_json, display_sym, asset, sz_decimals) || asset < 0) {
+        out_err = "perp_meta_missing";
+        return false;
+    }
+
+    int lev_int = (int)std::round(leverage);
+    if (lev_int < 1) lev_int = 1;
+
+    const unsigned long long nonce_ms = (unsigned long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                                            std::chrono::system_clock::now().time_since_epoch())
+                                            .count();
+
+    std::vector<unsigned char> packed;
+    msgpack_pack_update_leverage_action(packed, asset, is_cross, lev_int);
+    append_be_u64(packed, nonce_ms);
+    packed.push_back(0x00);
+
+    unsigned char action_hash[32];
+    keccak_256_vec(packed, action_hash);
+
+    unsigned char digest[32];
+    eip712_hash_l1_agent(action_hash, is_mainnet, digest);
+
+    std::string r_0x, s_0x;
+    int v = 0;
+    std::string sign_err;
+    if (!sign_digest_eth(digest, priv, wallet_address_0x, r_0x, s_0x, v, sign_err)) {
+        out_err = std::string("sign_failed:") + sign_err;
+        return false;
+    }
+
+    std::string action_json = std::string("{") +
+                              "\"type\":\"updateLeverage\"," +
+                              "\"asset\":" + std::to_string(asset) + "," +
+                              "\"isCross\":" + std::string(is_cross ? "true" : "false") + "," +
+                              "\"leverage\":" + std::to_string(lev_int) +
+                              "}";
+
+    std::string payload = std::string("{") +
+                          "\"action\":" + action_json + "," +
+                          "\"nonce\":" + std::to_string(nonce_ms) + "," +
+                          "\"signature\":{" +
+                          "\"r\":\"" + r_0x + "\"," +
+                          "\"s\":\"" + s_0x + "\"," +
+                          "\"v\":" + std::to_string(v) +
+                          "}" +
+                          "}\n";
+
+    const char* path = "/tmp/hl_perp_leverage_req.json";
+    if (!write_file(path, payload)) {
+        out_err = "write_req_failed";
+        return false;
+    }
+
+    const char* url = is_mainnet ? "https://api.hyperliquid.xyz/exchange" : "https://api.hyperliquid-testnet.xyz/exchange";
+    std::string resp;
+    if (!http_post_json_wget(url, path, resp)) {
+        out_err = "http_post_failed";
+        out_resp = resp;
+        log_str("[HLX] perp_leverage http_post_failed\n");
+        return false;
+    }
+
+    out_resp = resp;
+    if (resp.find("\"error\"") != std::string::npos) {
+        out_err = "exchange_error";
+        std::string prefix = resp.substr(0, std::min<size_t>(256, resp.size()));
+        std::string line = std::string("[HLX] perp_leverage exchange_error resp_prefix=") + prefix + "\n";
+        log_str(line.c_str());
+        return false;
+    }
+
+    return true;
+}
+
+static std::string json_escape(const std::string& s);
+static double round_to_sig_fig(double v, int sig);
+static double round_to_decimals(double v, int decimals);
+static void eip712_hash_l1_agent(const unsigned char connection_id[32],
+                                 bool is_mainnet,
+                                 unsigned char out_digest32[32]);
+static bool sign_digest_eth(const unsigned char digest32[32],
+                            const std::vector<unsigned char>& priv32,
+                            const std::string& expected_wallet_addr_0x,
+                            std::string& out_r_0x,
+                            std::string& out_s_0x,
+                            int& out_v,
+                            std::string& out_err);
+static std::string float_to_wire_fixed_decimals(double x, int decimals);
+
+bool exchange_perp_market_order(const std::string& wallet_address_0x,
+                                const std::string& private_key_hex,
+                                const std::string& display_sym,
+                                bool is_buy,
+                                double input_amount,
+                                double leverage,
+                                double mid_px,
+                                const std::string& perp_meta_json,
+                                double slippage,
+                                bool is_mainnet,
+                                std::string& out_resp,
+                                std::string& out_err) {
+    out_resp.clear();
+    out_err.clear();
+
+    if (mid_px <= 0.0 || input_amount <= 0.0 || leverage <= 0.0) {
+        out_err = "invalid_input";
+        return false;
+    }
+
+    std::vector<unsigned char> priv;
+    if (!tradeboy::utils::hex_to_bytes(private_key_hex, priv) || priv.size() != 32) {
+        out_err = "invalid_private_key";
+        return false;
+    }
+
+    int asset = -1;
+    int sz_decimals = 0;
+    if (!tradeboy::market::parse_perp_asset_info(perp_meta_json, display_sym, asset, sz_decimals) || asset < 0) {
+        out_err = "perp_meta_missing";
+        return false;
+    }
+
+    const double slip = (slippage > 0.0) ? slippage : 0.0;
+    double px = mid_px * (is_buy ? (1.0 + slip) : (1.0 - slip));
+    if (px <= 0.0) {
+        out_err = "invalid_price";
+        return false;
+    }
+
+    const int px_decimals = std::max(0, 8 - sz_decimals);
+    double px_sig = px;
+    if (std::fabs(px - std::round(px)) > 1e-9) {
+        px_sig = round_to_sig_fig(px, 5);
+    } else {
+        px_sig = std::round(px);
+    }
+
+    double px_rounded = round_to_decimals(px_sig, px_decimals);
+    if (px_rounded <= 0.0) {
+        out_err = "invalid_price";
+        return false;
+    }
+
+    double size = (input_amount * leverage) / px_rounded;
+    size = tradeboy::utils::trunc_to_decimals(size, sz_decimals);
+    if (size <= 0.0) {
+        out_err = "invalid_size";
+        return false;
+    }
+
+    const std::string price_s = float_to_wire_fixed_decimals(px_rounded, px_decimals);
+    const std::string size_s = float_to_wire_fixed_decimals(size, sz_decimals);
+
+    {
+        char buf[256];
+        std::snprintf(buf,
+                      sizeof(buf),
+                      "[HLX] perp_order fmt sym=%s buy=%d lev=%.2f sz_dec=%d px_dec=%d mid=%.8f px=%.8f p=%s s=%s\n",
+                      display_sym.c_str(),
+                      (int)is_buy,
+                      leverage,
+                      sz_decimals,
+                      px_decimals,
+                      mid_px,
+                      px_rounded,
+                      price_s.c_str(),
+                      size_s.c_str());
+        log_str(buf);
+    }
+
+    const unsigned long long nonce_ms = (unsigned long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                                            std::chrono::system_clock::now().time_since_epoch())
+                                            .count();
+
+    std::vector<unsigned char> packed;
+    msgpack_pack_order_action(packed, asset, is_buy, price_s, size_s, "Ioc");
+    append_be_u64(packed, nonce_ms);
+    packed.push_back(0x00);
+
+    unsigned char action_hash[32];
+    keccak_256_vec(packed, action_hash);
+
+    unsigned char digest[32];
+    eip712_hash_l1_agent(action_hash, is_mainnet, digest);
+
+    std::string r_0x, s_0x;
+    int v = 0;
+    std::string sign_err;
+    if (!sign_digest_eth(digest, priv, wallet_address_0x, r_0x, s_0x, v, sign_err)) {
+        out_err = std::string("sign_failed:") + sign_err;
+        return false;
+    }
+
+    std::string action_json = std::string("{") +
+                              "\"type\":\"order\"," +
+                              "\"orders\":[{" +
+                              "\"a\":" + std::to_string(asset) + "," +
+                              "\"b\":" + std::string(is_buy ? "true" : "false") + "," +
+                              "\"p\":\"" + json_escape(price_s) + "\"," +
+                              "\"s\":\"" + json_escape(size_s) + "\"," +
+                              "\"r\":false," +
+                              "\"t\":{\"limit\":{\"tif\":\"Ioc\"}}" +
+                              "}]," +
+                              "\"grouping\":\"na\"" +
+                              "}";
+
+    std::string payload = std::string("{") +
+                          "\"action\":" + action_json + "," +
+                          "\"nonce\":" + std::to_string(nonce_ms) + "," +
+                          "\"signature\":{" +
+                          "\"r\":\"" + r_0x + "\"," +
+                          "\"s\":\"" + s_0x + "\"," +
+                          "\"v\":" + std::to_string(v) +
+                          "}" +
+                          "}\n";
+
+    const char* path = "/tmp/hl_perp_order_req.json";
+    if (!write_file(path, payload)) {
+        out_err = "write_req_failed";
+        return false;
+    }
+
+    const char* url = is_mainnet ? "https://api.hyperliquid.xyz/exchange" : "https://api.hyperliquid-testnet.xyz/exchange";
+    std::string resp;
+    if (!http_post_json_wget(url, path, resp)) {
+        out_err = "http_post_failed";
+        out_resp = resp;
+        log_str("[HLX] perp_order http_post_failed\n");
+        return false;
+    }
+
+    out_resp = resp;
+    if (resp.find("\"error\"") != std::string::npos) {
+        out_err = "exchange_error";
+        std::string prefix = resp.substr(0, std::min<size_t>(256, resp.size()));
+        std::string line = std::string("[HLX] perp_order exchange_error resp_prefix=") + prefix + "\n";
+        log_str(line.c_str());
+        return false;
+    }
+
     return true;
 }
 

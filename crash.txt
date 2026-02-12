@@ -127,3 +127,160 @@
 14  tradeboy-macos                      0x0000000100ef4e50 main + 944
 15  dyld                                0x000000019ec25d54 start + 7184
 
+[CRASH] signal=6
+[CRASH] backtrace_depth=11
+0   tradeboy-macos                      0x0000000102af6248 _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x000000019eff7744 _sigtramp + 56
+2   libsystem_pthread.dylib             0x000000019efed888 pthread_kill + 296
+3   libsystem_c.dylib                   0x000000019eef2850 abort + 124
+4   libc++abi.dylib                     0x000000019efa1858 _ZN10__cxxabiv130__aligned_malloc_with_fallbackEm + 0
+5   libc++abi.dylib                     0x000000019ef903d4 _ZL28demangling_terminate_handlerv + 48
+6   libc++abi.dylib                     0x000000019efa0c2c _ZSt11__terminatePFvvE + 16
+7   libc++abi.dylib                     0x000000019efa0b88 _ZSt9terminatev + 36
+8   tradeboy-macos                      0x0000000102affa0c _ZN8tradeboy3app3AppD2Ev + 136
+9   tradeboy-macos                      0x0000000102af5eb4 main + 3664
+10  dyld                                0x000000019ec25d54 start + 7184
+
+[CRASH] signal=6
+[CRASH] backtrace_depth=11
+0   tradeboy-macos                      0x0000000104bd1a14 _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x000000019eff7744 _sigtramp + 56
+2   libsystem_pthread.dylib             0x000000019efed888 pthread_kill + 296
+3   libsystem_c.dylib                   0x000000019eef2850 abort + 124
+4   libc++abi.dylib                     0x000000019efa1858 _ZN10__cxxabiv130__aligned_malloc_with_fallbackEm + 0
+5   libc++abi.dylib                     0x000000019ef903d4 _ZL28demangling_terminate_handlerv + 48
+6   libc++abi.dylib                     0x000000019efa0c2c _ZSt11__terminatePFvvE + 16
+7   libc++abi.dylib                     0x000000019efa0b88 _ZSt9terminatev + 36
+8   tradeboy-macos                      0x0000000104bdb1d8 _ZN8tradeboy3app3AppD2Ev + 136
+9   tradeboy-macos                      0x0000000104bd1680 main + 3664
+10  dyld                                0x000000019ec25d54 start + 7184
+
+[CRASH] signal=6
+[CRASH] backtrace_depth=11
+0   tradeboy-macos                      0x0000000104ba9a14 _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x000000019eff7744 _sigtramp + 56
+2   libsystem_pthread.dylib             0x000000019efed888 pthread_kill + 296
+3   libsystem_c.dylib                   0x000000019eef2850 abort + 124
+4   libc++abi.dylib                     0x000000019efa1858 _ZN10__cxxabiv130__aligned_malloc_with_fallbackEm + 0
+5   libc++abi.dylib                     0x000000019ef903d4 _ZL28demangling_terminate_handlerv + 48
+6   libc++abi.dylib                     0x000000019efa0c2c _ZSt11__terminatePFvvE + 16
+7   libc++abi.dylib                     0x000000019efa0b88 _ZSt9terminatev + 36
+8   tradeboy-macos                      0x0000000104bb31d8 _ZN8tradeboy3app3AppD2Ev + 136
+9   tradeboy-macos                      0x0000000104ba9680 main + 3664
+10  dyld                                0x000000019ec25d54 start + 7184
+
+[CRASH] signal=6
+[CRASH] backtrace_depth=11
+0   tradeboy-macos                      0x0000000102ae3b30 _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x000000019eff7744 _sigtramp + 56
+2   libsystem_pthread.dylib             0x000000019efed888 pthread_kill + 296
+3   libsystem_c.dylib                   0x000000019eef2850 abort + 124
+4   libc++abi.dylib                     0x000000019efa1858 _ZN10__cxxabiv130__aligned_malloc_with_fallbackEm + 0
+5   libc++abi.dylib                     0x000000019ef903d4 _ZL28demangling_terminate_handlerv + 48
+6   libc++abi.dylib                     0x000000019efa0c2c _ZSt11__terminatePFvvE + 16
+7   libc++abi.dylib                     0x000000019efa0b88 _ZSt9terminatev + 36
+8   tradeboy-macos                      0x0000000102aed2f4 _ZN8tradeboy3app3AppD2Ev + 136
+9   tradeboy-macos                      0x0000000102ae379c main + 3664
+10  dyld                                0x000000019ec25d54 start + 7184
+
+[CRASH] signal=6
+[CRASH] backtrace_depth=17
+0   tradeboy-macos                      0x0000000102eb7808 _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x000000019eff7744 _sigtramp + 56
+2   libsystem_pthread.dylib             0x000000019efed888 pthread_kill + 296
+3   libsystem_c.dylib                   0x000000019eef2850 abort + 124
+4   libc++abi.dylib                     0x000000019efa1858 _ZN10__cxxabiv130__aligned_malloc_with_fallbackEm + 0
+5   libc++abi.dylib                     0x000000019ef904bc _ZL28demangling_terminate_handlerv + 280
+6   libobjc.A.dylib                     0x000000019ebbc424 _ZL15_objc_terminatev + 172
+7   libc++abi.dylib                     0x000000019efa0c2c _ZSt11__terminatePFvvE + 16
+8   libc++abi.dylib                     0x000000019efa4394 __cxa_get_exception_ptr + 0
+9   libc++abi.dylib                     0x000000019efa433c _ZN10__cxxabiv1L12failed_throwEPNS_15__cxa_exceptionE + 0
+10  libc++.1.dylib                      0x000000019ef0f26c _ZNSt3__120__throw_length_errorB8ne200100EPKc + 72
+11  libc++.1.dylib                      0x000000019ef1e060 _ZNKSt3__120__vector_base_commonILb1EE20__throw_out_of_rangeEv + 0
+12  tradeboy-macos                      0x0000000102efb580 _ZNSt3__16vectorIN8tradeboy5model7PerpRowENS_9allocatorIS3_EEE6assignIPS3_EENS_9enable_ifIXaasr27__is_cpp17_forward_iteratorIT_EE5valuesr16is_constructibleIS3_NS_15iterator_traitsISA_E9referenceEEE5valueEvE4typeESA_SA_ + 676
+13  tradeboy-macos                      0x0000000102ef9e74 _ZNK8tradeboy5model10TradeModel8snapshotEv + 144
+14  tradeboy-macos                      0x0000000102ec6e1c _ZN8tradeboy3app3App6renderEv + 5844
+15  tradeboy-macos                      0x0000000102eb7348 main + 3364
+16  dyld                                0x000000019ec25d54 start + 7184
+
+[CRASH] signal=6
+[CRASH] backtrace_depth=17
+0   tradeboy-macos                      0x0000000104303808 _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x000000019eff7744 _sigtramp + 56
+2   libsystem_pthread.dylib             0x000000019efed888 pthread_kill + 296
+3   libsystem_c.dylib                   0x000000019eef2850 abort + 124
+4   libc++abi.dylib                     0x000000019efa1858 _ZN10__cxxabiv130__aligned_malloc_with_fallbackEm + 0
+5   libc++abi.dylib                     0x000000019ef904bc _ZL28demangling_terminate_handlerv + 280
+6   libobjc.A.dylib                     0x000000019ebbc424 _ZL15_objc_terminatev + 172
+7   libc++abi.dylib                     0x000000019efa0c2c _ZSt11__terminatePFvvE + 16
+8   libc++abi.dylib                     0x000000019efa4394 __cxa_get_exception_ptr + 0
+9   libc++abi.dylib                     0x000000019efa433c _ZN10__cxxabiv1L12failed_throwEPNS_15__cxa_exceptionE + 0
+10  libc++.1.dylib                      0x000000019ef0f26c _ZNSt3__120__throw_length_errorB8ne200100EPKc + 72
+11  libc++.1.dylib                      0x000000019ef1e060 _ZNKSt3__120__vector_base_commonILb1EE20__throw_out_of_rangeEv + 0
+12  tradeboy-macos                      0x0000000104347580 _ZNSt3__16vectorIN8tradeboy5model7PerpRowENS_9allocatorIS3_EEE6assignIPS3_EENS_9enable_ifIXaasr27__is_cpp17_forward_iteratorIT_EE5valuesr16is_constructibleIS3_NS_15iterator_traitsISA_E9referenceEEE5valueEvE4typeESA_SA_ + 676
+13  tradeboy-macos                      0x0000000104345e74 _ZNK8tradeboy5model10TradeModel8snapshotEv + 144
+14  tradeboy-macos                      0x0000000104312e1c _ZN8tradeboy3app3App6renderEv + 5844
+15  tradeboy-macos                      0x0000000104303348 main + 3364
+16  dyld                                0x000000019ec25d54 start + 7184
+
+[CRASH] signal=6
+[CRASH] backtrace_depth=17
+0   tradeboy-macos                      0x00000001005c3808 _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x00000001842c7744 _sigtramp + 56
+2   libsystem_pthread.dylib             0x00000001842bd888 pthread_kill + 296
+3   libsystem_c.dylib                   0x00000001841c2850 abort + 124
+4   libc++abi.dylib                     0x0000000184271858 _ZN10__cxxabiv130__aligned_malloc_with_fallbackEm + 0
+5   libc++abi.dylib                     0x00000001842604bc _ZL28demangling_terminate_handlerv + 280
+6   libobjc.A.dylib                     0x0000000183e8c424 _ZL15_objc_terminatev + 172
+7   libc++abi.dylib                     0x0000000184270c2c _ZSt11__terminatePFvvE + 16
+8   libc++abi.dylib                     0x0000000184274394 __cxa_get_exception_ptr + 0
+9   libc++abi.dylib                     0x000000018427433c _ZN10__cxxabiv1L12failed_throwEPNS_15__cxa_exceptionE + 0
+10  libc++.1.dylib                      0x00000001841df26c _ZNSt3__120__throw_length_errorB8ne200100EPKc + 72
+11  libc++.1.dylib                      0x00000001841ee060 _ZNKSt3__120__vector_base_commonILb1EE20__throw_out_of_rangeEv + 0
+12  tradeboy-macos                      0x0000000100607580 _ZNSt3__16vectorIN8tradeboy5model7PerpRowENS_9allocatorIS3_EEE6assignIPS3_EENS_9enable_ifIXaasr27__is_cpp17_forward_iteratorIT_EE5valuesr16is_constructibleIS3_NS_15iterator_traitsISA_E9referenceEEE5valueEvE4typeESA_SA_ + 676
+13  tradeboy-macos                      0x0000000100605e74 _ZNK8tradeboy5model10TradeModel8snapshotEv + 144
+14  tradeboy-macos                      0x00000001005d2e1c _ZN8tradeboy3app3App6renderEv + 5844
+15  tradeboy-macos                      0x00000001005c3348 main + 3364
+16  dyld                                0x0000000183ef5d54 start + 7184
+
+[CRASH] terminate_handler invoked
+[CRASH] uncaught exception: vector (St12length_error)
+[CRASH] backtrace_depth=11
+0   tradeboy-macos                      0x000000010474f608 _ZL17terminate_handlerv + 124
+1   libc++abi.dylib                     0x0000000184270c2c _ZSt11__terminatePFvvE + 16
+2   libc++abi.dylib                     0x0000000184274394 __cxa_get_exception_ptr + 0
+3   libc++abi.dylib                     0x000000018427433c _ZN10__cxxabiv1L12failed_throwEPNS_15__cxa_exceptionE + 0
+4   libc++.1.dylib                      0x00000001841df26c _ZNSt3__120__throw_length_errorB8ne200100EPKc + 72
+5   libc++.1.dylib                      0x00000001841ee060 _ZNKSt3__120__vector_base_commonILb1EE20__throw_out_of_rangeEv + 0
+6   tradeboy-macos                      0x0000000104793438 _ZNSt3__16vectorIN8tradeboy5model7PerpRowENS_9allocatorIS3_EEE6assignIPS3_EENS_9enable_ifIXaasr27__is_cpp17_forward_iteratorIT_EE5valuesr16is_constructibleIS3_NS_15iterator_traitsISA_E9referenceEEE5valueEvE4typeESA_SA_ + 676
+7   tradeboy-macos                      0x0000000104791d2c _ZNK8tradeboy5model10TradeModel8snapshotEv + 144
+8   tradeboy-macos                      0x000000010475ecd4 _ZN8tradeboy3app3App6renderEv + 5844
+9   tradeboy-macos                      0x000000010474f078 main + 3376
+10  dyld                                0x0000000183ef5d54 start + 7184
+
+[CRASH] signal=6
+[CRASH] backtrace_depth=10
+0   tradeboy-macos                      0x000000010092f468 _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x00000001842c7744 _sigtramp + 56
+2   libsystem_pthread.dylib             0x00000001842bd888 pthread_kill + 296
+3   libsystem_c.dylib                   0x00000001841c2850 abort + 124
+4   libsystem_malloc.dylib              0x00000001840c1224 malloc_vreport + 892
+5   libsystem_malloc.dylib              0x00000001840c4f78 malloc_report + 64
+6   libsystem_malloc.dylib              0x00000001840c9e04 ___BUG_IN_CLIENT_OF_LIBMALLOC_POINTER_BEING_FREED_WAS_NOT_ALLOCATED + 76
+7   tradeboy-macos                      0x000000010093ed2c _ZN8tradeboy3app3App6renderEv + 6140
+8   tradeboy-macos                      0x000000010092efa8 main + 3376
+9   dyld                                0x0000000183ef5d54 start + 7184
+
+[CRASH] signal=6
+[CRASH] backtrace_depth=10
+0   tradeboy-macos                      0x00000001049432d4 _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x00000001842c7744 _sigtramp + 56
+2   libsystem_pthread.dylib             0x00000001842bd888 pthread_kill + 296
+3   libsystem_c.dylib                   0x00000001841c2850 abort + 124
+4   libsystem_malloc.dylib              0x00000001840c1224 malloc_vreport + 892
+5   libsystem_malloc.dylib              0x00000001840c4f78 malloc_report + 64
+6   libsystem_malloc.dylib              0x00000001840c9e04 ___BUG_IN_CLIENT_OF_LIBMALLOC_POINTER_BEING_FREED_WAS_NOT_ALLOCATED + 76
+7   tradeboy-macos                      0x0000000104952bac _ZN8tradeboy3app3App6renderEv + 6160
+8   tradeboy-macos                      0x0000000104942e14 main + 3376
+9   dyld                                0x0000000183ef5d54 start + 7184
+

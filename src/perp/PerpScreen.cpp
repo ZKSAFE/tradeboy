@@ -186,7 +186,7 @@ void render_perp_screen(const std::vector<tradeboy::model::PerpRow>& rows,
             dl->AddText(ImVec2(col1 + 30, textY), textCol, code.c_str());
 
             if (row.margin_used > 0.0) {
-                std::string marginStr = format_fixed_round(row.margin_used, 2);
+                std::string marginStr = std::string("$") + format_fixed_round(row.margin_used, 2);
                 ImVec2 sz = ImGui::CalcTextSize(marginStr.c_str());
                 dl->AddText(ImVec2(col2 - sz.x * 0.5f, textY), textCol, marginStr.c_str());
             }
@@ -245,17 +245,26 @@ void render_perp_screen(const std::vector<tradeboy::model::PerpRow>& rows,
 
         const auto& sel = rows[(size_t)selected_row_idx];
         char body[128];
+        ImU32 roe_col = MatrixTheme::DIM;
         if (sel.margin_used > 0.0) {
-            std::snprintf(body, sizeof(body), "It worth $%.2f", sel.margin_used);
+            const char pnl_sign = (sel.unrealized_pnl >= 0.0) ? '+' : '-';
+            const char roe_sign = (sel.roe_pct >= 0.0) ? '+' : '-';
+            std::snprintf(body, sizeof(body), "PNL %c$%.2f (%c%.1f%%)", pnl_sign,
+                          std::fabs(sel.unrealized_pnl), roe_sign, std::fabs(sel.roe_pct));
+            if (sel.unrealized_pnl > 0.0) {
+                roe_col = MatrixTheme::TEXT;
+            } else if (sel.unrealized_pnl < 0.0) {
+                roe_col = MatrixTheme::ALERT;
+            }
         } else {
-            std::snprintf(body, sizeof(body), "No %s", sel.coin.c_str());
+            std::snprintf(body, sizeof(body), "PNL --");
         }
 
         static tradeboy::utils::TypewriterState tw;
         std::string shown_text = tradeboy::utils::typewriter_shown(tw, body, ImGui::GetTime(), 35.0);
 
         dl->AddText(ImVec2(left, footerTop + 20), MatrixTheme::TEXT, "> ");
-        dl->AddText(ImVec2(left + 18, footerTop + 20), MatrixTheme::TEXT, shown_text.c_str());
+        dl->AddText(ImVec2(left + 18, footerTop + 20), roe_col, shown_text.c_str());
 
         float btnW = 110.0f;
         float btnH = 40.0f;

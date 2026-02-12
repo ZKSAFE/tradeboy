@@ -1,6 +1,7 @@
 #include "TradeModel.h"
 
 #include <algorithm>
+#include <exception>
 
 #include "../market/Hyperliquid.h"
 
@@ -22,9 +23,29 @@ TradeModelSnapshot TradeModel::snapshot() const {
         return TradeModelSnapshot();
     }
     TradeModelSnapshot s;
+    const size_t kMaxRows = 5000;
     s.spot_row_idx = spot_row_idx_;
-    s.spot_rows = spot_rows_;
-    s.perp_rows = perp_rows_;
+    try {
+        if (spot_rows_.size() <= kMaxRows) {
+            s.spot_rows = spot_rows_;
+        } else {
+            log_str("[Model] snapshot spot_rows size overflow\n");
+        }
+        if (perp_rows_.size() <= kMaxRows) {
+            if (!perp_rows_.empty()) {
+                char buf[96];
+                std::snprintf(buf, sizeof(buf), "[Model] snapshot perp_rows size=%zu cap=%zu\n",
+                              perp_rows_.size(), perp_rows_.capacity());
+                log_str(buf);
+            }
+            s.perp_rows = perp_rows_;
+        } else {
+            log_str("[Model] snapshot perp_rows size overflow\n");
+        }
+    } catch (const std::exception& e) {
+        log_str("[Model] snapshot copy exception\n");
+        (void)e;
+    }
     pthread_mutex_unlock(&mu);
     return s;
 }
@@ -95,6 +116,16 @@ void TradeModel::set_wallet(const std::string& wallet_address, const std::string
 void TradeModel::set_perp_rows(std::vector<PerpRow> rows) {
     int rc = pthread_mutex_lock(&mu);
     if (rc != 0) return;
+    if (!rows.empty()) {
+        char buf[96];
+        std::snprintf(buf, sizeof(buf), "[Model] set_perp_rows size=%zu\n", rows.size());
+        log_str(buf);
+    }
+    if (rows.size() > 5000) {
+        log_str("[Model] set_perp_rows rejected (too many rows)\n");
+        pthread_mutex_unlock(&mu);
+        return;
+    }
     perp_rows_.swap(rows);
     pthread_mutex_unlock(&mu);
 }

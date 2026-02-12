@@ -155,6 +155,18 @@ static bool build_perp_rows_from_clearinghouse(const std::string& perp_json,
         const picojson::value* mu_v = pj_find(*pos, "marginUsed");
         if (mu_v) (void)pj_get_double_like(*mu_v, margin_used);
 
+        double position_value = 0.0;
+        const picojson::value* pv_v = pj_find(*pos, "positionValue");
+        if (pv_v) (void)pj_get_double_like(*pv_v, position_value);
+
+        double unrealized_pnl = 0.0;
+        const picojson::value* pnl_v = pj_find(*pos, "unrealizedPnl");
+        if (pnl_v) (void)pj_get_double_like(*pnl_v, unrealized_pnl);
+
+        double roe_pct = 0.0;
+        const picojson::value* roe_v = pj_find(*pos, "returnOnEquity");
+        if (roe_v) (void)pj_get_double_like(*roe_v, roe_pct);
+
         double liq_px = 0.0;
         const picojson::value* liq_v = pj_find(*pos, "liquidationPx");
         if (liq_v) (void)pj_get_double_like(*liq_v, liq_px);
@@ -168,15 +180,23 @@ static bool build_perp_rows_from_clearinghouse(const std::string& perp_json,
         row.is_long = is_long;
         row.leverage = leverage;
         row.margin_used = margin_used;
+        row.position_value = position_value;
+        row.unrealized_pnl = unrealized_pnl;
+        if (roe_v) {
+            row.roe_pct = roe_pct;
+            if (std::fabs(row.roe_pct) <= 1.0) {
+                row.roe_pct *= 100.0;
+            }
+        } else if (margin_used > 0.0) {
+            row.roe_pct = (unrealized_pnl / margin_used) * 100.0;
+        } else {
+            row.roe_pct = 0.0;
+        }
         row.price = price;
         row.prev_price = price;
         row.liquidation_px = liq_px;
         out_rows.push_back(std::move(row));
     }
-
-    std::sort(out_rows.begin(), out_rows.end(), [](const tradeboy::model::PerpRow& a, const tradeboy::model::PerpRow& b) {
-        return a.coin < b.coin;
-    });
     return true;
 }
 
@@ -217,6 +237,7 @@ static std::string normalize_perp_coin_name(const std::string& name) {
 }
 
 static bool build_perp_rows_from_multi_meta_and_ctxs(const std::vector<std::string>& meta_and_ctxs_jsons,
+                                                     const std::unordered_set<std::string>& exclude_coins,
                                                      std::vector<tradeboy::model::PerpRow>& out_rows,
                                                      std::vector<std::string>* out_dexes) {
     out_rows.clear();
@@ -290,17 +311,20 @@ static bool build_perp_rows_from_multi_meta_and_ctxs(const std::vector<std::stri
     std::sort(bases.begin(), bases.end(), [](const PerpBase& a, const PerpBase& b) {
         return a.volume > b.volume;
     });
-    if (bases.size() > 10) bases.resize(10);
 
     std::vector<int> ladder;
     std::unordered_set<std::string> used_dexes;
+    int added = 0;
     for (const auto& base : bases) {
+        if (exclude_coins.find(base.coin) != exclude_coins.end()) continue;
+        if (added >= 10) break;
         int max_lev_int = (int)std::round(base.max_lev);
         build_leverage_ladder(max_lev_int, ladder);
         size_t dex_pos = base.price_key.find(':');
         if (dex_pos != std::string::npos && dex_pos > 0) {
             used_dexes.insert(base.price_key.substr(0, dex_pos));
         }
+        added++;
         for (int lev : ladder) {
             tradeboy::model::PerpRow row;
             row.coin = base.coin;
@@ -308,6 +332,9 @@ static bool build_perp_rows_from_multi_meta_and_ctxs(const std::vector<std::stri
             row.is_long = true;
             row.leverage = (double)lev;
             row.margin_used = 0.0;
+            row.position_value = 0.0;
+            row.unrealized_pnl = 0.0;
+            row.roe_pct = 0.0;
             row.price = base.price;
             row.prev_price = base.price;
             row.liquidation_px = 0.0;
@@ -329,7 +356,8 @@ static bool build_perp_rows_from_meta_and_ctxs(const std::string& meta_and_ctxs_
                                                std::vector<std::string>* out_dexes) {
     std::vector<std::string> meta_list;
     meta_list.push_back(meta_and_ctxs_json);
-    return build_perp_rows_from_multi_meta_and_ctxs(meta_list, out_rows, out_dexes);
+    std::unordered_set<std::string> exclude;
+    return build_perp_rows_from_multi_meta_and_ctxs(meta_list, exclude, out_rows, out_dexes);
 }
 
 static int infer_decimals_from_px_string(const std::string& s) {
@@ -1019,7 +1047,8 @@ void MarketDataService::run() {
                 if (!perp_rows_initialized) {
                     std::vector<tradeboy::model::PerpRow> rows;
                     std::vector<std::string> used_dexes;
-                    if (build_perp_rows_from_multi_meta_and_ctxs(perp_meta_jsons, rows, &used_dexes) && !rows.empty()) {
+                    std::unordered_set<std::string> none;
+                    if (build_perp_rows_from_multi_meta_and_ctxs(perp_meta_jsons, none, rows, &used_dexes) && !rows.empty()) {
                         model.set_perp_rows(std::move(rows));
                         perp_rows_initialized = true;
                         if (!used_dexes.empty()) {
@@ -1114,9 +1143,30 @@ void MarketDataService::run() {
                     log_str("[Market] clearinghouseState raw received\n");
                 }
                 {
-                    std::vector<tradeboy::model::PerpRow> rows;
-                    if (build_perp_rows_from_clearinghouse(perp_json, mids_json, rows) && !rows.empty()) {
-                        model.set_perp_rows(std::move(rows));
+                    std::vector<tradeboy::model::PerpRow> positions;
+                    if (build_perp_rows_from_clearinghouse(perp_json, mids_json, positions) && !positions.empty()) {
+                        std::vector<tradeboy::model::PerpRow> filtered;
+                        filtered.reserve(positions.size());
+                        std::unordered_set<std::string> held;
+                        for (const auto& row : positions) {
+                            if (row.margin_used <= 0.1) continue;
+                            filtered.push_back(row);
+                            held.insert(row.coin);
+                        }
+                        std::sort(filtered.begin(), filtered.end(), [](const tradeboy::model::PerpRow& a, const tradeboy::model::PerpRow& b) {
+                            return a.margin_used > b.margin_used;
+                        });
+
+                        std::vector<tradeboy::model::PerpRow> top_rows;
+                        std::vector<std::string> unused;
+                        if (!perp_meta_jsons.empty()) {
+                            (void)build_perp_rows_from_multi_meta_and_ctxs(perp_meta_jsons, held, top_rows, nullptr);
+                        }
+
+                        if (!filtered.empty() || !top_rows.empty()) {
+                            filtered.insert(filtered.end(), top_rows.begin(), top_rows.end());
+                            model.set_perp_rows(std::move(filtered));
+                        }
                     }
                 }
                 double usdc = 0.0;
