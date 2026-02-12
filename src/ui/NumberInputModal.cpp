@@ -138,6 +138,7 @@ static void adjust_percent_step(NumberInputState& st, int delta) {
     if (avail <= 0.0) return;
     int raw = current_percent_raw(st); // rounded percent shown to user
     int p = raw;
+    const std::string before = st.input;
     if (delta > 0) {
         // Up to nearest tick; if already on a tick, go to next tick.
         if ((raw % 5) == 0) p = raw + 5;
@@ -148,7 +149,16 @@ static void adjust_percent_step(NumberInputState& st, int delta) {
         else p = (raw / 5) * 5;
     }
     p = tradeboy::utils::clampi(p, 0, 100);
-    set_amount_percent(st, p);
+    for (int i = 0; i < 6; i++) {
+        set_amount_percent(st, p);
+        if (st.input != before) {
+            break;
+        }
+        if (delta > 0) p += 5;
+        else p -= 5;
+        p = tradeboy::utils::clampi(p, 0, 100);
+        if (p == raw) break;
+    }
 }
 
 void NumberInputState::open_with(const NumberInputConfig& cfg) {

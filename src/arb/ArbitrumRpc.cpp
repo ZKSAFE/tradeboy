@@ -64,13 +64,33 @@ static bool http_post_json_wget(const std::string& rpc_url, const char* json_pat
     cmd += " ";
     cmd += rpc_url;
     cmd += " 2>/dev/null";
-    return tradeboy::utils::run_cmd_capture(cmd, out_json) && !out_json.empty();
+    if (tradeboy::utils::run_cmd_capture(cmd, out_json) && !out_json.empty()) return true;
+
+    std::string diag;
+    std::string cmd2 = std::string(resolve_curl_path()) + " -sS --connect-timeout 3 --max-time 8 -D - -o - -H \"Content-Type: application/json\" --data-binary @";
+    cmd2 += json_path;
+    cmd2 += " ";
+    cmd2 += rpc_url;
+    cmd2 += " 2>&1";
+    tradeboy::utils::run_cmd_capture(cmd2, diag);
+    out_json = diag;
+    return false;
 #else
     std::string cmd = "/usr/bin/wget -qO- --header=\"Content-Type: application/json\" --post-file=";
     cmd += json_path;
     cmd += " ";
     cmd += rpc_url;
-    return tradeboy::utils::run_cmd_capture(cmd, out_json) && !out_json.empty();
+    if (tradeboy::utils::run_cmd_capture(cmd, out_json) && !out_json.empty()) return true;
+
+    std::string diag;
+    std::string cmd2 = "/usr/bin/wget -S -O- --header=\"Content-Type: application/json\" --post-file=";
+    cmd2 += json_path;
+    cmd2 += " ";
+    cmd2 += rpc_url;
+    cmd2 += " 2>&1";
+    tradeboy::utils::run_cmd_capture(cmd2, diag);
+    out_json = diag;
+    return false;
 #endif
 }
 

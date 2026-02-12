@@ -79,6 +79,12 @@ struct App {
     bool perp_order_is_long = true;
     double perp_order_price = 0.0;
 
+    tradeboy::ui::NumberInputState perp_close_amount;
+    std::string perp_close_coin;
+    double perp_close_leverage = 1.0;
+    bool perp_close_is_long = true;
+    double perp_close_price = 0.0;
+
     int internal_transfer_pending_dir = -1; // 0=SPOT->PERP, 1=PERP->SPOT
 
     // Exit dialog specific state
@@ -169,6 +175,7 @@ struct App {
 
     void open_spot_order(bool buy);
     void open_perp_order();
+    void open_perp_close();
     void apply_perp_ui_events(const std::vector<tradeboy::perp::PerpUiEvent>& ev);
 
     void apply_spot_ui_events(const std::vector<tradeboy::spot::SpotUiEvent>& ev);

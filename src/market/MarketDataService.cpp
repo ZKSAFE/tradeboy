@@ -181,6 +181,7 @@ static bool build_perp_rows_from_clearinghouse(const std::string& perp_json,
         row.leverage = leverage;
         row.margin_used = margin_used;
         row.position_value = position_value;
+        row.position_size = std::fabs(szi);
         row.unrealized_pnl = unrealized_pnl;
         if (roe_v) {
             row.roe_pct = roe_pct;
@@ -333,6 +334,7 @@ static bool build_perp_rows_from_multi_meta_and_ctxs(const std::vector<std::stri
             row.leverage = (double)lev;
             row.margin_used = 0.0;
             row.position_value = 0.0;
+            row.position_size = 0.0;
             row.unrealized_pnl = 0.0;
             row.roe_pct = 0.0;
             row.price = base.price;
