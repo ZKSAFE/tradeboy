@@ -21,7 +21,7 @@ void SpotOrderState::open_with(const tradeboy::model::SpotRow& row, Side in_side
     
     char title[64];
     std::snprintf(title, sizeof(title), "%s_%s", side_label(in_side), row.sym.c_str());
-    cfg.title = title;
+    cfg.title = std::string(title);
     
     cfg.title_color = (in_side == Side::Buy) ? MatrixTheme::TEXT : MatrixTheme::ALERT;
     
@@ -33,7 +33,7 @@ void SpotOrderState::open_with(const tradeboy::model::SpotRow& row, Side in_side
     
     char price_label[64];
     std::snprintf(price_label, sizeof(price_label), "PRICE: $%.2f", row.price);
-    cfg.price_label = price_label;
+    cfg.price_label = std::string(price_label);
     cfg.price = row.price;
     cfg.approx_divide = (in_side == Side::Buy);
     cfg.approx_label = (in_side == Side::Buy) ? row.sym : "USD";
@@ -50,7 +50,7 @@ void SpotOrderState::sync_price(double new_price) {
     input_state.config.price = new_price;
     char price_label[64];
     std::snprintf(price_label, sizeof(price_label), "PRICE: $%.2f", new_price);
-    input_state.config.price_label = price_label;
+    input_state.config.price_label = std::string(price_label);
 }
 
 void SpotOrderState::close() {

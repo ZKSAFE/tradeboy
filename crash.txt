@@ -46,3 +46,84 @@
 43  tradeboy-macos                      0x00000001001fc208 main + 2984
 44  dyld                                0x000000019ec25d54 start + 7184
 
+[CRASH] signal=6
+[CRASH] backtrace_depth=16
+0   tradeboy-macos                      0x0000000100a11ffc _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x000000019eff7744 _sigtramp + 56
+2   libsystem_pthread.dylib             0x000000019efed888 pthread_kill + 296
+3   libsystem_c.dylib                   0x000000019eef2850 abort + 124
+4   libsystem_malloc.dylib              0x000000019edf1224 malloc_vreport + 892
+5   libsystem_malloc.dylib              0x000000019ee207f0 malloc_zone_error + 100
+6   libsystem_malloc.dylib              0x000000019edffb04 free_list_checksum_botch + 40
+7   libsystem_malloc.dylib              0x000000019edea220 small_free_list_remove_ptr_no_clear + 964
+8   libsystem_malloc.dylib              0x000000019ede7670 free_small + 540
+9   libsystem_c.dylib                   0x000000019ee97dec fclose + 260
+10  tradeboy-macos                      0x0000000100a12fbc _ZNSt3__113basic_filebufIcNS_11char_traitsIcEEED2Ev + 60
+11  tradeboy-macos                      0x0000000100a52ad8 _ZN8tradeboy5utils14read_text_fileERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE + 372
+12  tradeboy-macos                      0x0000000100a543e8 _ZN8tradeboy6wallet21load_or_create_configERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEERNS0_12WalletConfigERbRS7_ + 112
+13  tradeboy-macos                      0x0000000100a1bd0c _ZN8tradeboy3app3App7startupEv + 116
+14  tradeboy-macos                      0x0000000100a111c8 main + 944
+15  dyld                                0x000000019ec25d54 start + 7184
+
+[CRASH] signal=6
+[CRASH] backtrace_depth=32
+0   tradeboy-macos                      0x0000000102a85ffc _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x000000019eff7744 _sigtramp + 56
+2   libsystem_pthread.dylib             0x000000019efed888 pthread_kill + 296
+3   libsystem_c.dylib                   0x000000019eef2850 abort + 124
+4   libsystem_malloc.dylib              0x000000019edf1224 malloc_vreport + 892
+5   libsystem_malloc.dylib              0x000000019ee207f0 malloc_zone_error + 100
+6   libsystem_malloc.dylib              0x000000019edffb04 free_list_checksum_botch + 40
+7   libsystem_malloc.dylib              0x000000019edea220 small_free_list_remove_ptr_no_clear + 964
+8   libsystem_malloc.dylib              0x000000019ede7670 free_small + 540
+9   CoreFoundation                      0x000000019f047750 __CFBasicHashDrain + 452
+10  CoreFoundation                      0x000000019f147b50 _CFRelease + 296
+11  CoreFoundation                      0x000000019f06f7b8 __CFBinaryPlistWriteOrPresize + 664
+12  CoreFoundation                      0x000000019f06f3fc CFPropertyListWrite + 328
+13  CoreFoundation                      0x000000019f0836a8 CFPropertyListCreateData + 212
+14  SkyLight                            0x00000001a57d0548 CGSPropertyListCreateSerializedData + 92
+15  SkyLight                            0x00000001a57d9fb8 CGSPropertyListCreateSerializedBytes + 68
+16  SkyLight                            0x00000001a5b5bc94 CGSPropertyListPerformWithSerializedBytes + 64
+17  SkyLight                            0x00000001a5af233c SLSSetConnectionProperty + 668
+18  HIToolbox                           0x00000001abb73474 _CheckEventsInited + 1040
+19  HIToolbox                           0x00000001abb7b688 RunCurrentEventLoopInMode + 52
+20  HIToolbox                           0x00000001abb7e9e0 ReceiveNextEventCommon + 272
+21  HIToolbox                           0x00000001abd08b64 _BlockUntilNextEventMatchingListInMode + 48
+22  AppKit                              0x00000001a39a4b5c _DPSBlockUntilNextEventMatchingListInMode + 236
+23  AppKit                              0x00000001a349ee48 _DPSNextEvent + 588
+24  AppKit                              0x00000001a3f69d0c -[NSApplication(NSEventRouting) _nextEventMatchingEventMask:untilDate:inMode:dequeue:] + 688
+25  AppKit                              0x00000001a3f69a18 -[NSApplication(NSEventRouting) nextEventMatchingMask:untilDate:inMode:dequeue:] + 72
+26  libSDL2-2.0.0.dylib                 0x0000000102e0cebc Cocoa_PumpEventsUntilDate + 84
+27  libSDL2-2.0.0.dylib                 0x0000000102e0d06c Cocoa_PumpEvents + 56
+28  libSDL2-2.0.0.dylib                 0x0000000102d8fcd4 SDL_PumpEventsInternal + 64
+29  libSDL2-2.0.0.dylib                 0x0000000102d8fdf4 SDL_WaitEventTimeout_REAL + 96
+30  tradeboy-macos                      0x0000000102a859c0 main + 2984
+31  dyld                                0x000000019ec25d54 start + 7184
+
+[CRASH] signal=11
+[CRASH] backtrace_depth=5
+0   tradeboy-macos                      0x000000010451dc84 _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x000000019eff7744 _sigtramp + 56
+2   libc++.1.dylib                      0x000000019ef156dc _ZNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEC1ERKS5_ + 64
+3   tradeboy-macos                      0x000000010451cf54 main + 1204
+4   dyld                                0x000000019ec25d54 start + 7184
+
+[CRASH] signal=6
+[CRASH] backtrace_depth=16
+0   tradeboy-macos                      0x0000000100ef5c84 _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x000000019eff7744 _sigtramp + 56
+2   libsystem_pthread.dylib             0x000000019efed888 pthread_kill + 296
+3   libsystem_c.dylib                   0x000000019eef2850 abort + 124
+4   libsystem_malloc.dylib              0x000000019edf1224 malloc_vreport + 892
+5   libsystem_malloc.dylib              0x000000019ee207f0 malloc_zone_error + 100
+6   libsystem_malloc.dylib              0x000000019edffb04 free_list_checksum_botch + 40
+7   libsystem_malloc.dylib              0x000000019edea220 small_free_list_remove_ptr_no_clear + 964
+8   libsystem_malloc.dylib              0x000000019ede7670 free_small + 540
+9   libsystem_c.dylib                   0x000000019ee97dec fclose + 260
+10  tradeboy-macos                      0x0000000100ef6c44 _ZNSt3__113basic_filebufIcNS_11char_traitsIcEEED2Ev + 60
+11  tradeboy-macos                      0x0000000100f368f4 _ZN8tradeboy5utils14read_text_fileERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE + 372
+12  tradeboy-macos                      0x0000000100f38204 _ZN8tradeboy6wallet21load_or_create_configERKNSt3__112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEERNS0_12WalletConfigERbRS7_ + 112
+13  tradeboy-macos                      0x0000000100eff994 _ZN8tradeboy3app3App7startupEv + 116
+14  tradeboy-macos                      0x0000000100ef4e50 main + 944
+15  dyld                                0x000000019ec25d54 start + 7184
+

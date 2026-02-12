@@ -217,6 +217,25 @@ static double trunc_2dp_value(double v) {
     return std::floor(v * 100.0 + 1e-12) / 100.0;
 }
 
+static std::string format_perp_leverage(double v) {
+    if (!std::isfinite(v) || v <= 0.0) return "1x";
+    double rv = std::round(v);
+    char buf[16];
+    if (std::fabs(v - rv) < 0.05) {
+        std::snprintf(buf, sizeof(buf), "%dx", (int)rv);
+    } else {
+        std::snprintf(buf, sizeof(buf), "%.1fx", v);
+    }
+    return buf;
+}
+
+static int perp_price_decimals_for(double v) {
+    if (!std::isfinite(v) || v <= 0.0) return 2;
+    if (v >= 1000.0) return 2;
+    if (v >= 1.0) return 4;
+    return 6;
+}
+
 static void set_alert_static(tradeboy::app::App& app, const char* msg) {
     app.set_alert(msg);
 }
@@ -331,6 +350,58 @@ void App::open_spot_order(bool buy) {
 
     tradeboy::spotOrder::Side side = buy ? tradeboy::spotOrder::Side::Buy : tradeboy::spotOrder::Side::Sell;
     spot_order.open_with(row, side, maxv);
+}
+
+void App::open_perp_order() {
+    tradeboy::model::TradeModelSnapshot snap = model.snapshot();
+    if (snap.perp_rows.empty()) return;
+    if (perp_row_idx < 0 || perp_row_idx >= (int)snap.perp_rows.size()) return;
+
+    const auto& row = snap.perp_rows[(size_t)perp_row_idx];
+    const tradeboy::model::AccountSnapshot account = model.account_snapshot();
+    const bool has_usdc = (!account.hl_perp_usdc_str.empty() && account.hl_perp_usdc_str != "UNKNOWN");
+    const bool has_price = (row.price > 0.0);
+    if (!has_usdc || !has_price) {
+        set_alert("Loading user data\nPlease wait...");
+        return;
+    }
+
+    const double maxv = trunc_2dp_value(account.hl_perp_usdc);
+    const double minv = 10.0;
+    if (maxv < minv) {
+        set_alert("INSUFFICIENT_USDC\nMIN: 10");
+        return;
+    }
+
+    perp_order_coin = row.coin;
+    perp_order_leverage = row.leverage;
+    perp_order_is_long = row.is_long;
+    perp_order_price = row.price;
+
+    tradeboy::ui::NumberInputConfig cfg;
+    const char* side = row.is_long ? "LONG" : "SHORT";
+    std::string lev = format_perp_leverage(row.leverage);
+    char title[64];
+    std::snprintf(title, sizeof(title), "%s %s %s", side, row.coin.c_str(), lev.c_str());
+    cfg.title = std::string(title);
+    cfg.title_color = row.is_long ? MatrixTheme::TEXT : MatrixTheme::ALERT;
+    cfg.min_value = minv;
+    cfg.max_value = maxv;
+    cfg.available_label = "USDC";
+    cfg.available_decimals = 2;
+    cfg.allowed_decimals = 2;
+
+    const int price_decimals = perp_price_decimals_for(row.price);
+    char price_label[64];
+    std::snprintf(price_label, sizeof(price_label), "PRICE: $%.*f", price_decimals, row.price);
+    cfg.price_label = std::string(price_label);
+    cfg.price = (row.leverage > 0.0) ? (row.price / row.leverage) : row.price;
+    cfg.approx_divide = true;
+    cfg.approx_label = row.coin;
+    cfg.approx_decimals = price_decimals;
+    cfg.show_available_panel = true;
+
+    perp_order_amount.open_with(cfg);
 }
 
 void App::apply_spot_ui_events(const std::vector<tradeboy::spot::SpotUiEvent>& ev) {
@@ -539,6 +610,10 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
         return;
     }
 
+    if (tradeboy::ui::handle_input(perp_order_amount, in, edges)) {
+        return;
+    }
+
     // Account address dialog (common Dialog) has priority over page inputs.
     if (account_address_dialog.open) {
         if (account_address_dialog.closing) {
@@ -561,7 +636,7 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
     }
 
     // Global tab switching (only when not inside order modal)
-    if (!spot_order.open()) {
+    if (!spot_order.open() && !perp_order_amount.open) {
         if (tradeboy::utils::pressed(in.l1, edges.prev.l1)) {
             l1_flash_frames = 6;
             if (tab == Tab::Spot) tab = Tab::Account;
@@ -636,6 +711,10 @@ void App::render() {
     if (sell_trigger_frames > 0) {
         sell_trigger_frames--;
         if (sell_trigger_frames == 0) open_spot_order(false);
+    }
+    if (perp_primary_press_frames > 0) {
+        perp_primary_press_frames--;
+        if (perp_primary_press_frames == 0) open_perp_order();
     }
 
     // Arbitrum deposit trigger: when flash completes, perform action.
@@ -918,14 +997,14 @@ void App::render() {
     }
 
     // Main header for top-level tabs (Spot/Perp/Account)
-    if (!spot_order.open() && !internal_transfer_amount.open && !withdraw_amount.open && !deposit_amount.open) {
+    if (!spot_order.open() && !perp_order_amount.open && !internal_transfer_amount.open && !withdraw_amount.open && !deposit_amount.open) {
         tradeboy::ui::render_main_header(tab, l1_flash, r1_flash, font_bold);
     }
 
     // Spot page now uses the new UI demo layout. Data layer is intentionally
     // not connected yet (render uses mock data only).
     // Hide base pages while an input modal is open to avoid overlap.
-    if (!spot_order.open() && !internal_transfer_amount.open && !withdraw_amount.open && !deposit_amount.open) {
+    if (!spot_order.open() && !perp_order_amount.open && !internal_transfer_amount.open && !withdraw_amount.open && !deposit_amount.open) {
         if (tab == Tab::Spot) {
             tradeboy::model::TradeModelSnapshot snap = model.snapshot();
             spot_row_idx = snap.spot_row_idx;
@@ -1016,7 +1095,6 @@ void App::render() {
 
     dec_frame_counter(buy_press_frames);
     dec_frame_counter(sell_press_frames);
-    dec_frame_counter(perp_primary_press_frames);
     dec_frame_counter(perp_close_press_frames);
     dec_frame_counter(l1_flash_frames);
     dec_frame_counter(r1_flash_frames);
@@ -1039,10 +1117,31 @@ void App::render() {
         }
         spot_order.sync_price(new_price);
     }
+    if (perp_order_amount.open) {
+        tradeboy::model::TradeModelSnapshot snap = model.snapshot();
+        double new_price = 0.0;
+        for (const auto& row : snap.perp_rows) {
+            if (row.coin == perp_order_coin && row.is_long == perp_order_is_long &&
+                std::fabs(row.leverage - perp_order_leverage) < 0.0001) {
+                new_price = row.price;
+                break;
+            }
+        }
+        if (new_price > 0.0 && std::fabs(new_price - perp_order_price) > 0.0000001) {
+            perp_order_price = new_price;
+            const int price_decimals = perp_price_decimals_for(new_price);
+            char price_label[64];
+            std::snprintf(price_label, sizeof(price_label), "PRICE: $%.*f", price_decimals, new_price);
+            perp_order_amount.config.price_label = std::string(price_label);
+            perp_order_amount.config.price = (perp_order_leverage > 0.0) ? (new_price / perp_order_leverage) : new_price;
+            perp_order_amount.config.approx_decimals = price_decimals;
+        }
+    }
     tradeboy::ui::render(internal_transfer_amount, font_bold);
     tradeboy::ui::render(withdraw_amount, font_bold);
     tradeboy::ui::render(deposit_amount, font_bold);
     tradeboy::spotOrder::render(spot_order, font_bold);
+    tradeboy::ui::render(perp_order_amount, font_bold);
 
     if (internal_transfer_amount.result != tradeboy::ui::NumberInputResult::None) {
         tradeboy::ui::NumberInputResult res = internal_transfer_amount.result;

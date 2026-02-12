@@ -7,6 +7,7 @@
 #include "utils/Log.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <sstream>
 #include <unordered_map>
@@ -233,6 +234,32 @@ bool load_or_create_config(const std::string& path, WalletConfig& out_cfg, bool&
         out_cfg.bolditalic_font_path = cfg["bolditalic_font_path"];
 
         if (!out_cfg.arb_rpc_url.empty() && !out_cfg.wallet_address.empty() && !out_cfg.private_key.empty()) {
+            std::vector<unsigned char> priv;
+            if (tradeboy::utils::hex_to_bytes(out_cfg.private_key, priv) && priv.size() == 32) {
+                std::string derived_addr;
+                std::string pub_hex;
+                std::string derr;
+                if (derive_address_from_privkey(priv, derived_addr, pub_hex, derr)) {
+                    auto normalize_addr = [](const std::string& in) {
+                        std::string s = in;
+                        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
+                            return (char)std::tolower(c);
+                        });
+                        if (s.rfind("0x", 0) != 0) s = std::string("0x") + s;
+                        return s;
+                    };
+                    if (normalize_addr(out_cfg.wallet_address) != normalize_addr(derived_addr)) {
+                        log_str("[CFG] wallet_address mismatch, overwrite from private_key\n");
+                        out_cfg.wallet_address = derived_addr;
+                        std::string cfg_text = default_cfg_text(out_cfg.arb_rpc_url,
+                                                                out_cfg.wallet_address,
+                                                                out_cfg.private_key,
+                                                                out_cfg.regular_font_path,
+                                                                out_cfg.bolditalic_font_path);
+                        (void)tradeboy::utils::write_text_file(path, cfg_text);
+                    }
+                }
+            }
             return true;
         }
     }

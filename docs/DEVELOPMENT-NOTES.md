@@ -180,6 +180,50 @@ make tradeboy-ui-demo-armhf-docker
 
 ## 开发过程与踩坑记录
 
+### ASan（macOS）：定位启动期堆损坏
+
+背景：出现 `malloc: Incorrect checksum for freed object`，需要 ASan 定位堆损坏来源。
+
+关键点：
+
+- Homebrew LLVM 自带 ASan runtime；系统 CLT 的 asan dylib 在 arm64e 上可能不匹配。
+- Makefile 已加入可选 ASan 编译开关（默认不影响普通构建）。
+
+#### 1) 安装 LLVM
+
+```sh
+brew install llvm
+```
+
+#### 2) 使用 Homebrew clang++ 编译 ASan 版本
+
+```sh
+make -C tradeboy clean
+make -C tradeboy tradeboy-macos \
+  MAC_CXX=/opt/homebrew/opt/llvm/bin/clang++ \
+  MAC_ASAN_FLAGS="-fsanitize=address -fno-omit-frame-pointer -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -stdlib=libc++" \
+  MAC_ASAN_LDFLAGS="-fsanitize=address -stdlib=libc++ -L/opt/homebrew/opt/llvm/lib/c++ -L/opt/homebrew/opt/llvm/lib/unwind -lunwind"
+```
+
+说明：
+
+- `-isysroot` 是为了解决 Homebrew clang 找不到系统 SDK（`AvailabilityMacros.h`）。
+- `-stdlib=libc++` + `-L.../lib/c++` + `-L.../lib/unwind -lunwind` 用于链接 Homebrew 的 libc++/unwind，否则会出现 `std::__1::*` vtable 未找到。
+
+#### 3) 运行 ASan 版本（指定 ASan runtime）
+
+```sh
+env DYLD_LIBRARY_PATH=/opt/homebrew/opt/llvm/lib/clang/21/lib/darwin \
+  ASAN_OPTIONS="halt_on_error=1:abort_on_error=1:detect_stack_use_after_return=1:check_initialization_order=1" \
+  ./run_macos.sh
+```
+
+如需输出 ASan 日志到文件，可加：
+
+```sh
+ASAN_OPTIONS="...:log_path=/tmp/asan"
+```
+
 ### 坑 1：EGL/GLES 初始化成功但黑屏
 
 现象：

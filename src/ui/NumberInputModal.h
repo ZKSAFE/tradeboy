@@ -42,6 +42,7 @@ struct NumberInputConfig {
     double price = 0.0;           // For USD approximation display
     bool approx_divide = false;   // false: input * price, true: input / price
     std::string approx_label = "USD";  // e.g. "USD", "BTC"
+    int approx_decimals = -1;
     
     bool show_available_panel = true;
 };
