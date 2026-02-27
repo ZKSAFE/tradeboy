@@ -68,21 +68,15 @@ TB_UNUSED static const char* resolve_curl_path() {
 static bool http_post_json_wget(const char* url, const char* json_path, std::string& out_json) {
     out_json.clear();
 #if defined(TRADEBOY_DESKTOP)
-    std::string cmd = std::string(resolve_curl_path()) + " -s --connect-timeout 3 --max-time 8 -H \"Content-Type: application/json\" --data-binary @";
+    // Capture both response body and any curl diagnostics.
+    // Downstream code decides business success via JSON (e.g. status=="ok").
+    std::string cmd = std::string(resolve_curl_path()) +
+                      " -sS --connect-timeout 3 --max-time 8 -H \"Content-Type: application/json\" --data-binary @";
     cmd += json_path;
     cmd += " ";
     cmd += url;
-    cmd += " 2>/dev/null";
+    cmd += " 2>&1";
     if (tradeboy::utils::run_cmd_capture(cmd, out_json) && !out_json.empty()) return true;
-
-    std::string diag;
-    std::string cmd2 = std::string(resolve_curl_path()) + " -sS --connect-timeout 3 --max-time 8 -D - -o - -H \"Content-Type: application/json\" --data-binary @";
-    cmd2 += json_path;
-    cmd2 += " ";
-    cmd2 += url;
-    cmd2 += " 2>&1";
-    tradeboy::utils::run_cmd_capture(cmd2, diag);
-    out_json = diag;
     return false;
 #else
     std::string cmd = "/usr/bin/wget -qO- --header=\"Content-Type: application/json\" --post-file=";
@@ -286,6 +280,7 @@ static void msgpack_pack_order_action(std::vector<unsigned char>& out,
                                       bool is_buy,
                                       const std::string& price,
                                       const std::string& size,
+                                      bool reduce_only,
                                       const std::string& tif) {
     msgpack_pack_map_header(out, 3);
     msgpack_pack_str(out, "type");
@@ -303,7 +298,7 @@ static void msgpack_pack_order_action(std::vector<unsigned char>& out,
     msgpack_pack_str(out, "s");
     msgpack_pack_str(out, size);
     msgpack_pack_str(out, "r");
-    msgpack_pack_bool(out, false);
+    msgpack_pack_bool(out, reduce_only);
     msgpack_pack_str(out, "t");
     msgpack_pack_map_header(out, 1);
     msgpack_pack_str(out, "limit");
@@ -330,6 +325,8 @@ static void msgpack_pack_update_leverage_action(std::vector<unsigned char>& out,
     msgpack_pack_str(out, "leverage");
     msgpack_pack_uint(out, (unsigned long long)leverage);
 }
+
+static bool hl_exchange_status_ok(const std::string& resp);
 
 [[maybe_unused]] static bool address_to_bytes20(const std::string& addr_0x, unsigned char out20[20]) {
     std::vector<unsigned char> bytes;
@@ -444,10 +441,10 @@ bool exchange_perp_update_leverage(const std::string& wallet_address_0x,
     }
 
     out_resp = resp;
-    if (resp.find("\"error\"") != std::string::npos) {
+    if (!hl_exchange_status_ok(resp)) {
         out_err = "exchange_error";
-        std::string prefix = resp.substr(0, std::min<size_t>(256, resp.size()));
-        std::string line = std::string("[HLX] perp_leverage exchange_error resp_prefix=") + prefix + "\n";
+        std::string prefix = resp.substr(0, std::min<size_t>(512, resp.size()));
+        std::string line = std::string("[HLX] perp_leverage exchange_non_ok resp_prefix=") + prefix + "\n";
         log_str(line.c_str());
         return false;
     }
@@ -474,6 +471,7 @@ bool exchange_perp_market_order(const std::string& wallet_address_0x,
                                 const std::string& private_key_hex,
                                 const std::string& display_sym,
                                 bool is_buy,
+                                bool reduce_only,
                                 double input_amount,
                                 double leverage,
                                 double mid_px,
@@ -556,7 +554,7 @@ bool exchange_perp_market_order(const std::string& wallet_address_0x,
                                             .count();
 
     std::vector<unsigned char> packed;
-    msgpack_pack_order_action(packed, asset, is_buy, price_s, size_s, "Ioc");
+    msgpack_pack_order_action(packed, asset, is_buy, price_s, size_s, reduce_only, "Ioc");
     append_be_u64(packed, nonce_ms);
     packed.push_back(0x00);
 
@@ -581,7 +579,7 @@ bool exchange_perp_market_order(const std::string& wallet_address_0x,
                               "\"b\":" + std::string(is_buy ? "true" : "false") + "," +
                               "\"p\":\"" + json_escape(price_s) + "\"," +
                               "\"s\":\"" + json_escape(size_s) + "\"," +
-                              "\"r\":false," +
+                              "\"r\":" + std::string(reduce_only ? "true" : "false") + "," +
                               "\"t\":{\"limit\":{\"tif\":\"Ioc\"}}" +
                               "}]," +
                               "\"grouping\":\"na\"" +
@@ -613,10 +611,10 @@ bool exchange_perp_market_order(const std::string& wallet_address_0x,
     }
 
     out_resp = resp;
-    if (resp.find("\"error\"") != std::string::npos) {
+    if (!hl_exchange_status_ok(resp)) {
         out_err = "exchange_error";
-        std::string prefix = resp.substr(0, std::min<size_t>(256, resp.size()));
-        std::string line = std::string("[HLX] perp_order exchange_error resp_prefix=") + prefix + "\n";
+        std::string prefix = resp.substr(0, std::min<size_t>(512, resp.size()));
+        std::string line = std::string("[HLX] perp_order exchange_non_ok resp_prefix=") + prefix + "\n";
         log_str(line.c_str());
         return false;
     }
@@ -1532,6 +1530,12 @@ static std::string json_escape(const std::string& s) {
     return out;
 }
 
+static bool hl_exchange_status_ok(const std::string& resp) {
+    // For /exchange we treat success strictly as JSON containing: "status":"ok"
+    // HTTP 200 with other JSON (or plain text) is considered a failure.
+    return resp.find("\"status\":\"ok\"") != std::string::npos;
+}
+
 bool exchange_spot_market_order(const std::string& wallet_address_0x,
                                 const std::string& private_key_hex,
                                 const std::string& display_sym,
@@ -1620,7 +1624,7 @@ bool exchange_spot_market_order(const std::string& wallet_address_0x,
                                             .count();
 
     std::vector<unsigned char> packed;
-    msgpack_pack_order_action(packed, asset, is_buy, price_s, size_s, "Ioc");
+    msgpack_pack_order_action(packed, asset, is_buy, price_s, size_s, false, "Ioc");
     append_be_u64(packed, nonce_ms);
     packed.push_back(0x00);
 
@@ -1677,10 +1681,10 @@ bool exchange_spot_market_order(const std::string& wallet_address_0x,
     }
 
     out_resp = resp;
-    if (resp.find("\"error\"") != std::string::npos) {
+    if (!hl_exchange_status_ok(resp)) {
         out_err = "exchange_error";
-        std::string prefix = resp.substr(0, std::min<size_t>(256, resp.size()));
-        std::string line = std::string("[HLX] spot_order exchange_error resp_prefix=") + prefix + "\n";
+        std::string prefix = resp.substr(0, std::min<size_t>(512, resp.size()));
+        std::string line = std::string("[HLX] spot_order exchange_non_ok resp_prefix=") + prefix + "\n";
         log_str(line.c_str());
         return false;
     }
@@ -1754,11 +1758,10 @@ bool exchange_usd_class_transfer(const std::string& wallet_address_0x,
 
     out_resp = resp;
 
-    // Very light success detection.
-    if (resp.find("\"error\"") != std::string::npos) {
+    if (!hl_exchange_status_ok(resp)) {
         out_err = "exchange_error";
-        std::string prefix = resp.substr(0, std::min<size_t>(256, resp.size()));
-        std::string line = std::string("[HLX] exchange_error resp_prefix=") + prefix + "\n";
+        std::string prefix = resp.substr(0, std::min<size_t>(512, resp.size()));
+        std::string line = std::string("[HLX] exchange_non_ok resp_prefix=") + prefix + "\n";
         log_str(line.c_str());
         return false;
     }
@@ -1861,8 +1864,11 @@ bool exchange_withdraw3(const std::string& wallet_address_0x,
     }
 
     out_resp = resp;
-    if (resp.find("\"error\"") != std::string::npos) {
+    if (!hl_exchange_status_ok(resp)) {
         out_err = "exchange_error";
+        std::string prefix = resp.substr(0, std::min<size_t>(512, resp.size()));
+        std::string line = std::string("[HLW] exchange_non_ok resp_prefix=") + prefix + "\n";
+        log_str(line.c_str());
         return false;
     }
 

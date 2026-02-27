@@ -210,6 +210,7 @@ static bool build_perp_rows_from_clearinghouse(const std::string& perp_json,
 static int snap_leverage_step(int v) {
     if (v >= 20) return v;
     if (v >= 12) return 10;
+    if (v >= 10) return 10;
     if (v >= 6) return 5;
     if (v >= 4) return 3;
     return 2;

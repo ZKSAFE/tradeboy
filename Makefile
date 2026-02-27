@@ -174,7 +174,7 @@ $(BUILD_DIR_ARMHF)/imgui_impl_opengl3.o: $(IMGUI_BACKENDS_DIR)/imgui_impl_opengl
 $(BUILD_DIR_MAC)/imgui_impl_opengl3.o: $(IMGUI_BACKENDS_DIR)/imgui_impl_opengl3.cpp | $(BUILD_DIR_MAC)
 	$(MAC_CXX) $(MAC_CXXFLAGS) $(DEPFLAGS) -I./$(IMGUI_DIR) -I./$(IMGUI_BACKENDS_DIR) -c $< -o $@
 
--include $(TRADEBOY_OBJS:.o=.d) $(IMGUI_DEMO_OBJS:.o=.d)
+-include $(TRADEBOY_OBJS:.o=.d) $(TRADEBOY_MAC_OBJS:.o=.d) $(IMGUI_DEMO_OBJS:.o=.d)
 
 $(TARGET_IMGUI_DEMO_ARMHF): $(IMGUI_DEMO_OBJS) | $(OUTPUT_DIR)
 	$(ARMHF_CXX) $(CXXFLAGS) -o $(TARGET_IMGUI_DEMO_ARMHF) $(IMGUI_DEMO_OBJS) -L/usr/lib/arm-linux-gnueabihf $(LIBS_ARMHF_GLES) -lSDL2

@@ -74,6 +74,8 @@ struct AccountSnapshot {
     std::string hl_perp_usdc_str;
     double hl_perp_usdc = 0.0;
 
+    double hl_perp_available_usdc = 0.0;
+
     std::string hl_total_asset_str;
     double hl_total_asset = 0.0;
     std::string hl_pnl_24h_str;
@@ -150,6 +152,8 @@ private:
 
     std::string hl_perp_usdc_str_;
     double hl_perp_usdc_ = 0.0;
+
+    double hl_perp_available_usdc_ = 0.0;
 
     std::string hl_total_asset_str_;
     double hl_total_asset_ = 0.0;

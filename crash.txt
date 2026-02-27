@@ -354,3 +354,153 @@
 4   tradeboy-macos                      0x0000000104bb5164 main + 3676
 5   dyld                                0x0000000190259d54 start + 7184
 
+[CRASH] terminate_handler invoked
+[CRASH] no active exception
+[CRASH] backtrace_depth=6
+0   tradeboy-macos                      0x00000001046253c0 _ZL17terminate_handlerv + 124
+1   libc++abi.dylib                     0x000000019e4d6c2c _ZSt11__terminatePFvvE + 16
+2   libc++abi.dylib                     0x000000019e4d6b88 _ZSt9terminatev + 36
+3   tradeboy-macos                      0x000000010462eedc _ZN8tradeboy3app3AppD2Ev + 160
+4   tradeboy-macos                      0x0000000104624f5c main + 3676
+5   dyld                                0x000000019e159d54 start + 7184
+
+[CRASH] terminate_handler invoked
+[CRASH] no active exception
+[CRASH] backtrace_depth=6
+0   tradeboy-macos                      0x00000001004093a8 _ZL17terminate_handlerv + 124
+1   libc++abi.dylib                     0x000000019e4d6c2c _ZSt11__terminatePFvvE + 16
+2   libc++abi.dylib                     0x000000019e4d6b88 _ZSt9terminatev + 36
+3   tradeboy-macos                      0x0000000100412ec4 _ZN8tradeboy3app3AppD2Ev + 160
+4   tradeboy-macos                      0x0000000100408f44 main + 3676
+5   dyld                                0x000000019e159d54 start + 7184
+
+[CRASH] terminate_handler invoked
+[CRASH] no active exception
+[CRASH] backtrace_depth=6
+0   tradeboy-macos                      0x0000000102c890c8 _ZL17terminate_handlerv + 124
+1   libc++abi.dylib                     0x000000019e4d6c2c _ZSt11__terminatePFvvE + 16
+2   libc++abi.dylib                     0x000000019e4d6b88 _ZSt9terminatev + 36
+3   tradeboy-macos                      0x0000000102c92e94 _ZN8tradeboy3app3AppD2Ev + 160
+4   tradeboy-macos                      0x0000000102c88c64 main + 3676
+5   dyld                                0x000000019e159d54 start + 7184
+
+[CRASH] terminate_handler invoked
+[CRASH] no active exception
+[CRASH] backtrace_depth=6
+0   tradeboy-macos                      0x0000000102260fcc _ZL17terminate_handlerv + 124
+1   libc++abi.dylib                     0x000000019e4d6c2c _ZSt11__terminatePFvvE + 16
+2   libc++abi.dylib                     0x000000019e4d6b88 _ZSt9terminatev + 36
+3   tradeboy-macos                      0x000000010226ad6c _ZN8tradeboy3app3AppD2Ev + 136
+4   tradeboy-macos                      0x0000000102260b68 main + 3676
+5   dyld                                0x000000019e159d54 start + 7184
+
+[CRASH] terminate_handler invoked
+[CRASH] no active exception
+[CRASH] backtrace_depth=6
+0   tradeboy-macos                      0x0000000100c40e50 _ZL17terminate_handlerv + 124
+1   libc++abi.dylib                     0x000000019e4d6c2c _ZSt11__terminatePFvvE + 16
+2   libc++abi.dylib                     0x000000019e4d6b88 _ZSt9terminatev + 36
+3   tradeboy-macos                      0x0000000100c4abf0 _ZN8tradeboy3app3AppD2Ev + 136
+4   tradeboy-macos                      0x0000000100c409ec main + 3676
+5   dyld                                0x000000019e159d54 start + 7184
+
+[CRASH] terminate_handler invoked
+[CRASH] no active exception
+[CRASH] backtrace_depth=6
+0   tradeboy-macos                      0x0000000104ee0e38 _ZL17terminate_handlerv + 124
+1   libc++abi.dylib                     0x000000019e4d6c2c _ZSt11__terminatePFvvE + 16
+2   libc++abi.dylib                     0x000000019e4d6b88 _ZSt9terminatev + 36
+3   tradeboy-macos                      0x0000000104eeabd8 _ZN8tradeboy3app3AppD2Ev + 136
+4   tradeboy-macos                      0x0000000104ee09d4 main + 3676
+5   dyld                                0x000000019e159d54 start + 7184
+
+[CRASH] terminate_handler invoked
+[CRASH] no active exception
+[CRASH] backtrace_depth=6
+0   tradeboy-macos                      0x0000000104a60e38 _ZL17terminate_handlerv + 124
+1   libc++abi.dylib                     0x000000019e4d6c2c _ZSt11__terminatePFvvE + 16
+2   libc++abi.dylib                     0x000000019e4d6b88 _ZSt9terminatev + 36
+3   tradeboy-macos                      0x0000000104a6abd8 _ZN8tradeboy3app3AppD2Ev + 136
+4   tradeboy-macos                      0x0000000104a609d4 main + 3676
+5   dyld                                0x000000019e159d54 start + 7184
+
+[CRASH] terminate_handler invoked
+[CRASH] no active exception
+[CRASH] backtrace_depth=6
+0   tradeboy-macos                      0x0000000102304dbc _ZL17terminate_handlerv + 124
+1   libc++abi.dylib                     0x000000019e4d6c2c _ZSt11__terminatePFvvE + 16
+2   libc++abi.dylib                     0x000000019e4d6b88 _ZSt9terminatev + 36
+3   tradeboy-macos                      0x000000010230eb5c _ZN8tradeboy3app3AppD2Ev + 136
+4   tradeboy-macos                      0x0000000102304958 main + 3676
+5   dyld                                0x000000019e159d54 start + 7184
+
+[CRASH] terminate_handler invoked
+[CRASH] no active exception
+[CRASH] backtrace_depth=6
+0   tradeboy-macos                      0x0000000102a90c94 _ZL17terminate_handlerv + 124
+1   libc++abi.dylib                     0x000000019e4d6c2c _ZSt11__terminatePFvvE + 16
+2   libc++abi.dylib                     0x000000019e4d6b88 _ZSt9terminatev + 36
+3   tradeboy-macos                      0x0000000102a9aa34 _ZN8tradeboy3app3AppD2Ev + 136
+4   tradeboy-macos                      0x0000000102a90830 main + 3676
+5   dyld                                0x000000019e159d54 start + 7184
+
+[CRASH] terminate_handler invoked
+[CRASH] no active exception
+[CRASH] backtrace_depth=6
+0   tradeboy-macos                      0x0000000102c2ca44 _ZL17terminate_handlerv + 124
+1   libc++abi.dylib                     0x000000019e4d6c2c _ZSt11__terminatePFvvE + 16
+2   libc++abi.dylib                     0x000000019e4d6b88 _ZSt9terminatev + 36
+3   tradeboy-macos                      0x0000000102c367e4 _ZN8tradeboy3app3AppD2Ev + 136
+4   tradeboy-macos                      0x0000000102c2c5e0 main + 3676
+5   dyld                                0x000000019e159d54 start + 7184
+
+[CRASH] terminate_handler invoked
+[CRASH] no active exception
+[CRASH] backtrace_depth=6
+0   tradeboy-macos                      0x0000000100880b94 _ZL17terminate_handlerv + 124
+1   libc++abi.dylib                     0x000000019e4d6c2c _ZSt11__terminatePFvvE + 16
+2   libc++abi.dylib                     0x000000019e4d6b88 _ZSt9terminatev + 36
+3   tradeboy-macos                      0x000000010088a934 _ZN8tradeboy3app3AppD2Ev + 136
+4   tradeboy-macos                      0x0000000100880730 main + 3676
+5   dyld                                0x000000019e159d54 start + 7184
+
+[CRASH] terminate_handler invoked
+[CRASH] uncaught exception: thread::join failed: No such process (NSt3__112system_errorE)
+[CRASH] backtrace_depth=10
+0   tradeboy-macos                      0x0000000100e54a34 _ZL17terminate_handlerv + 124
+1   libc++abi.dylib                     0x000000019e4d6c2c _ZSt11__terminatePFvvE + 16
+2   libc++abi.dylib                     0x000000019e4da394 __cxa_get_exception_ptr + 0
+3   libc++abi.dylib                     0x000000019e4da33c _ZN10__cxxabiv1L12failed_throwEPNS_15__cxa_exceptionE + 0
+4   libc++.1.dylib                      0x000000019e453b90 _ZNSt3__120__throw_system_errorB8ne200100ENS_10error_codeEPKc + 92
+5   libc++.1.dylib                      0x000000019e453b34 _ZNSt3__120__throw_system_errorB8ne200100ENS_10error_codeEPKc + 0
+6   libc++.1.dylib                      0x000000019e456348 _ZNSt3__16thread6detachEv + 0
+7   tradeboy-macos                      0x0000000100e5f6bc _ZN8tradeboy3app3App8shutdownEv + 92
+8   tradeboy-macos                      0x0000000100e545b0 main + 3644
+9   dyld                                0x000000019e159d54 start + 7184
+
+[CRASH] signal=11
+[CRASH] backtrace_depth=10
+0   tradeboy-macos                      0x00000001006c4958 _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x000000019e52d764 _sigtramp + 56
+2   tradeboy-macos                      0x0000000100765304 _Z23ImFontAtlasBuildDestroyP11ImFontAtlas + 68
+3   tradeboy-macos                      0x0000000100765304 _Z23ImFontAtlasBuildDestroyP11ImFontAtlas + 68
+4   tradeboy-macos                      0x0000000100764a00 _ZN11ImFontAtlas10ClearFontsEv + 76
+5   tradeboy-macos                      0x000000010076482c _ZN11ImFontAtlasD2Ev + 40
+6   tradeboy-macos                      0x0000000100725e9c _ZN5ImGui8ShutdownEv + 284
+7   tradeboy-macos                      0x0000000100725ca8 _ZN5ImGui14DestroyContextEP12ImGuiContext + 40
+8   tradeboy-macos                      0x00000001006c4644 main + 3804
+9   dyld                                0x000000019e159d54 start + 7184
+
+[CRASH] signal=11
+[CRASH] backtrace_depth=10
+0   tradeboy-macos                      0x0000000102254964 _ZL20crash_signal_handleri + 80
+1   libsystem_platform.dylib            0x000000019e52d764 _sigtramp + 56
+2   tradeboy-macos                      0x00000001022f5304 _Z23ImFontAtlasBuildDestroyP11ImFontAtlas + 68
+3   tradeboy-macos                      0x00000001022f5304 _Z23ImFontAtlasBuildDestroyP11ImFontAtlas + 68
+4   tradeboy-macos                      0x00000001022f4a00 _ZN11ImFontAtlas10ClearFontsEv + 76
+5   tradeboy-macos                      0x00000001022f482c _ZN11ImFontAtlasD2Ev + 40
+6   tradeboy-macos                      0x00000001022b5e9c _ZN5ImGui8ShutdownEv + 284
+7   tradeboy-macos                      0x00000001022b5ca8 _ZN5ImGui14DestroyContextEP12ImGuiContext + 40
+8   tradeboy-macos                      0x0000000102254650 main + 3804
+9   dyld                                0x000000019e159d54 start + 7184
+

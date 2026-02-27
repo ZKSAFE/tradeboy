@@ -103,6 +103,13 @@ static std::string format_round_fixed_full(double v, int decimals) {
     return std::string(buf);
 }
 
+static std::string format_min_value(const NumberInputState& st) {
+    int d = (st.config.allowed_decimals >= 0)
+                ? st.config.allowed_decimals
+                : allowed_decimals_from_min(st.config.min_value);
+    return format_round_fixed(st.config.min_value, d);
+}
+
 static int available_decimals(const NumberInputState& st) {
     return (st.config.available_decimals >= 0)
                ? st.config.available_decimals
@@ -280,7 +287,8 @@ bool handle_input(NumberInputState& st, const tradeboy::app::InputState& in, con
                     st.out_of_range_dialog.open_dialog(msg, 1);
                 } else if (value < st.config.min_value) {
                     char msg[192];
-                    std::snprintf(msg, sizeof(msg), "BELOW_MIN\nMIN: %.8f %s", st.config.min_value, st.config.available_label.c_str());
+                    std::string min_str = format_min_value(st);
+                    std::snprintf(msg, sizeof(msg), "BELOW_MIN\nMIN: %s %s", min_str.c_str(), st.config.available_label.c_str());
                     st.out_of_range_dialog.open_dialog(msg, 1);
                 } else if (value > st.config.max_value) {
                     int avail_decimals = available_decimals(st);

@@ -1,6 +1,7 @@
 #include "TradeModel.h"
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
 
 #include "../market/Hyperliquid.h"
@@ -8,6 +9,17 @@
 #include "utils/Log.h"
 
 namespace tradeboy::model {
+
+static double total_perp_margins_used(const std::vector<PerpRow>& rows) {
+    double margins = 0.0;
+    for (const auto& r : rows) {
+        if (r.margin_used > 0.0 && std::isfinite(r.margin_used)) {
+            margins += r.margin_used;
+        }
+    }
+    if (!std::isfinite(margins) || margins < 0.0) margins = 0.0;
+    return margins;
+}
 
 TradeModel::TradeModel() {
     log_str("[Model] ctor\n");
@@ -72,6 +84,7 @@ AccountSnapshot TradeModel::account_snapshot() const {
     a.hl_usdc = hl_usdc_;
     a.hl_perp_usdc_str = hl_perp_usdc_str_;
     a.hl_perp_usdc = hl_perp_usdc_;
+    a.hl_perp_available_usdc = hl_perp_available_usdc_;
     a.hl_total_asset_str = hl_total_asset_str_;
     a.hl_total_asset = hl_total_asset_;
     a.hl_pnl_24h_str = hl_pnl_24h_str_;
@@ -127,6 +140,12 @@ void TradeModel::set_perp_rows(std::vector<PerpRow> rows) {
         return;
     }
     perp_rows_.swap(rows);
+
+    const double margins = total_perp_margins_used(perp_rows_);
+    double available = hl_perp_usdc_ - margins;
+    if (!std::isfinite(available) || available < 0.0) available = 0.0;
+    hl_perp_available_usdc_ = available;
+
     pthread_mutex_unlock(&mu);
 }
 
@@ -183,6 +202,12 @@ void TradeModel::set_hl_perp_usdc(double usdc, const std::string& usdc_str, bool
     }
     hl_perp_usdc_ = ok ? usdc : 0.0;
     hl_perp_usdc_str_ = ok ? usdc_str : std::string("UNKNOWN");
+
+    const double margins = total_perp_margins_used(perp_rows_);
+    double available = hl_perp_usdc_ - margins;
+    if (!std::isfinite(available) || available < 0.0) available = 0.0;
+    hl_perp_available_usdc_ = available;
+
     pthread_mutex_unlock(&mu);
 }
 

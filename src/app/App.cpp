@@ -375,12 +375,21 @@ void App::open_perp_order() {
         return;
     }
 
-    const double maxv = trunc_2dp_value(account.hl_perp_usdc);
-    double minv = 10.0;
+    const double maxv = trunc_2dp_value(account.hl_perp_available_usdc);
+    auto ceil_to_2dp = [](double v) {
+        if (!std::isfinite(v)) return 0.0;
+        const double p = 100.0;
+        const double eps = 1e-9;
+        return std::ceil(v * p - eps) / p;
+    };
+
+    double minv = 10.3;
     if (row.leverage > 0.0) {
-        minv = 10.0 / row.leverage;
+        // Enforce minimum notional: input_usdc * leverage >= 10.3
+        // So minimum input is ceil(10.3 / leverage, 2dp)
+        minv = 10.3 / row.leverage;
     }
-    minv = std::max(0.01, trunc_2dp_value(minv));
+    minv = std::max(0.01, ceil_to_2dp(minv));
     if (maxv < minv) {
         char msg[64];
         std::snprintf(msg, sizeof(msg), "INSUFFICIENT_USDC\nMIN: %.2f", minv);
@@ -454,8 +463,28 @@ void App::open_perp_close() {
         set_alert("NO_POSITION");
         return;
     }
-    double minv = tradeboy::utils::trunc_to_decimals(10.0 / row.price, sz_decimals);
-    if (minv > maxv) minv = maxv;
+
+    auto ceil_to_decimals = [](double v, int decimals) {
+        if (!std::isfinite(v)) return 0.0;
+        int d = std::max(0, std::min(10, decimals));
+        double p = 1.0;
+        for (int i = 0; i < d; i++) p *= 10.0;
+        const double eps = 1e-9;
+        return std::ceil(v * p - eps) / p;
+    };
+
+    // Enforce minimum notional for closing: close_size * price >= 10.3
+    // So minimum close size is ceil(10.3 / price, sz_decimals)
+    const double min_notional = 10.3;
+    const double max_notional = maxv * row.price;
+    if (!(std::isfinite(max_notional)) || max_notional + 1e-9 < min_notional) {
+        char msg[96];
+        std::snprintf(msg, sizeof(msg), "POSITION_TOO_SMALL\nMIN: %.2f USDC", min_notional);
+        set_alert(msg);
+        return;
+    }
+
+    double minv = ceil_to_decimals(min_notional / row.price, sz_decimals);
 
     tradeboy::ui::NumberInputConfig cfg;
     const char side = row.is_long ? 'L' : 'S';
@@ -1008,6 +1037,7 @@ void App::render() {
                                     w.private_key,
                                     display_sym,
                                     is_buy,
+                                    true,
                                     input_amount,
                                     leverage,
                                     mid_px,
@@ -1106,6 +1136,7 @@ void App::render() {
                                 w.private_key,
                                 display_sym,
                                 is_buy,
+                                false,
                                 input_amount,
                                 leverage,
                                 mid_px,
@@ -1330,7 +1361,11 @@ void App::render() {
             const std::string gas_s = account.arb_gas_str.empty() ? "GAS: UNKNOWN" : account.arb_gas_str;
             const long double gas_price_wei = account.arb_gas_price_wei;
             const std::string hl_usdc_s = account.hl_usdc_str.empty() ? "UNKNOWN" : trunc_2dp(account.hl_usdc);
-            const std::string hl_perp_usdc_s = account.hl_perp_usdc_str.empty() ? "UNKNOWN" : trunc_2dp(account.hl_perp_usdc);
+
+            std::string hl_perp_usdc_s = "UNKNOWN";
+            if (!account.hl_perp_usdc_str.empty() && account.hl_perp_usdc_str != "UNKNOWN") {
+                hl_perp_usdc_s = trunc_2dp(account.hl_perp_available_usdc);
+            }
             const std::string hl_total_asset_s = account.hl_total_asset_str.empty() ? "UNKNOWN" : account.hl_total_asset_str;
             const std::string hl_pnl_24h_s = account.hl_pnl_24h_str.empty() ? "UNKNOWN" : account.hl_pnl_24h_str;
             const std::string hl_pnl_24h_pct_s = account.hl_pnl_24h_pct_str.empty() ? "UNKNOWN" : account.hl_pnl_24h_pct_str;
@@ -1386,21 +1421,24 @@ void App::render() {
     if (spot_order.open()) {
         tradeboy::model::TradeModelSnapshot snap = model.snapshot();
         double new_price = 0.0;
+        int new_price_decimals = 2;
         if (spot_row_idx >= 0 && spot_row_idx < (int)snap.spot_rows.size()) {
             const auto& row = snap.spot_rows[(size_t)spot_row_idx];
             if (row.sym == spot_order.sym) {
                 new_price = row.price;
+                new_price_decimals = row.price_decimals;
             }
         }
         if (new_price <= 0.0) {
             for (const auto& row : snap.spot_rows) {
                 if (row.sym == spot_order.sym) {
                     new_price = row.price;
+                    new_price_decimals = row.price_decimals;
                     break;
                 }
             }
         }
-        spot_order.sync_price(new_price);
+        spot_order.sync_price(new_price, new_price_decimals);
     }
     if (perp_order_amount.open) {
         tradeboy::model::TradeModelSnapshot snap = model.snapshot();

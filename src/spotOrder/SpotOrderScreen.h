@@ -28,6 +28,8 @@ struct SpotOrderState {
     Side side = Side::Buy;
     std::string sym;
     double price = 0.0;
+    int price_decimals = 2;
+    int size_decimals = 2;
     
     bool open() const { return input_state.open; }
     
@@ -38,7 +40,7 @@ struct SpotOrderState {
     double get_result_value() const { return input_state.result_value; }
     void clear_result() { input_state.result = tradeboy::ui::NumberInputResult::None; }
 
-    void sync_price(double new_price);
+    void sync_price(double new_price, int new_price_decimals);
 };
 
 bool handle_input(SpotOrderState& st, const tradeboy::app::InputState& in, const tradeboy::app::EdgeState& edges);
