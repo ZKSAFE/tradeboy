@@ -12,6 +12,12 @@
 #include "Hyperliquid.h"
 #include "utils/Log.h"
 
+#if defined(__GNUC__) || defined(__clang__)
+#define TB_UNUSED __attribute__((unused))
+#else
+#define TB_UNUSED
+#endif
+
 namespace tradeboy::market {
 
 struct HistoryPoint {
@@ -353,7 +359,7 @@ static bool build_perp_rows_from_multi_meta_and_ctxs(const std::vector<std::stri
     return true;
 }
 
-static bool build_perp_rows_from_meta_and_ctxs(const std::string& meta_and_ctxs_json,
+TB_UNUSED static bool build_perp_rows_from_meta_and_ctxs(const std::string& meta_and_ctxs_json,
                                                std::vector<tradeboy::model::PerpRow>& out_rows,
                                                std::vector<std::string>* out_dexes) {
     std::vector<std::string> meta_list;

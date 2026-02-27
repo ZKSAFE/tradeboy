@@ -344,3 +344,13 @@
 4   tradeboy-macos                      0x0000000100ae1314 main + 3676
 5   dyld                                0x0000000190259d54 start + 7184
 
+[CRASH] terminate_handler invoked
+[CRASH] no active exception
+[CRASH] backtrace_depth=6
+0   tradeboy-macos                      0x0000000104bb55c8 _ZL17terminate_handlerv + 124
+1   libc++abi.dylib                     0x00000001905d4c2c _ZSt11__terminatePFvvE + 16
+2   libc++abi.dylib                     0x00000001905d4b88 _ZSt9terminatev + 36
+3   tradeboy-macos                      0x0000000104bbf0cc _ZN8tradeboy3app3AppD2Ev + 136
+4   tradeboy-macos                      0x0000000104bb5164 main + 3676
+5   dyld                                0x0000000190259d54 start + 7184
+

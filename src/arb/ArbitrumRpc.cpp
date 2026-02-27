@@ -17,11 +17,21 @@
 #include <thread>
 #include <vector>
 
+#include <openssl/opensslv.h>
+#if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
+#define OPENSSL_SUPPRESS_DEPRECATED 1
+#endif
 #include <openssl/bn.h>
 #include <openssl/ec.h>
 #include <openssl/ecdsa.h>
 #include <openssl/obj_mac.h>
-
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 extern void log_str(const char* s);
 
 namespace tradeboy::arb {
@@ -34,7 +44,7 @@ static bool write_file(const char* path, const std::string& s) {
     return w == s.size();
 }
 
-static const char* resolve_curl_path() {
+[[maybe_unused]] static const char* resolve_curl_path() {
     static const char* path = nullptr;
     if (path) return path;
     const char* candidates[] = {
@@ -414,7 +424,7 @@ static bool rpc_eth_gasPrice_raw(const std::string& rpc_url, std::string& out_he
     return parse_json_result_hex(out_resp, out_hex);
 }
 
-static bool rpc_eth_getTransactionCount(const std::string& rpc_url, const std::string& addr_0x, std::string& out_hex) {
+[[maybe_unused]] static bool rpc_eth_getTransactionCount(const std::string& rpc_url, const std::string& addr_0x, std::string& out_hex) {
     std::string body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_getTransactionCount\",\"params\":[\"" + addr_0x + "\",\"pending\"]}";
     std::string resp;
     if (!rpc_call(rpc_url, body, resp)) return false;
@@ -552,7 +562,7 @@ static void ec_key_freep(EC_KEY*& p) {
     p = nullptr;
 }
 
-static std::vector<unsigned char> bn_to_bytes_32(const BIGNUM* bn) {
+[[maybe_unused]] static std::vector<unsigned char> bn_to_bytes_32(const BIGNUM* bn) {
     std::vector<unsigned char> out(32, 0);
     int n = BN_num_bytes(bn);
     if (n <= 0) return out;
@@ -615,11 +625,11 @@ static void rlp_encode_bytes(const unsigned char* data, size_t n, std::vector<un
     out.insert(out.end(), data, data + n);
 }
 
-static void rlp_encode_bytes_vec(const std::vector<unsigned char>& v, std::vector<unsigned char>& out) {
+[[maybe_unused]] static void rlp_encode_bytes_vec(const std::vector<unsigned char>& v, std::vector<unsigned char>& out) {
     rlp_encode_bytes(v.empty() ? nullptr : v.data(), v.size(), out);
 }
 
-static void rlp_encode_string(const std::string& s, std::vector<unsigned char>& out) {
+[[maybe_unused]] static void rlp_encode_string(const std::string& s, std::vector<unsigned char>& out) {
     rlp_encode_bytes((const unsigned char*)s.data(), s.size(), out);
 }
 
@@ -1329,4 +1339,9 @@ bool send_usdc_transfer_test(const std::string& rpc_url,
     return false;
 }
 
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 } // namespace tradeboy::arb

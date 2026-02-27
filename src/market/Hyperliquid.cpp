@@ -11,6 +11,12 @@
 
 #include "utils/Log.h"
 
+#if defined(__GNUC__) || defined(__clang__)
+#define TB_UNUSED __attribute__((unused))
+#else
+#define TB_UNUSED
+#endif
+
 namespace tradeboy::market {
 
 static bool write_file(const char* path, const std::string& s) {
@@ -241,7 +247,7 @@ static bool run_cmd_capture(const std::string& cmd, std::string& out) {
     return rc == 0 && !out.empty();
 }
 
-static const char* resolve_curl_path() {
+TB_UNUSED static const char* resolve_curl_path() {
     static const char* path = nullptr;
     if (path) return path;
     const char* candidates[] = {

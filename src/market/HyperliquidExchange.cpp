@@ -13,6 +13,12 @@
 #include <chrono>
 #include <cmath>
 
+#if defined(__GNUC__) || defined(__clang__)
+#define TB_UNUSED __attribute__((unused))
+#else
+#define TB_UNUSED
+#endif
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #include <openssl/bn.h>
@@ -37,7 +43,7 @@ static bool write_file(const char* path, const std::string& s) {
     return w == s.size();
 }
 
-static const char* resolve_curl_path() {
+TB_UNUSED static const char* resolve_curl_path() {
     static const char* path = nullptr;
     if (path) return path;
     const char* candidates[] = {
@@ -678,7 +684,7 @@ static double round_to_decimals(double v, int decimals) {
     return std::round(v * p) / p;
 }
 
-static std::string float_to_wire(double x) {
+TB_UNUSED static std::string float_to_wire(double x) {
     double rounded = round_to_decimals(x, 8);
     if (rounded == -0.0) rounded = 0.0;
     std::string s = tradeboy::utils::format_fixed_trunc_sig(rounded, 16, 8);
