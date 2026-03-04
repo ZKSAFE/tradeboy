@@ -253,6 +253,49 @@ static std::string addr_to_40hex_lower_no0x(const std::string& addr_0x) {
     return s;
 }
 
+static bool secp256k1_key_from_priv(const std::vector<unsigned char>& priv32, EC_KEY*& out_key, std::string& out_err);
+static void ec_key_freep(EC_KEY*& p);
+
+static std::string eth_addr_from_pubkey_bytes_uncompressed(const unsigned char* pub65, size_t n) {
+    if (!pub65 || n != 65 || pub65[0] != 0x04) return std::string();
+    unsigned char h[32];
+    tradeboy::utils::keccak_256(pub65 + 1, 64, h);
+    char out[43];
+    out[0] = '0';
+    out[1] = 'x';
+    static const char* hex = "0123456789abcdef";
+    for (int i = 0; i < 20; i++) {
+        unsigned char b = h[12 + i];
+        out[2 + i * 2] = hex[(b >> 4) & 0xF];
+        out[2 + i * 2 + 1] = hex[b & 0xF];
+    }
+    out[42] = 0;
+    return std::string(out);
+}
+
+static std::string eth_addr_from_ec_point(const EC_GROUP* group, const EC_POINT* Q) {
+    if (!group || !Q) return std::string();
+    unsigned char buf[65];
+    std::memset(buf, 0, sizeof(buf));
+    size_t n = EC_POINT_point2oct(group, Q, POINT_CONVERSION_UNCOMPRESSED, buf, sizeof(buf), nullptr);
+    if (n != 65) return std::string();
+    return eth_addr_from_pubkey_bytes_uncompressed(buf, n);
+}
+
+static std::string eth_addr_from_privkey(const std::vector<unsigned char>& priv32, std::string& out_err) {
+    out_err.clear();
+    EC_KEY* key = nullptr;
+    if (!secp256k1_key_from_priv(priv32, key, out_err)) return std::string();
+    const EC_GROUP* group = EC_KEY_get0_group(key);
+    const EC_POINT* pub = EC_KEY_get0_public_key(key);
+    std::string addr = eth_addr_from_ec_point(group, pub);
+    ec_key_freep(key);
+    if (addr.empty()) {
+        out_err = "derive_addr_failed";
+    }
+    return addr;
+}
+
 static bool rpc_call(const std::string& rpc_url, const std::string& body, std::string& out_json) {
     const char* path = "/tmp/tb_rpc.json";
     if (!write_file(path, body + "\n")) return false;
@@ -1072,6 +1115,20 @@ bool send_usdc_transfer_test(const std::string& rpc_url,
     if (!tradeboy::utils::hex_to_bytes(privkey_0x, priv) || priv.size() != 32) {
         out_err = "privkey_parse_failed";
         return false;
+    }
+
+    {
+        std::string derr;
+        std::string derived = eth_addr_from_privkey(priv, derr);
+        std::string want = std::string("0x") + addr_to_40hex_lower_no0x(from_addr_0x);
+        if (!derived.empty() && derived != want) {
+            out_err = std::string("from_addr_mismatch derived=") + derived + " want=" + want;
+            return false;
+        }
+        if (derived.empty() && !derr.empty()) {
+            out_err = std::string("derive_from_priv_failed ") + derr;
+            return false;
+        }
     }
 
     // Constants

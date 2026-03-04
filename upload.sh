@@ -89,6 +89,42 @@ echo "📁 创建应用目录..."
 retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mkdir -p /mnt/mmc/Roms/APPS" 2>/dev/null
 retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mkdir -p /mnt/mmc/Roms/APPS/Imgs" 2>/dev/null
 
+# Upload config and fonts (option)
+echo "🧰 上传 tradeboy.cfg 和字体..."
+if [ ! -f "tradeboy.cfg" ]; then
+    echo -e "${RED}❌ tradeboy.cfg not found${NC}"
+    exit 1
+fi
+if [ ! -f "cour-new.ttf" ]; then
+    echo -e "${RED}❌ cour-new.ttf not found${NC}"
+    exit 1
+fi
+if [ ! -f "cour-new-BOLDITALIC.ttf" ]; then
+    echo -e "${RED}❌ cour-new-BOLDITALIC.ttf not found${NC}"
+    exit 1
+fi
+
+retry sshpass -p "$PASSWORD" scp $SSH_OPTS "tradeboy.cfg" "$USER@$IP:/mnt/mmc/Roms/APPS/.tradeboy.cfg.tmp" || {
+    echo -e "${RED}❌ 上传 tradeboy.cfg 失败${NC}"
+    exit 1
+}
+retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.tradeboy.cfg.tmp /mnt/mmc/Roms/APPS/tradeboy.cfg" 2>/dev/null
+
+retry sshpass -p "$PASSWORD" scp $SSH_OPTS "cour-new.ttf" "$USER@$IP:/mnt/mmc/Roms/APPS/.cour-new.ttf.tmp" || {
+    echo -e "${RED}❌ 上传 cour-new.ttf 失败${NC}"
+    exit 1
+}
+retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.cour-new.ttf.tmp /mnt/mmc/Roms/APPS/cour-new.ttf" 2>/dev/null
+
+retry sshpass -p "$PASSWORD" scp $SSH_OPTS "cour-new-BOLDITALIC.ttf" "$USER@$IP:/mnt/mmc/Roms/APPS/.cour-new-BOLDITALIC.ttf.tmp" || {
+    echo -e "${RED}❌ 上传 cour-new-BOLDITALIC.ttf 失败${NC}"
+    exit 1
+}
+retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "mv -f /mnt/mmc/Roms/APPS/.cour-new-BOLDITALIC.ttf.tmp /mnt/mmc/Roms/APPS/cour-new-BOLDITALIC.ttf" 2>/dev/null
+
+retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "chmod 644 /mnt/mmc/Roms/APPS/tradeboy.cfg /mnt/mmc/Roms/APPS/cour-new.ttf /mnt/mmc/Roms/APPS/cour-new-BOLDITALIC.ttf" 2>/dev/null || true
+
+
 # Upload logo
 if [ -f "logo.240x180.png" ]; then
     echo "🖼️  Uploading logo..."
@@ -132,6 +168,7 @@ if [ "$HAS_TRADEBOY" -eq 1 ]; then
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/run-tradeboy-armhf.sh"
     retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy-armhf.bin"
 fi
+retry sshpass -p "$PASSWORD" ssh $SSH_OPTS "$USER@$IP" "ls -lh /mnt/mmc/Roms/APPS/tradeboy.cfg /mnt/mmc/Roms/APPS/cour-new.ttf /mnt/mmc/Roms/APPS/cour-new-BOLDITALIC.ttf" 2>/dev/null || true
 
 # 获取设备信息
 echo ""

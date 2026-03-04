@@ -71,7 +71,7 @@ static bool http_post_json_wget(const char* url, const char* json_path, std::str
     // Capture both response body and any curl diagnostics.
     // Downstream code decides business success via JSON (e.g. status=="ok").
     std::string cmd = std::string(resolve_curl_path()) +
-                      " -sS --connect-timeout 3 --max-time 8 -H \"Content-Type: application/json\" --data-binary @";
+                      " -sS --connect-timeout 8 --max-time 15 -H \"Content-Type: application/json\" --data-binary @";
     cmd += json_path;
     cmd += " ";
     cmd += url;

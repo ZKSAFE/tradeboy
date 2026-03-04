@@ -67,6 +67,13 @@ static double trunc_to_decimals(double v, int decimals) {
     return std::trunc(v * p) / p;
 }
 
+static double trunc_to_decimals_eps(double v, int decimals) {
+    if (decimals < 0) return v;
+    const double p = std::pow(10.0, (double)decimals);
+    const double eps = 1e-12;
+    return std::trunc((v + eps) * p) / p;
+}
+
 static std::string format_trunc_fixed_full(double v, int decimals) {
     if (!std::isfinite(v)) return "0";
     int d = std::max(0, std::min(10, decimals));
@@ -118,7 +125,7 @@ static int available_decimals(const NumberInputState& st) {
 
 static double available_value(const NumberInputState& st) {
     int decimals = available_decimals(st);
-    double v = trunc_to_decimals(st.config.max_value, decimals);
+    double v = trunc_to_decimals_eps(st.config.max_value, decimals);
     return std::max(0.0, v);
 }
 
@@ -126,6 +133,10 @@ static void set_amount_percent(NumberInputState& st, int percent) {
     percent = tradeboy::utils::clampi(percent, 0, 100);
     const double avail = available_value(st);
     double v = (avail * (double)percent) / 100.0;
+    if (percent == 100) {
+        int decimals = available_decimals(st);
+        v = trunc_to_decimals_eps(st.config.max_value, decimals);
+    }
     int decimals = available_decimals(st);
     std::string out = format_round_fixed_full(v, decimals);
     st.input = out;
@@ -292,7 +303,7 @@ bool handle_input(NumberInputState& st, const tradeboy::app::InputState& in, con
                     st.out_of_range_dialog.open_dialog(msg, 1);
                 } else if (value > st.config.max_value) {
                     int avail_decimals = available_decimals(st);
-                    double max_disp = trunc_to_decimals(st.config.max_value, avail_decimals);
+                    double max_disp = trunc_to_decimals_eps(st.config.max_value, avail_decimals);
                     std::string max_str = format_trunc_fixed_full(max_disp, avail_decimals);
                     std::string msg = std::string("OUT_OF_RANGE\nMAX: ") + max_str + " " + st.config.available_label;
                     st.out_of_range_dialog.open_dialog(msg.c_str(), 1);

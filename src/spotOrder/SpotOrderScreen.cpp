@@ -21,6 +21,14 @@ static double ceil_to_decimals(double v, int decimals) {
     return std::ceil(v * p - eps) / p;
 }
 
+static double trunc_to_decimals_eps(double v, int decimals) {
+    if (!std::isfinite(v)) return 0.0;
+    int d = std::max(0, std::min(10, decimals));
+    const double p = std::pow(10.0, (double)d);
+    const double eps = 1e-12;
+    return std::trunc((v + eps) * p) / p;
+}
+
 void SpotOrderState::open_with(const tradeboy::model::SpotRow& row, Side in_side, double in_max_possible) {
     side = in_side;
     sym = row.sym;
@@ -42,7 +50,11 @@ void SpotOrderState::open_with(const tradeboy::model::SpotRow& row, Side in_side
         double raw_min = (row.price > 0.0) ? (10.3 / row.price) : 0.0;
         cfg.min_value = ceil_to_decimals(raw_min, row.size_decimals);
     }
-    cfg.max_value = std::max(0.0, in_max_possible);
+    if (in_side == Side::Sell) {
+        cfg.max_value = std::max(0.0, trunc_to_decimals_eps(in_max_possible, row.size_decimals));
+    } else {
+        cfg.max_value = std::max(0.0, in_max_possible);
+    }
     cfg.available_label = (in_side == Side::Buy) ? "USDC" : row.sym;
     cfg.available_decimals = (in_side == Side::Buy) ? 2 : row.size_decimals;
     cfg.allowed_decimals = (in_side == Side::Buy) ? 2 : cfg.available_decimals;
