@@ -522,8 +522,19 @@ bool exchange_perp_market_order(const std::string& wallet_address_0x,
         return false;
     }
 
+    auto ceil_to_decimals_eps = [](double v, int decimals) {
+        if (decimals < 0) return v;
+        double p = std::pow(10.0, (double)decimals);
+        const double eps = 1e-12;
+        return std::ceil(v * p - eps) / p;
+    };
+
     double size = (input_amount * leverage) / px_rounded;
-    size = tradeboy::utils::trunc_to_decimals(size, sz_decimals);
+    if (reduce_only) {
+        size = ceil_to_decimals_eps(size, sz_decimals);
+    } else {
+        size = tradeboy::utils::trunc_to_decimals(size, sz_decimals);
+    }
     if (size <= 0.0) {
         out_err = "invalid_size";
         return false;

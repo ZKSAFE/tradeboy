@@ -1158,7 +1158,7 @@ void MarketDataService::run() {
                         filtered.reserve(positions.size());
                         std::unordered_set<std::string> held;
                         for (const auto& row : positions) {
-                            if (row.margin_used <= 0.1) continue;
+                            if (row.margin_used <= 0.01) continue;
                             filtered.push_back(row);
                             held.insert(row.coin);
                         }

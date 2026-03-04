@@ -458,12 +458,6 @@ void App::open_perp_close() {
     }
     if (sz_decimals < 0) sz_decimals = 0;
 
-    double maxv = tradeboy::utils::trunc_to_decimals(position_size, sz_decimals);
-    if (maxv <= 0.0) {
-        set_alert("NO_POSITION");
-        return;
-    }
-
     auto ceil_to_decimals = [](double v, int decimals) {
         if (!std::isfinite(v)) return 0.0;
         int d = std::max(0, std::min(10, decimals));
@@ -472,6 +466,12 @@ void App::open_perp_close() {
         const double eps = 1e-9;
         return std::ceil(v * p - eps) / p;
     };
+
+    double maxv = ceil_to_decimals(position_size, sz_decimals);
+    if (maxv <= 0.0) {
+        set_alert("NO_POSITION");
+        return;
+    }
 
     // Enforce minimum notional for closing: close_size * price >= 10.3
     // So minimum close size is ceil(10.3 / price, sz_decimals)
