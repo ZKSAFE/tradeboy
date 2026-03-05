@@ -500,7 +500,6 @@ void App::open_perp_close() {
     cfg.available_decimals = sz_decimals;
     cfg.allowed_decimals = sz_decimals;
 
-    const int price_decimals = perp_price_decimals_for(row.price);
     char price_label[64];
     std::string price_str = tradeboy::utils::format_price_sig(row.price);
     std::snprintf(price_label, sizeof(price_label), "PRICE: $%s", price_str.c_str());
@@ -1475,7 +1474,6 @@ void App::render() {
         }
         if (new_price > 0.0 && std::fabs(new_price - perp_close_price) > 0.0000001) {
             perp_close_price = new_price;
-            const int price_decimals = perp_price_decimals_for(new_price);
             char price_label[64];
             std::string price_str = tradeboy::utils::format_price_sig(new_price);
             std::snprintf(price_label, sizeof(price_label), "PRICE: $%s", price_str.c_str());
@@ -1553,6 +1551,19 @@ void App::render() {
     if (spot_order.get_result() != tradeboy::ui::NumberInputResult::None) {
         tradeboy::ui::NumberInputResult res = spot_order.get_result();
         double val = spot_order.get_result_value();
+        if (spot_order.side == tradeboy::spotOrder::Side::Sell) {
+            auto trunc_to_decimals_eps = [](double v, int decimals) {
+                if (decimals < 0) return v;
+                const double p = std::pow(10.0, (double)decimals);
+                const double eps = 1e-12;
+                return std::trunc((v + eps) * p) / p;
+            };
+            const double max_possible = spot_order.max_possible;
+            const double max_trunc = trunc_to_decimals_eps(max_possible, spot_order.size_decimals);
+            if (max_possible > 0.0 && std::fabs(val - max_trunc) <= std::max(1e-12, max_trunc * 1e-9)) {
+                val = max_possible;
+            }
+        }
         spot_order.clear_result();
         
         if (res == tradeboy::ui::NumberInputResult::Confirmed) {
@@ -1580,7 +1591,8 @@ void App::render() {
                             hl_spot_order_thread.join();
                         }
 
-                        hl_spot_order_thread = std::thread([this, w, display_sym, is_buy, input_amount, mid_px, spot_meta_json]() {
+                        const double max_possible = spot_order.max_possible;
+                        hl_spot_order_thread = std::thread([this, w, display_sym, is_buy, input_amount, max_possible, mid_px, spot_meta_json]() {
                             std::string resp;
                             std::string err;
                             bool ok = tradeboy::market::exchange_spot_market_order(
@@ -1589,6 +1601,7 @@ void App::render() {
                                 display_sym,
                                 is_buy,
                                 input_amount,
+                                max_possible,
                                 mid_px,
                                 spot_meta_json,
                                 0.01,

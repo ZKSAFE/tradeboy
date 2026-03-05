@@ -254,7 +254,7 @@ void render_spot_screen(const std::vector<tradeboy::model::SpotRow>& rows,
             dl->AddText(ImVec2(col1 + 30, textY), textCol, coin.sym.c_str());
 
             if (coin.balance > 0) {
-                std::string holdStr = format_fixed_trunc(coin.balance, coin.price_decimals);
+                std::string holdStr = format_fixed_trunc(coin.balance, coin.size_decimals);
                 ImVec2 sz = ImGui::CalcTextSize(holdStr.c_str());
                 dl->AddText(ImVec2(col2 - sz.x * 0.5f, textY), textCol, holdStr.c_str());
             }

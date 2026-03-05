@@ -1552,6 +1552,7 @@ bool exchange_spot_market_order(const std::string& wallet_address_0x,
                                 const std::string& display_sym,
                                 bool is_buy,
                                 double input_amount,
+                                double max_possible,
                                 double mid_px,
                                 const std::string& spot_meta_json,
                                 double slippage,
@@ -1604,8 +1605,20 @@ bool exchange_spot_market_order(const std::string& wallet_address_0x,
         return false;
     }
 
+    auto trunc_to_decimals_eps = [](double v, int decimals) {
+        if (decimals < 0) return v;
+        const double p = std::pow(10.0, (double)decimals);
+        const double eps = 1e-12;
+        return std::trunc((v + eps) * p) / p;
+    };
+
     double size = is_buy ? (input_amount / px_rounded) : input_amount;
-    size = tradeboy::utils::trunc_to_decimals(size, sz_decimals);
+    const double max_possible_safe = (std::isfinite(max_possible) && max_possible > 0.0) ? max_possible : 0.0;
+    const bool use_full_balance = (!is_buy && max_possible_safe > 0.0 &&
+                                   std::fabs(input_amount - max_possible_safe) <= std::max(1e-12, max_possible_safe * 1e-9));
+    if (!use_full_balance) {
+        size = trunc_to_decimals_eps(size, sz_decimals);
+    }
     if (size <= 0.0) {
         out_err = "invalid_size";
         return false;
@@ -1618,7 +1631,7 @@ bool exchange_spot_market_order(const std::string& wallet_address_0x,
         char buf[256];
         std::snprintf(buf,
                       sizeof(buf),
-                      "[HLX] spot_order fmt sym=%s buy=%d sz_dec=%d px_dec=%d mid=%.8f px=%.8f p=%s s=%s\n",
+                      "[HLX] spot_order fmt sym=%s buy=%d sz_dec=%d px_dec=%d mid=%.8f px=%.8f p=%s s=%s input=%.12f max=%.12f\n",
                       display_sym.c_str(),
                       (int)is_buy,
                       sz_decimals,
@@ -1626,7 +1639,9 @@ bool exchange_spot_market_order(const std::string& wallet_address_0x,
                       mid_px,
                       px_rounded,
                       price_s.c_str(),
-                      size_s.c_str());
+                      size_s.c_str(),
+                      input_amount,
+                      max_possible_safe);
         log_str(buf);
     }
 

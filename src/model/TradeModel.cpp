@@ -44,12 +44,6 @@ TradeModelSnapshot TradeModel::snapshot() const {
             log_str("[Model] snapshot spot_rows size overflow\n");
         }
         if (perp_rows_.size() <= kMaxRows) {
-            if (!perp_rows_.empty()) {
-                char buf[96];
-                std::snprintf(buf, sizeof(buf), "[Model] snapshot perp_rows size=%zu cap=%zu\n",
-                              perp_rows_.size(), perp_rows_.capacity());
-                log_str(buf);
-            }
             s.perp_rows = perp_rows_;
         } else {
             log_str("[Model] snapshot perp_rows size overflow\n");

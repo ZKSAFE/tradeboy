@@ -36,6 +36,7 @@ void SpotOrderState::open_with(const tradeboy::model::SpotRow& row, Side in_side
     price = row.price;
     price_decimals = row.price_decimals;
     size_decimals = row.size_decimals;
+    max_possible = std::max(0.0, in_max_possible);
     
     tradeboy::ui::NumberInputConfig cfg;
     

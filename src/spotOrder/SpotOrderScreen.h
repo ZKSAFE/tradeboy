@@ -30,6 +30,7 @@ struct SpotOrderState {
     double price = 0.0;
     int price_decimals = 2;
     int size_decimals = 2;
+    double max_possible = 0.0;
     
     bool open() const { return input_state.open; }
     
