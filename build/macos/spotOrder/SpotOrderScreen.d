@@ -55,7 +55,7 @@ build/macos/spotOrder/SpotOrderScreen.o: \
   src/spotOrder/../ui/NumberInputModal.h \
   src/spotOrder/../ui/../app/Input.h \
   src/spotOrder/../ui/../ui/DialogState.h \
-  src/spotOrder/../ui/MatrixTheme.h
+  src/spotOrder/../ui/MatrixTheme.h src/utils/Format.h
 
 src/spotOrder/SpotOrderScreen.h:
 
@@ -174,3 +174,5 @@ src/spotOrder/../ui/../app/Input.h:
 src/spotOrder/../ui/../ui/DialogState.h:
 
 src/spotOrder/../ui/MatrixTheme.h:
+
+src/utils/Format.h:

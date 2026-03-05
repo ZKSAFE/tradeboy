@@ -12,6 +12,7 @@
 #include "ui/MatrixTheme.h"
 #include "utils/Flash.h"
 #include "utils/Typewriter.h"
+#include "utils/Format.h"
 
 namespace tradeboy::spot {
 
@@ -258,7 +259,7 @@ void render_spot_screen(const std::vector<tradeboy::model::SpotRow>& rows,
                 dl->AddText(ImVec2(col2 - sz.x * 0.5f, textY), textCol, holdStr.c_str());
             }
 
-            std::string priceStr = format_fixed_round(coin.price, coin.price_decimals);
+            std::string priceStr = tradeboy::utils::format_price_sig(coin.price);
             ImVec2 szP = ImGui::CalcTextSize(priceStr.c_str());
             dl->AddText(ImVec2(col3 - szP.x, textY), priceCol, priceStr.c_str());
 

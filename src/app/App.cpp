@@ -417,7 +417,8 @@ void App::open_perp_order() {
 
     const int price_decimals = perp_price_decimals_for(row.price);
     char price_label[64];
-    std::snprintf(price_label, sizeof(price_label), "PRICE: $%.*f", price_decimals, row.price);
+    std::string price_str = tradeboy::utils::format_price_sig(row.price);
+    std::snprintf(price_label, sizeof(price_label), "PRICE: $%s", price_str.c_str());
     cfg.price_label = std::string(price_label);
     cfg.price = (row.leverage > 0.0) ? (row.price / row.leverage) : row.price;
     cfg.approx_divide = true;
@@ -501,7 +502,8 @@ void App::open_perp_close() {
 
     const int price_decimals = perp_price_decimals_for(row.price);
     char price_label[64];
-    std::snprintf(price_label, sizeof(price_label), "PRICE: $%.*f", price_decimals, row.price);
+    std::string price_str = tradeboy::utils::format_price_sig(row.price);
+    std::snprintf(price_label, sizeof(price_label), "PRICE: $%s", price_str.c_str());
     cfg.price_label = std::string(price_label);
     cfg.price = row.price;
     cfg.approx_divide = false;
@@ -1454,7 +1456,8 @@ void App::render() {
             perp_order_price = new_price;
             const int price_decimals = perp_price_decimals_for(new_price);
             char price_label[64];
-            std::snprintf(price_label, sizeof(price_label), "PRICE: $%.*f", price_decimals, new_price);
+            std::string price_str = tradeboy::utils::format_price_sig(new_price);
+            std::snprintf(price_label, sizeof(price_label), "PRICE: $%s", price_str.c_str());
             perp_order_amount.config.price_label = std::string(price_label);
             perp_order_amount.config.price = (perp_order_leverage > 0.0) ? (new_price / perp_order_leverage) : new_price;
             perp_order_amount.config.approx_decimals = price_decimals;
@@ -1474,7 +1477,8 @@ void App::render() {
             perp_close_price = new_price;
             const int price_decimals = perp_price_decimals_for(new_price);
             char price_label[64];
-            std::snprintf(price_label, sizeof(price_label), "PRICE: $%.*f", price_decimals, new_price);
+            std::string price_str = tradeboy::utils::format_price_sig(new_price);
+            std::snprintf(price_label, sizeof(price_label), "PRICE: $%s", price_str.c_str());
             perp_close_amount.config.price_label = std::string(price_label);
             perp_close_amount.config.price = new_price;
         }

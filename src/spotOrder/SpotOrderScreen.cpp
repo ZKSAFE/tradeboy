@@ -5,6 +5,7 @@
 #include <cstdio>
 
 #include "../ui/MatrixTheme.h"
+#include "utils/Format.h"
 
 namespace tradeboy::spotOrder {
 
@@ -60,7 +61,8 @@ void SpotOrderState::open_with(const tradeboy::model::SpotRow& row, Side in_side
     cfg.allowed_decimals = (in_side == Side::Buy) ? 2 : cfg.available_decimals;
     
     char price_label[64];
-    std::snprintf(price_label, sizeof(price_label), "PRICE: $%.*f", row.price_decimals, row.price);
+    std::string price_str = tradeboy::utils::format_price_sig(row.price);
+    std::snprintf(price_label, sizeof(price_label), "PRICE: $%s", price_str.c_str());
     cfg.price_label = std::string(price_label);
     cfg.price = row.price;
     cfg.approx_divide = (in_side == Side::Buy);
@@ -85,7 +87,8 @@ void SpotOrderState::sync_price(double new_price, int new_price_decimals) {
         input_state.config.min_value = ceil_to_decimals(raw_min, size_decimals);
     }
     char price_label[64];
-    std::snprintf(price_label, sizeof(price_label), "PRICE: $%.*f", price_decimals, new_price);
+    std::string price_str = tradeboy::utils::format_price_sig(new_price);
+    std::snprintf(price_label, sizeof(price_label), "PRICE: $%s", price_str.c_str());
     input_state.config.price_label = std::string(price_label);
 }
 

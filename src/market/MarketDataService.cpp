@@ -692,8 +692,8 @@ static bool build_spot_rows_from_spot_meta_and_ctxs(const std::string& spot_meta
         }
 
         tradeboy::model::SpotRow r(price_key, display_sym, 0.0, 0.0, 0.0, 0.0);
-        r.price_decimals = fallback_decimals;
         r.size_decimals = fallback_decimals;
+        r.price_decimals = std::max(0, 8 - r.size_decimals);
 
         // assetCtxs coin key can be one of:
         // - BASE (e.g. BTC)
@@ -729,12 +729,7 @@ static bool build_spot_rows_from_spot_meta_and_ctxs(const std::string& spot_meta
             if (dv && pj_get_double_like(*dv, dayv)) r.day_ntl_vlm = dayv;
             if (mv && pj_get_double_like(*mv, mid)) r.price = mid;
 
-            if (mv) {
-                std::string mvs;
-                if (pj_get_string_like(*mv, mvs) && !mvs.empty()) {
-                    r.price_decimals = infer_decimals_from_px_string(mvs);
-                }
-            }
+            // Price decimals are derived from szDecimals per API docs: max decimals = 8 - szDecimals.
         }
 
         if (exclude.find(r.sym) != exclude.end()) {

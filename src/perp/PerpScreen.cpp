@@ -9,6 +9,7 @@
 #include "ui/MatrixTheme.h"
 #include "utils/Flash.h"
 #include "utils/Typewriter.h"
+#include "utils/Format.h"
 
 namespace tradeboy::perp {
 
@@ -20,13 +21,6 @@ static std::string format_fixed_round(double v, int decimals) {
     ss.precision(d);
     ss << v;
     return ss.str();
-}
-
-static int price_decimals_for(double v) {
-    if (!std::isfinite(v) || v <= 0.0) return 2;
-    if (v >= 1000.0) return 2;
-    if (v >= 1.0) return 4;
-    return 6;
 }
 
 static std::string format_leverage(double v) {
@@ -191,8 +185,7 @@ void render_perp_screen(const std::vector<tradeboy::model::PerpRow>& rows,
                 dl->AddText(ImVec2(col2 - sz.x * 0.5f, textY), textCol, marginStr.c_str());
             }
 
-            int px_decimals = price_decimals_for(row.price);
-            std::string priceStr = (row.price > 0.0) ? format_fixed_round(row.price, px_decimals) : std::string("--");
+            std::string priceStr = (row.price > 0.0) ? tradeboy::utils::format_price_sig(row.price) : std::string("--");
             ImVec2 szP = ImGui::CalcTextSize(priceStr.c_str());
 
             std::string flash_key = row.coin + (row.is_long ? "L" : "S") + format_leverage(row.leverage);
@@ -231,7 +224,7 @@ void render_perp_screen(const std::vector<tradeboy::model::PerpRow>& rows,
             dl->AddText(ImVec2(col3 - szP.x, textY), priceCol, priceStr.c_str());
 
             if (row.margin_used > 0.0 && row.liquidation_px > 0.0) {
-                std::string liqStr = format_fixed_round(row.liquidation_px, px_decimals);
+                std::string liqStr = tradeboy::utils::format_price_sig(row.liquidation_px);
                 ImVec2 szL = ImGui::CalcTextSize(liqStr.c_str());
                 dl->AddText(ImVec2(col4 - szL.x, textY), textCol, liqStr.c_str());
             }
