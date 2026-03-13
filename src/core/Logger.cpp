@@ -27,14 +27,16 @@ void Logger::init(const char* filename) {
     fd_ = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (fd_ >= 0) {
         static const char* hdr = "--- TradeBoy Log Start V7 ---\n";
-        (void)write(fd_, hdr, std::strlen(hdr));
+        const ssize_t wrote = write(fd_, hdr, std::strlen(hdr));
+        (void)wrote;
     }
 }
 
 void Logger::log(const char* s) {
     if (!s) return;
     if (fd_ < 0) return;
-    (void)write(fd_, s, std::strlen(s));
+    const ssize_t wrote = write(fd_, s, std::strlen(s));
+    (void)wrote;
 }
 
 void Logger::flush() {

@@ -369,18 +369,6 @@ TB_UNUSED static bool build_perp_rows_from_meta_and_ctxs(const std::string& meta
     return build_perp_rows_from_multi_meta_and_ctxs(meta_list, exclude, out_rows, out_dexes);
 }
 
-static int infer_decimals_from_px_string(const std::string& s) {
-    size_t dot = s.find('.');
-    if (dot == std::string::npos) return 0;
-    size_t end = s.size();
-    while (end > dot + 1 && s[end - 1] == '0') end--;
-    if (end <= dot + 1) return 0;
-    int d = (int)(end - (dot + 1));
-    if (d < 0) d = 0;
-    if (d > 10) d = 10;
-    return d;
-}
-
 static std::string map_token_display_sym(const std::string& token_name, const std::string& token_full_name) {
     // Website display-name overrides (derived from app.hyperliquid.xyz bundle mapping).
     // These tokens exist on L1 as distinct assets, but the UI displays the canonical ticker.

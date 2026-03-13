@@ -30,17 +30,6 @@ static double trunc_to_decimals(double v, int decimals) {
     return std::trunc(v * p) / p;
 }
 
-static std::string format_fixed_round(double v, int decimals) {
-    if (!std::isfinite(v)) return std::string("0");
-    int d = std::max(0, std::min(10, decimals));
-    double rv = round_to_decimals(v, d);
-    std::ostringstream ss;
-    ss.setf(std::ios::fixed);
-    ss.precision(d);
-    ss << rv;
-    return ss.str();
-}
-
 static std::string format_fixed_trunc(double v, int decimals) {
     if (!std::isfinite(v)) return std::string("0");
     int d = std::max(0, std::min(10, decimals));
