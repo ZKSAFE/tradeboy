@@ -190,6 +190,11 @@ static std::string make_address_short(const std::string& addr_0x) {
 }
 
 void App::set_alert(const std::string& body) {
+    if (alert_dialog.open || alert_dialog.closing) {
+        queued_alert_open = true;
+        queued_alert_body = body;
+        return;
+    }
     alert_dialog.open_dialog(body, 1);
 }
 
@@ -1675,6 +1680,11 @@ void App::render() {
     if (alert_dialog.open && alert_dialog.closing) {
         if (alert_dialog.tick_close_anim()) {
             alert_dialog.reset();
+            if (queued_alert_open) {
+                alert_dialog.open_dialog(queued_alert_body, 1);
+                queued_alert_open = false;
+                queued_alert_body.clear();
+            }
         }
     }
 

@@ -64,6 +64,8 @@ struct App {
     tradeboy::ui::DialogState exit_dialog;
     tradeboy::ui::DialogState alert_dialog;
     tradeboy::ui::DialogState account_address_dialog;
+    bool queued_alert_open = false;
+    std::string queued_alert_body;
 
     tradeboy::ui::DialogState internal_transfer_dialog;
 
