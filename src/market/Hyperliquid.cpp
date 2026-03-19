@@ -271,27 +271,27 @@ TB_UNUSED static const char* resolve_curl_path() {
 
 static bool hl_post_file(const char* json_path, std::string& out_json) {
 #if defined(TRADEBOY_DESKTOP)
-    std::string cmd = std::string(resolve_curl_path()) + " -s --connect-timeout 3 --max-time 8 -H \"Content-Type: application/json\" --data-binary @";
+    std::string cmd = std::string(resolve_curl_path()) + " -s --connect-timeout 5 --max-time 10 -H \"Content-Type: application/json\" --data-binary @";
     cmd += json_path;
     cmd += " https://api.hyperliquid.xyz/info 2>/dev/null";
     if (run_cmd_capture(cmd, out_json)) return true;
 
     std::string diag;
-    std::string cmd2 = std::string(resolve_curl_path()) + " -sS --connect-timeout 3 --max-time 8 -D - -o - -H \"Content-Type: application/json\" --data-binary @";
+    std::string cmd2 = std::string(resolve_curl_path()) + " -sS --connect-timeout 5 --max-time 10 -D - -o - -H \"Content-Type: application/json\" --data-binary @";
     cmd2 += json_path;
     cmd2 += " https://api.hyperliquid.xyz/info 2>&1";
     run_cmd_capture(cmd2, diag);
 #else
     // NOTE: we rely on /usr/bin/wget existing on device. The builder does not ship TLS libs.
     // -qO- prints response body to stdout.
-    std::string cmd = "/usr/bin/wget -qO- --header=\"Content-Type: application/json\" --post-file=";
+    std::string cmd = "/usr/bin/wget -qO- --connect-timeout=5 --timeout=10 --header=\"Content-Type: application/json\" --post-file=";
     cmd += json_path;
     cmd += " https://api.hyperliquid.xyz/info";
     if (run_cmd_capture(cmd, out_json)) return true;
 
     // Retry once with headers + stderr to help diagnose failures (rate limit, DNS, etc.).
     std::string diag;
-    std::string cmd2 = "/usr/bin/wget -S -O- --header=\"Content-Type: application/json\" --post-file=";
+    std::string cmd2 = "/usr/bin/wget -S -O- --connect-timeout=5 --timeout=10 --header=\"Content-Type: application/json\" --post-file=";
     cmd2 += json_path;
     cmd2 += " https://api.hyperliquid.xyz/info 2>&1";
     run_cmd_capture(cmd2, diag);

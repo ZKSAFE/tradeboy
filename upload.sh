@@ -8,7 +8,7 @@
 set -e
 
 # 默认配置
-DEFAULT_IP="192.168.1.8"
+DEFAULT_IP="192.168.3.177"
 DEFAULT_PASSWORD="root"
 DEFAULT_USER="root"
 

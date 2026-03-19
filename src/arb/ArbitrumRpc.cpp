@@ -69,7 +69,7 @@ static bool write_file(const char* path, const std::string& s) {
 static bool http_post_json_wget(const std::string& rpc_url, const char* json_path, std::string& out_json) {
     out_json.clear();
 #if defined(TRADEBOY_DESKTOP)
-    std::string cmd = std::string(resolve_curl_path()) + " -s --connect-timeout 3 --max-time 8 -H \"Content-Type: application/json\" --data-binary @";
+    std::string cmd = std::string(resolve_curl_path()) + " -s --connect-timeout 5 --max-time 10 -H \"Content-Type: application/json\" --data-binary @";
     cmd += json_path;
     cmd += " ";
     cmd += rpc_url;
@@ -77,7 +77,7 @@ static bool http_post_json_wget(const std::string& rpc_url, const char* json_pat
     if (tradeboy::utils::run_cmd_capture(cmd, out_json) && !out_json.empty()) return true;
 
     std::string diag;
-    std::string cmd2 = std::string(resolve_curl_path()) + " -sS --connect-timeout 3 --max-time 8 -D - -o - -H \"Content-Type: application/json\" --data-binary @";
+    std::string cmd2 = std::string(resolve_curl_path()) + " -sS --connect-timeout 5 --max-time 10 -D - -o - -H \"Content-Type: application/json\" --data-binary @";
     cmd2 += json_path;
     cmd2 += " ";
     cmd2 += rpc_url;
@@ -86,14 +86,14 @@ static bool http_post_json_wget(const std::string& rpc_url, const char* json_pat
     out_json = diag;
     return false;
 #else
-    std::string cmd = "/usr/bin/wget -qO- --header=\"Content-Type: application/json\" --post-file=";
+    std::string cmd = "/usr/bin/wget -qO- --connect-timeout=5 --timeout=10 --header=\"Content-Type: application/json\" --post-file=";
     cmd += json_path;
     cmd += " ";
     cmd += rpc_url;
     if (tradeboy::utils::run_cmd_capture(cmd, out_json) && !out_json.empty()) return true;
 
     std::string diag;
-    std::string cmd2 = "/usr/bin/wget -S -O- --header=\"Content-Type: application/json\" --post-file=";
+    std::string cmd2 = "/usr/bin/wget -S -O- --connect-timeout=5 --timeout=10 --header=\"Content-Type: application/json\" --post-file=";
     cmd2 += json_path;
     cmd2 += " ";
     cmd2 += rpc_url;

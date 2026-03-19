@@ -309,7 +309,6 @@ void App::startup() {
 
 void App::shutdown() {
     log_str("[App] shutdown()\n");
-    tradeboy::core::logger_shutdown();
     if (arb_deposit_thread.joinable()) {
         arb_deposit_thread.join();
     }
@@ -318,6 +317,12 @@ void App::shutdown() {
     }
     if (hl_withdraw_thread.joinable()) {
         hl_withdraw_thread.join();
+    }
+    if (hl_spot_order_thread.joinable()) {
+        hl_spot_order_thread.join();
+    }
+    if (hl_perp_order_thread.joinable()) {
+        hl_perp_order_thread.join();
     }
     if (arb_rpc_service) {
         arb_rpc_service->stop();
@@ -328,6 +333,7 @@ void App::shutdown() {
         market_service.reset();
     }
     market_src.reset();
+    tradeboy::core::logger_shutdown();
 }
 
 void App::dec_frame_counter(int& v) {

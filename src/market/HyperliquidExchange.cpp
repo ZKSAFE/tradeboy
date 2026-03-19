@@ -71,7 +71,7 @@ static bool http_post_json_wget(const char* url, const char* json_path, std::str
     // Capture both response body and any curl diagnostics.
     // Downstream code decides business success via JSON (e.g. status=="ok").
     std::string cmd = std::string(resolve_curl_path()) +
-                      " -sS --connect-timeout 8 --max-time 15 -H \"Content-Type: application/json\" --data-binary @";
+                      " -sS --connect-timeout 5 --max-time 10 -H \"Content-Type: application/json\" --data-binary @";
     cmd += json_path;
     cmd += " ";
     cmd += url;
@@ -79,14 +79,14 @@ static bool http_post_json_wget(const char* url, const char* json_path, std::str
     if (tradeboy::utils::run_cmd_capture(cmd, out_json) && !out_json.empty()) return true;
     return false;
 #else
-    std::string cmd = "/usr/bin/wget -qO- --header=\"Content-Type: application/json\" --post-file=";
+    std::string cmd = "/usr/bin/wget -qO- --connect-timeout=5 --timeout=10 --header=\"Content-Type: application/json\" --post-file=";
     cmd += json_path;
     cmd += " ";
     cmd += url;
     if (tradeboy::utils::run_cmd_capture(cmd, out_json) && !out_json.empty()) return true;
 
     std::string diag;
-    std::string cmd2 = "/usr/bin/wget -S -O- --header=\"Content-Type: application/json\" --post-file=";
+    std::string cmd2 = "/usr/bin/wget -S -O- --connect-timeout=5 --timeout=10 --header=\"Content-Type: application/json\" --post-file=";
     cmd2 += json_path;
     cmd2 += " ";
     cmd2 += url;
