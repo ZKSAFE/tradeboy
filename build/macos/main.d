@@ -60,7 +60,8 @@ build/macos/main.o: src/main.cpp /opt/homebrew/include/SDL2/SDL.h \
   src/app/../market/IMarketDataSource.h src/app/../market/Hyperliquid.h \
   src/app/../market/MarketDataService.h src/app/../model/TradeModel.h \
   src/app/../arb/ArbitrumRpcService.h src/app/../wallet/Wallet.h \
-  src/app/../ui/DialogState.h src/app/../ui/NumberInputModal.h \
+  src/app/../ui/DialogState.h src/app/../ui/Message.h \
+  src/utils/Typewriter.h src/app/../ui/NumberInputModal.h \
   src/app/Input.h src/filters/CrtFilter.h src/utils/Log.h \
   src/core/Logger.h
 
@@ -199,6 +200,10 @@ src/app/../arb/ArbitrumRpcService.h:
 src/app/../wallet/Wallet.h:
 
 src/app/../ui/DialogState.h:
+
+src/app/../ui/Message.h:
+
+src/utils/Typewriter.h:
 
 src/app/../ui/NumberInputModal.h:
 

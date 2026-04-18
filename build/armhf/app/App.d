@@ -31,16 +31,16 @@ build/armhf/app/App.o: src/app/App.cpp src/app/App.h \
  src/app/../market/IMarketDataSource.h src/app/../market/Hyperliquid.h \
  src/app/../market/MarketDataService.h \
  src/app/../arb/ArbitrumRpcService.h src/app/../wallet/Wallet.h \
+ src/app/../ui/Message.h src/utils/Typewriter.h \
  src/app/../spot/SpotScreen.h src/app/../spot/SpotUiEvents.h \
  src/app/../spot/../utils/Math.h src/app/../perp/PerpUiEvents.h \
  src/app/../market/HyperliquidWgetDataSource.h \
  src/app/../market/HyperliquidWsDataSource.h src/app/../perp/PerpScreen.h \
  src/app/../account/AccountScreen.h src/utils/File.h src/utils/Flash.h \
- src/utils/Typewriter.h src/arb/ArbitrumRpc.h \
- src/market/HyperliquidExchange.h src/utils/Format.h src/utils/Log.h \
- src/core/Logger.h src/app/../ui/MatrixBackground.h \
- src/app/../ui/MatrixTheme.h src/app/../ui/MainUI.h \
- src/app/../ui/Dialog.h
+ src/arb/ArbitrumRpc.h src/market/HyperliquidExchange.h \
+ src/utils/Format.h src/utils/Log.h src/core/Logger.h \
+ src/app/../ui/MatrixBackground.h src/app/../ui/MatrixTheme.h \
+ src/app/../ui/MainUI.h src/app/../ui/Dialog.h
 src/app/App.h:
 third_party/imgui/imgui.h:
 third_party/imgui/imconfig.h:
@@ -101,6 +101,8 @@ src/app/../market/Hyperliquid.h:
 src/app/../market/MarketDataService.h:
 src/app/../arb/ArbitrumRpcService.h:
 src/app/../wallet/Wallet.h:
+src/app/../ui/Message.h:
+src/utils/Typewriter.h:
 src/app/../spot/SpotScreen.h:
 src/app/../spot/SpotUiEvents.h:
 src/app/../spot/../utils/Math.h:
@@ -111,7 +113,6 @@ src/app/../perp/PerpScreen.h:
 src/app/../account/AccountScreen.h:
 src/utils/File.h:
 src/utils/Flash.h:
-src/utils/Typewriter.h:
 src/arb/ArbitrumRpc.h:
 src/market/HyperliquidExchange.h:
 src/utils/Format.h:

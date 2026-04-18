@@ -36,6 +36,7 @@
 #include "../ui/MatrixBackground.h"
 #include "../ui/MatrixTheme.h"
 #include "../ui/MainUI.h"
+#include "../ui/Message.h"
 
 #include "../ui/Dialog.h"
 
@@ -179,6 +180,52 @@ static std::string truncate_for_alert(const std::string& s, size_t max_len) {
     return s.substr(0, max_len);
 }
 
+static std::string extract_hl_avg_px(const std::string& resp) {
+    const char* keys[] = {
+        "\"avgPx\":\"",
+        "\"avgPx\":"
+    };
+
+    for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); ++i) {
+        const std::string key = keys[i];
+        size_t pos = resp.find(key);
+        if (pos == std::string::npos) continue;
+        pos += key.size();
+
+        size_t end = pos;
+        if (!key.empty() && key[key.size() - 1] == '"') {
+            end = resp.find('"', pos);
+        } else {
+            while (end < resp.size()) {
+                const char c = resp[end];
+                if ((c >= '0' && c <= '9') || c == '.' || c == '-') {
+                    end++;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        if (end != std::string::npos && end > pos) {
+            return resp.substr(pos, end - pos);
+        }
+    }
+
+    return std::string();
+}
+
+static std::string make_done_avg_price_message(const std::string& resp) {
+    const std::string avg_px = extract_hl_avg_px(resp);
+    if (avg_px.empty()) {
+        return "Done";
+    }
+    return std::string("Done @") + avg_px;
+}
+
+static const char* kPerpAlertPrefix = "__ALERT__\n";
+static const char* kSpotAlertPrefix = "__ALERT__\n";
+static const char* kTransferAlertPrefix = "__ALERT__\n";
+
 static std::string make_address_short(const std::string& addr_0x) {
     if (addr_0x.size() < 10) return addr_0x;
     std::string s = addr_0x;
@@ -196,6 +243,11 @@ void App::set_alert(const std::string& body) {
         return;
     }
     alert_dialog.open_dialog(body, 1);
+}
+
+void App::set_message(const std::string& title, const std::string& body, int duration_frames) {
+    (void)title;
+    message.show(body, duration_frames);
 }
 
 static void set_deposit_alert(tradeboy::app::App& app, const std::string& body) {
@@ -412,6 +464,7 @@ void App::open_perp_order() {
     perp_order_leverage = row.leverage;
     perp_order_is_long = row.is_long;
     perp_order_price = row.price;
+    perp_order_max_input = maxv;
 
     tradeboy::ui::NumberInputConfig cfg;
     const char* side = row.is_long ? "LONG" : "SHORT";
@@ -776,7 +829,7 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
             return;
         }
     }
-    
+
     // Block spot/perp input if triggering action
     if (buy_trigger_frames > 0 || sell_trigger_frames > 0 || perp_primary_press_frames > 0 || perp_close_press_frames > 0) {
         return;
@@ -806,11 +859,6 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
         std::vector<tradeboy::perp::PerpUiEvent> ev = tradeboy::perp::collect_perp_ui_events(in, edges, ui);
         apply_perp_ui_events(ev);
     } else if (tab == Tab::Account) {
-        if (tradeboy::utils::pressed(in.x, edges.prev.x)) {
-            account_address_dialog.open_dialog("", 1);
-            return;
-        }
-
         // Account: left/right cycles the 3 bottom buttons.
         if (tradeboy::utils::pressed(in.left, edges.prev.left)) {
             account_selected_btn = (account_selected_btn + 2) % 3;
@@ -827,6 +875,54 @@ void App::handle_input_edges(const tradeboy::app::InputState& in, const tradeboy
 }
 
 void App::render() {
+    if (hl_transfer_alert_pending.exchange(false)) {
+        std::string body;
+        pthread_mutex_lock(&hl_transfer_mu);
+        body = hl_transfer_alert_body;
+        hl_transfer_alert_body.clear();
+        pthread_mutex_unlock(&hl_transfer_mu);
+        if (!body.empty()) {
+            const std::string alert_prefix = kTransferAlertPrefix;
+            if (body.rfind(alert_prefix, 0) == 0) {
+                set_alert(body.substr(alert_prefix.size()));
+            } else {
+                set_message("", body, 150);
+            }
+        }
+    }
+
+    if (hl_spot_order_alert_pending.exchange(false)) {
+        std::string body;
+        pthread_mutex_lock(&hl_spot_order_mu);
+        body = hl_spot_order_alert_body;
+        hl_spot_order_alert_body.clear();
+        pthread_mutex_unlock(&hl_spot_order_mu);
+        if (!body.empty()) {
+            const std::string alert_prefix = kSpotAlertPrefix;
+            if (body.rfind(alert_prefix, 0) == 0) {
+                set_alert(body.substr(alert_prefix.size()));
+            } else {
+                set_message("", body, 150);
+            }
+        }
+    }
+
+    if (hl_perp_order_alert_pending.exchange(false)) {
+        std::string body;
+        pthread_mutex_lock(&hl_perp_order_mu);
+        body = hl_perp_order_alert_body;
+        hl_perp_order_alert_body.clear();
+        pthread_mutex_unlock(&hl_perp_order_mu);
+        if (!body.empty()) {
+            const std::string alert_prefix = kPerpAlertPrefix;
+            if (body.rfind(alert_prefix, 0) == 0) {
+                set_alert(body.substr(alert_prefix.size()));
+            } else {
+                set_message("", body, 150);
+            }
+        }
+    }
+
     // Process triggers
     if (buy_trigger_frames > 0) {
         buy_trigger_frames--;
@@ -1001,21 +1097,20 @@ void App::render() {
                         set_alert("ORDER_FAILED\nMISSING_MARKET_DATA");
                     } else {
                         const bool is_buy = !perp_close_is_long;
-                        const double input_size = val;
+                        const double close_size = val;
                         const std::string display_sym = perp_close_coin;
                         const double leverage = perp_close_leverage;
-                        const double input_amount = (leverage > 0.0) ? ((input_size * mid_px) / leverage) : 0.0;
-                        if (!(input_amount > 0.0)) {
+                        if (!(close_size > 0.0)) {
                             hl_perp_order_inflight.store(false);
                             set_alert("ORDER_FAILED\nINVALID_SIZE");
                         } else {
-                            set_alert("ORDER_SUBMITTED\nPlease wait...");
+                            set_message("", "Submitting...", 120);
 
                             if (hl_perp_order_thread.joinable()) {
                                 hl_perp_order_thread.join();
                             }
 
-                            hl_perp_order_thread = std::thread([this, w, display_sym, is_buy, input_amount, leverage, mid_px, perp_meta_json]() {
+                            hl_perp_order_thread = std::thread([this, w, display_sym, is_buy, close_size, leverage, mid_px, perp_meta_json]() {
                                 std::string resp;
                                 std::string err;
                                 bool ok = tradeboy::market::exchange_perp_update_leverage(
@@ -1030,47 +1125,31 @@ void App::render() {
                                     err);
 
                                 if (!ok) {
-                                    std::string body = "ORDER_FAILED\n";
-                                    if (!err.empty()) body += err;
-                                    else body += "UNKNOWN";
-                                    if (!resp.empty()) {
-                                        body += "\n";
-                                        body += truncate_for_alert(resp, 220);
-                                    }
-                                    set_hl_perp_order_alert(*this, body);
+                                    set_hl_perp_order_alert(*this, std::string(kPerpAlertPrefix) + "ORDER_FAILED\nLEVERAGE_UPDATE_FAILED");
                                     hl_perp_order_inflight.store(false);
                                     return;
                                 }
 
                                 resp.clear();
                                 err.clear();
-                                ok = tradeboy::market::exchange_perp_market_order(
+                                ok = tradeboy::market::exchange_perp_market_close_by_size(
                                     w.wallet_address,
                                     w.private_key,
                                     display_sym,
                                     is_buy,
-                                    true,
-                                    input_amount,
-                                    leverage,
+                                    close_size,
                                     mid_px,
                                     perp_meta_json,
-                                    0.01,
+                                    0.10,
                                     true,
                                     resp,
                                     err);
 
                                 if (ok) {
                                     hl_transfer_refresh_requested.store(true);
-                                    set_hl_perp_order_alert(*this, std::string("ORDER_OK\n") + truncate_for_alert(resp, 220));
+                                    set_hl_perp_order_alert(*this, make_done_avg_price_message(resp));
                                 } else {
-                                    std::string body = "ORDER_FAILED\n";
-                                    if (!err.empty()) body += err;
-                                    else body += "UNKNOWN";
-                                    if (!resp.empty()) {
-                                        body += "\n";
-                                        body += truncate_for_alert(resp, 220);
-                                    }
-                                    set_hl_perp_order_alert(*this, body);
+                                    set_hl_perp_order_alert(*this, std::string(kPerpAlertPrefix) + "ORDER_FAILED");
                                 }
                                 hl_perp_order_inflight.store(false);
                             });
@@ -1092,6 +1171,16 @@ void App::render() {
             if (hl_perp_order_inflight.exchange(true)) {
                 set_alert("ORDER_BUSY\nPLEASE_WAIT");
             } else {
+                auto trunc_to_2dp_eps = [](double v) {
+                    const double p = 100.0;
+                    const double eps = 1e-12;
+                    return std::trunc((v + eps) * p) / p;
+                };
+                const double max_input = perp_order_max_input;
+                const double max_trunc = trunc_to_2dp_eps(max_input);
+                if (max_input > 0.0 && std::fabs(val - max_trunc) <= std::max(1e-12, max_trunc * 1e-9)) {
+                    val = max_input;
+                }
                 const tradeboy::model::WalletSnapshot w = model.wallet_snapshot();
                 if (w.wallet_address.empty() || w.private_key.empty()) {
                     hl_perp_order_inflight.store(false);
@@ -1105,16 +1194,17 @@ void App::render() {
                     } else {
                         const bool is_buy = perp_order_is_long;
                         const double input_amount = val;
+                        const double max_input_amount = perp_order_max_input;
                         const std::string display_sym = perp_order_coin;
                         const double leverage = perp_order_leverage;
 
-                        set_alert("ORDER_SUBMITTED\nPlease wait...");
+                        set_message("", "Submitting...", 120);
 
                         if (hl_perp_order_thread.joinable()) {
                             hl_perp_order_thread.join();
                         }
 
-                        hl_perp_order_thread = std::thread([this, w, display_sym, is_buy, input_amount, leverage, mid_px, perp_meta_json]() {
+                        hl_perp_order_thread = std::thread([this, w, display_sym, is_buy, input_amount, max_input_amount, leverage, mid_px, perp_meta_json]() {
                             std::string resp;
                             std::string err;
                             bool ok = tradeboy::market::exchange_perp_update_leverage(
@@ -1129,14 +1219,7 @@ void App::render() {
                                 err);
 
                             if (!ok) {
-                                std::string body = "ORDER_FAILED\n";
-                                if (!err.empty()) body += err;
-                                else body += "UNKNOWN";
-                                if (!resp.empty()) {
-                                    body += "\n";
-                                    body += truncate_for_alert(resp, 220);
-                                }
-                                set_hl_perp_order_alert(*this, body);
+                                set_hl_perp_order_alert(*this, "Failed");
                                 hl_perp_order_inflight.store(false);
                                 return;
                             }
@@ -1150,26 +1233,20 @@ void App::render() {
                                 is_buy,
                                 false,
                                 input_amount,
+                                max_input_amount,
                                 leverage,
                                 mid_px,
                                 perp_meta_json,
-                                0.01,
+                                0.10,
                                 true,
                                 resp,
                                 err);
 
                             if (ok) {
                                 hl_transfer_refresh_requested.store(true);
-                                set_hl_perp_order_alert(*this, std::string("ORDER_OK\n") + truncate_for_alert(resp, 220));
+                                set_hl_perp_order_alert(*this, make_done_avg_price_message(resp));
                             } else {
-                                std::string body = "ORDER_FAILED\n";
-                                if (!err.empty()) body += err;
-                                else body += "UNKNOWN";
-                                if (!resp.empty()) {
-                                    body += "\n";
-                                    body += truncate_for_alert(resp, 220);
-                                }
-                                set_hl_perp_order_alert(*this, body);
+                                set_hl_perp_order_alert(*this, std::string(kPerpAlertPrefix) + "Failed");
                             }
                             hl_perp_order_inflight.store(false);
                         });
@@ -1520,7 +1597,7 @@ void App::render() {
                                                         .count();
                 const std::string amt_s = tradeboy::utils::format_fixed_trunc_sig(val, 10, 6);
 
-                set_alert("TRANSFER_SUBMITTED\nPlease wait...");
+                set_message("", "Submitting...", 120);
 
                 if (hl_transfer_thread.joinable()) {
                     hl_transfer_thread.join();
@@ -1541,9 +1618,9 @@ void App::render() {
 
                     if (ok) {
                         hl_transfer_refresh_requested.store(true);
-                        set_hl_transfer_alert(*this, std::string("TRANSFER_OK\n") + truncate_for_alert(resp, 220));
+                        set_hl_transfer_alert(*this, "Done");
                     } else {
-                        std::string body = "TRANSFER_FAILED\n";
+                        std::string body = std::string(kTransferAlertPrefix) + "TRANSFER_FAILED\n";
                         if (!err.empty()) body += err;
                         else body += "UNKNOWN";
                         if (!resp.empty()) {
@@ -1576,7 +1653,7 @@ void App::render() {
             }
         }
         spot_order.clear_result();
-        
+
         if (res == tradeboy::ui::NumberInputResult::Confirmed) {
             if (hl_spot_order_inflight.exchange(true)) {
                 set_alert("ORDER_BUSY\nPLEASE_WAIT");
@@ -1596,7 +1673,7 @@ void App::render() {
                         const double input_amount = val;
                         const std::string display_sym = spot_order.sym;
 
-                        set_alert("ORDER_SUBMITTED\nPlease wait...");
+                        set_message("", "Submitting...", 120);
 
                         if (hl_spot_order_thread.joinable()) {
                             hl_spot_order_thread.join();
@@ -1622,16 +1699,9 @@ void App::render() {
 
                             if (ok) {
                                 hl_transfer_refresh_requested.store(true);
-                                set_hl_spot_order_alert(*this, std::string("ORDER_OK\n") + truncate_for_alert(resp, 220));
+                                set_hl_spot_order_alert(*this, make_done_avg_price_message(resp));
                             } else {
-                                std::string body = "ORDER_FAILED\n";
-                                if (!err.empty()) body += err;
-                                else body += "UNKNOWN";
-                                if (!resp.empty()) {
-                                    body += "\n";
-                                    body += truncate_for_alert(resp, 220);
-                                }
-                                set_hl_spot_order_alert(*this, body);
+                                set_hl_spot_order_alert(*this, std::string(kSpotAlertPrefix) + "Failed");
                             }
                             hl_spot_order_inflight.store(false);
                         });
@@ -1664,6 +1734,26 @@ void App::render() {
         }
     }
 
+    if (exit_dialog.open && !exit_dialog.closing) {
+        if (exit_dialog.tick_flash()) {
+            exit_dialog_quit_after_close = (exit_dialog.pending_action == 0);
+            exit_dialog.start_close();
+        }
+    }
+
+    if (exit_dialog.open && exit_dialog.closing) {
+        if (exit_dialog.tick_close_anim()) {
+            const bool quit_after_close = exit_dialog_quit_after_close;
+            exit_dialog.reset();
+            exit_dialog_quit_after_close = false;
+            if (quit_after_close) {
+                exit_poweroff_anim_active = true;
+                exit_poweroff_anim_frames = 0;
+                exit_poweroff_anim_t = 0.0f;
+            }
+        }
+    }
+
     // Account dialog close animation
     if (account_address_dialog.open && account_address_dialog.closing) {
         if (account_address_dialog.tick_close_anim()) {
@@ -1685,96 +1775,6 @@ void App::render() {
                 queued_alert_open = false;
                 queued_alert_body.clear();
             }
-        }
-    }
-
-    {
-        const bool now_ok = model.account_snapshot().arb_rpc_ok;
-        if (!now_ok && arb_rpc_last_ok) {
-            if (!arb_deposit_inflight.load()) {
-                // no-op
-            }
-        }
-        arb_rpc_last_ok = now_ok;
-    }
-
-    if (arb_deposit_alert_pending.exchange(false)) {
-        std::string body;
-        {
-            pthread_mutex_lock(&arb_deposit_mu);
-            body = arb_deposit_alert_body;
-            pthread_mutex_unlock(&arb_deposit_mu);
-        }
-        set_alert(body);
-    }
-
-    if (hl_perp_order_alert_pending.exchange(false)) {
-        std::string body;
-        {
-            pthread_mutex_lock(&hl_perp_order_mu);
-            body = hl_perp_order_alert_body;
-            pthread_mutex_unlock(&hl_perp_order_mu);
-        }
-        set_alert(body);
-    }
-
-    if (hl_transfer_alert_pending.exchange(false)) {
-        std::string body;
-        {
-            pthread_mutex_lock(&hl_transfer_mu);
-            body = hl_transfer_alert_body;
-            pthread_mutex_unlock(&hl_transfer_mu);
-        }
-        set_alert(body);
-    }
-
-    if (hl_withdraw_alert_pending.exchange(false)) {
-        std::string body;
-        {
-            pthread_mutex_lock(&hl_withdraw_mu);
-            body = hl_withdraw_alert_body;
-            pthread_mutex_unlock(&hl_withdraw_mu);
-        }
-        set_alert(body);
-    }
-
-    if (hl_spot_order_alert_pending.exchange(false)) {
-        std::string body;
-        {
-            pthread_mutex_lock(&hl_spot_order_mu);
-            body = hl_spot_order_alert_body;
-            pthread_mutex_unlock(&hl_spot_order_mu);
-        }
-        set_alert(body);
-    }
-
-    if (hl_transfer_refresh_requested.exchange(false)) {
-        if (market_src && !wallet_cfg.wallet_address.empty()) {
-            market_src->set_user_address(wallet_cfg.wallet_address);
-        }
-        if (market_service) {
-            market_service->stop();
-            market_service->start();
-        }
-    }
-
-    // Process exit dialog flash -> trigger closing when finished.
-    if (exit_dialog.open && !exit_dialog.closing) {
-        if (exit_dialog.tick_flash()) {
-            exit_dialog_quit_after_close = (exit_dialog.pending_action == 0);
-            exit_dialog.start_close();
-        }
-    }
-
-    // Close animation
-    if (exit_dialog.open && exit_dialog.closing) {
-        if (exit_dialog.tick_close_anim()) {
-            exit_dialog.reset();
-            if (exit_dialog_quit_after_close) {
-                exit_poweroff_anim_active = true;
-                exit_poweroff_anim_frames = 0;
-            }
-            exit_dialog_quit_after_close = false;
         }
     }
 
@@ -1808,7 +1808,7 @@ void App::render() {
 
         tradeboy::ui::render_dialog("ExitDialog",
                                     "> ",
-                                    "Exit TradeBoy?\n\nDEVICE INFO\n- Model: RG34XX\n- OS: Ubuntu 22.04\n- Arch: armhf\n- Build: tradeboy-armhf\n- Display: 720x480\n- Renderer: SDL2 + OpenGL\n- Storage: /mnt/mmc\n- AppDir: /mnt/mmc/Roms/APPS\n- RPC: Arbitrum JSON-RPC\n- HL: Hyperliquid\n\nNETWORK\n- SSH: root@<device-ip>\n- WLAN: <ssid>\n- IP: <ip>\n\nWALLET\n- Address: <0x...>\n- USDC: <balance>\n- ETH: <balance>\n- GAS: <gwei>\n\nNOTES\nThis is a long diagnostic message used to test:\n1) auto-wrap across dialog width\n2) dialog height auto-grow up to 450px\n3) truncation when max height reached\n4) last visible line replaced with '...'\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\n\nMore lines:\n- Line A\n- Line B\n- Line C\n- Line D\n- Line E\n- Line F\n- Line G\n- Line H\n- Line I\n- Line J\n- Line K\n- Line L\n- Line M\n- Line N\n- Line O\n- Line P\n- Line Q\n- Line R\n- Line S\n- Line T\n- Line U\n- Line V\n- Line W\n- Line X\n- Line Y\n- Line Z",
+                                    "Exit TradeBoy?",
                                     "EXIT",
                                     "CANCEL",
                                     &exit_dialog.selected_btn,
@@ -1878,6 +1878,12 @@ void App::render() {
         if (exit_poweroff_anim_frames >= dur) {
             quit_requested = true;
         }
+    }
+
+    message.tick();
+
+    if (message.open) {
+        tradeboy::ui::render_message("MessageOverlay", message, font_bold);
     }
 }
 

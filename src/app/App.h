@@ -19,6 +19,7 @@
 
 #include "../wallet/Wallet.h"
 #include "../ui/DialogState.h"
+#include "../ui/Message.h"
 #include "../ui/NumberInputModal.h"
 
 namespace tradeboy::spot { struct SpotUiEvent; }
@@ -64,6 +65,7 @@ struct App {
     tradeboy::ui::DialogState exit_dialog;
     tradeboy::ui::DialogState alert_dialog;
     tradeboy::ui::DialogState account_address_dialog;
+    tradeboy::ui::MessageState message;
     bool queued_alert_open = false;
     std::string queued_alert_body;
 
@@ -80,6 +82,7 @@ struct App {
     double perp_order_leverage = 1.0;
     bool perp_order_is_long = true;
     double perp_order_price = 0.0;
+    double perp_order_max_input = 0.0;
 
     tradeboy::ui::NumberInputState perp_close_amount;
     std::string perp_close_coin;
@@ -187,6 +190,7 @@ struct App {
     void render();
 
     void set_alert(const std::string& body);
+    void set_message(const std::string& title, const std::string& body, int duration_frames = 150);
 };
 
 } // namespace tradeboy::app

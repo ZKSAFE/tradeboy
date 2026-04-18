@@ -41,6 +41,7 @@ TRADEBOY_SOURCES = \
 	src/filters/CrtFilter.cpp \
 	src/ui/MatrixBackground.cpp \
 	src/ui/Dialog.cpp \
+	src/ui/Message.cpp \
 	src/ui/MainUI.cpp \
 	src/ui/NumberInputModal.cpp \
 	src/app/App.cpp \

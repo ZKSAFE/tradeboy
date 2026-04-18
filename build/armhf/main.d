@@ -34,7 +34,8 @@ build/armhf/main.o: src/main.cpp /usr/include/SDL2/SDL.h \
  src/app/../market/IMarketDataSource.h src/app/../market/Hyperliquid.h \
  src/app/../market/MarketDataService.h \
  src/app/../arb/ArbitrumRpcService.h src/app/../wallet/Wallet.h \
- src/filters/CrtFilter.h src/utils/Log.h src/core/Logger.h
+ src/app/../ui/Message.h src/utils/Typewriter.h src/filters/CrtFilter.h \
+ src/utils/Log.h src/core/Logger.h
 /usr/include/SDL2/SDL.h:
 /usr/include/SDL2/SDL_main.h:
 /usr/include/SDL2/SDL_stdinc.h:
@@ -98,6 +99,8 @@ src/app/../market/Hyperliquid.h:
 src/app/../market/MarketDataService.h:
 src/app/../arb/ArbitrumRpcService.h:
 src/app/../wallet/Wallet.h:
+src/app/../ui/Message.h:
+src/utils/Typewriter.h:
 src/filters/CrtFilter.h:
 src/utils/Log.h:
 src/core/Logger.h:

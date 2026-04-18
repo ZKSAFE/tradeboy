@@ -32,7 +32,8 @@ build/armhf/ui/MainUI.o: src/ui/MainUI.cpp src/ui/MainUI.h \
  src/ui/../app/../market/Hyperliquid.h \
  src/ui/../app/../market/MarketDataService.h \
  src/ui/../app/../arb/ArbitrumRpcService.h \
- src/ui/../app/../wallet/Wallet.h src/ui/MatrixTheme.h
+ src/ui/../app/../wallet/Wallet.h src/ui/../app/../ui/Message.h \
+ src/utils/Typewriter.h src/ui/MatrixTheme.h
 src/ui/MainUI.h:
 third_party/imgui/imgui.h:
 third_party/imgui/imconfig.h:
@@ -94,4 +95,6 @@ src/ui/../app/../market/Hyperliquid.h:
 src/ui/../app/../market/MarketDataService.h:
 src/ui/../app/../arb/ArbitrumRpcService.h:
 src/ui/../app/../wallet/Wallet.h:
+src/ui/../app/../ui/Message.h:
+src/utils/Typewriter.h:
 src/ui/MatrixTheme.h:
